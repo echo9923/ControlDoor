@@ -1,0 +1,2578 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_DEVICEINFO_V30</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_DEVICEINFO_V30</h1>
+<p>设备参数结构体。</p>
+<pre class="syntax"><b>struct{</b>
+<b>  BYTE</b><i>     sSerialNumber[<span title="#define SERIALNO_LEN 48"><em id="mycolor">SERIALNO_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>     byAlarmInPortNum</i><b>;</b>
+<b>  BYTE</b><i>     byAlarmOutPortNum</i><b>;</b>
+<b>  BYTE</b><i>     byDiskNum</i><b>;</b>
+<b>  BYTE</b><i>     byDVRType</i><b>;</b>
+<b>  BYTE</b><i>     byChanNum</i><b>;</b>
+<b>  BYTE</b><i>     byStartChan</i><b>;</b>
+<b>  BYTE</b><i>     byAudioChanNum</i><b>;</b>
+<b>  BYTE</b><i>     byIPChanNum</i><b>;</b>
+<b>  BYTE</b><i>     byZeroChanNum</i><b>;</b>
+<b>  BYTE</b><i>     byMainProto</i><b>;</b>
+<b>  BYTE</b><i>     bySubProto</i><b>;</b>
+<b>  BYTE</b><i>     bySupport</i><b>;</b>
+<b>  BYTE</b><i>     bySupport1</i><b>;</b>
+<b>  BYTE</b><i>     bySupport2</i><b>;</b>
+<b>  WORD</b><i>     wDevType</i><b>;</b>
+<b>  BYTE</b><i>     bySupport3</i><b>;</b>
+<b>  BYTE</b><i>     byMultiStreamProto</i><b>;</b>
+<b>  BYTE</b><i>     byStartDChan</i><b>;</b>
+<b>  BYTE</b><i>     byStartDTalkChan</i><b>;</b>
+<b>  BYTE</b><i>     byHighDChanNum</i><b>;</b>
+<b>  BYTE</b><i>     bySupport4</i><b>;</b>
+<b>  BYTE</b><i>     byLanguageType</i><b>;</b>
+<b>  BYTE</b><i>     byVoiceInChanNum</i><b>;</b>
+<b>  BYTE</b><i>     byStartVoiceInChanNo</i><b>;</b>
+<b>  BYTE</b><i>     byRes3[2]</i><b>;</b>
+<b>  BYTE</b><i>     byMirrorChanNum</i><b>;</b>
+<b>  WORD</b><i>     wStartMirrorChanNo</i><b>;</b>
+<b>  BYTE</b><i>     byRes2[2]</i><b>;</b>
+<b>}NET_DVR_DEVICEINFO_V30,*LPNET_DVR_DEVICEINFO_V30;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>sSerialNumber</i></dt>
+<dd> 序列号</dd>
+
+<dt><i>byAlarmInPortNum</i></dt>
+<dd> 模拟报警输入个数</dd>
+
+<dt><i>byAlarmOutPortNum</i></dt>
+<dd> 模拟报警输出个数</dd>
+
+<dt><i>byDiskNum</i></dt>
+<dd> 硬盘个数</dd>
+
+<dt><i>byDVRType</i></dt>
+<dd> 设备类型，详见下文列表</dd>
+
+<dt><i>byChanNum</i></dt>
+<dd> 设备模拟通道个数，数字（IP）通道最大个数为byIPChanNum + byHighDChanNum*256</dd>
+
+<dt><i>byStartChan</i></dt>
+<dd> 模拟通道的起始通道号，从1开始。数字通道的起始通道号见下面参数byStartDChan</dd>
+
+<dt><i>byAudioChanNum</i></dt>
+<dd> 设备语音对讲通道数</dd>
+
+<dt><i>byIPChanNum</i></dt>
+<dd> 设备最大数字通道个数，低8位，高8位见byHighDChanNum。可以根据IP通道个数来判断是否调用<strong><a 
+        href="../definitions/NET_DVR_GetDVRConfig_ADVANCED.html">NET_DVR_GetDVRConfig</a></strong>（配置命令NET_DVR_GET_IPPARACFG_V40）获取模拟和数字通道相关参数（<strong><a 
+        href="NET_DVR_IPPARACFG_V40.html">NET_DVR_IPPARACFG_V40</a></strong>）。</dd>
+
+<dt><i>byZeroChanNum</i></dt>
+<dd> 零通道编码个数</dd>
+
+<dt><i>byMainProto</i></dt>
+<dd> 主码流传输协议类型：0- private，1- rtsp，2- 同时支持私有协议和rtsp协议取流（默认采用私有协议取流）</dd>
+
+<dt><i>bySubProto</i></dt>
+<dd> 子码流传输协议类型：0- private，1- rtsp，2- 同时支持私有协议和rtsp协议取流（默认采用私有协议取流）</dd>
+
+<dt><i>bySupport</i></dt>
+<dd> 能力，位与结果为0表示不支持，1表示支持<BR>
+   bySupport & 0x1，表示是否支持智能搜索<BR>
+   bySupport & 0x2，表示是否支持备份<BR>
+   bySupport & 0x4，表示是否支持压缩参数能力获取<BR>
+   bySupport & 0x8, 表示是否支持双网卡<BR>
+   bySupport & 0x10, 表示支持远程SADP<BR>
+   bySupport & 0x20, 表示支持Raid卡功能<BR>
+   bySupport & 0x40, 表示支持IPSAN目录查找<BR>
+   bySupport & 0x80, 表示支持rtp over rtsp
+</dd>
+
+<dt><i>bySupport1</i></dt>
+<dd> 能力集扩充，位与结果为0表示不支持，1表示支持<BR>
+   bySupport1 & 0x1, 表示是否支持snmp v30<BR>
+   bySupport1 & 0x2, 表示是否支持区分回放和下载<BR>
+   bySupport1 & 0x4, 表示是否支持布防优先级<BR>
+   bySupport1 & 0x8, 表示智能设备是否支持布防时间段扩展<BR>
+   bySupport1 & 0x10,表示是否支持多磁盘数（超过33个）<BR>
+   bySupport1 & 0x20,表示是否支持rtsp over http<BR>
+   bySupport1 & 0x80,表示是否支持车牌新报警信息，且还表示是否支持<strong><a 
+        href="NET_DVR_IPPARACFG_V40.html">NET_DVR_IPPARACFG_V40</a></strong>配置<BR></dd>
+
+<dt><i>bySupport2</i></dt>
+<dd> 能力集扩充，位与结果为0表示不支持，1表示支持<BR>
+   bySupport2 & 0x1, 表示解码器是否支持通过URL取流解码<BR>
+   bySupport2 & 0x2, 表示是否支持FTPV40<BR>
+   bySupport2 & 0x4, 表示是否支持ANR(断网录像)<BR>
+   bySupport2 & 0x20, 表示是否支持单独获取设备状态子项<BR>
+   bySupport2 & 0x40, 表示是否是码流加密设备</dd>
+
+<dt><i>wDevType</i></dt>
+<dd> 设备型号，详见下文列表</dd>
+
+<dt><i>bySupport3</i></dt>
+<dd> 能力集扩展，位与结果：0- 不支持，1- 支持<BR>
+   bySupport3 & 0x1, 表示是否支持多码流<BR>
+   bySupport3 & 0x4, 表示是否支持按组配置，具体包含通道图像参数、报警输入参数、IP报警输入/输出接入参数、用户参数、设备工作状态、JPEG抓图、定时和时间抓图、硬盘盘组管理等<BR>
+   bySupport3 & 0x20, 表示是否支持通过DDNS域名解析取流<BR>
+   </dd>
+
+<dt><i>byMultiStreamProto</i></dt>
+<dd> 是否支持多码流，按位表示，位与结果：0-不支持，1-支持<BR>
+byMultiStreamProto & 0x1, 表示是否支持码流3<BR>
+byMultiStreamProto & 0x2, 表示是否支持码流4<BR>
+byMultiStreamProto & 0x40,表示是否支持主码流<BR>
+byMultiStreamProto & 0x80,表示是否支持子码流</dd>
+
+<dt><i>byStartDChan</i></dt>
+<dd> 起始数字通道号，0表示无数字通道，比如DVR或IPC</dd>
+
+<dt><i>byStartDTalkChan</i></dt>
+<dd> 起始数字对讲通道号，区别于模拟对讲通道号，0表示无数字对讲通道</dd>
+
+<dt><i>byHighDChanNum</i></dt>
+<dd> 数字通道个数，高8位</dd>
+
+<dt><i>bySupport4</i></dt>
+<dd> 能力集扩展，按位表示，位与结果：0- 不支持，1- 支持<BR>  
+bySupport4 & 0x01, 表示是否所有码流类型同时支持RTSP和私有协议<BR>
+bySupport4 & 0x10, 表示是否支持域名方式挂载网络硬盘</dd>
+
+<dt><i>byLanguageType</i></dt>
+<dd> 支持语种能力，按位表示，位与结果：0- 不支持，1- 支持<BR>  
+byLanguageType ==0，表示老设备，不支持该字段<BR>
+byLanguageType & 0x1，表示是否支持中文<BR>
+byLanguageType & 0x2，表示是否支持英文
+</dd>
+
+<dt><i>byVoiceInChanNum</i></dt>
+<dd> 音频输入通道数</dd>
+
+<dt><i>byStartVoiceInChanNo</i></dt>
+<dd> 音频输入起始通道号，0表示无效</dd>
+
+<dt><i>byRes3</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>byMirrorChanNum</i></dt>
+<dd> 镜像通道个数，录播主机中用于表示导播通道</dd>
+
+<dt><i>wStartMirrorChanNo</i></dt>
+<dd> 起始镜像通道号</dd>
+
+<dt><i>byRes2</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<ul>
+<li>设备登录模式有两种：SDK私有协议和ISAPI协议。<BR/>
+1) SDK私有协议是我司私有的TCP/IP协议，登录使用的是设备服务端口（默认为8000），我司网络设备除特殊产品外基本都支持该协议方式登录，因此一般建议使用SDK私有协议模式登录。<BR/>
+2) ISAPI协议是基于标准HTTP REST架构，HTTP协议或者HTTPS协议访问设备，登录使用的是设备HTTP端口（默认为80）或者HTTPS端口（默认为443）。不支持SDK私有协议的设备如猎鹰、刀锋等采用ISAPI协议的方式登录。</li>
+<li>使用ISAPI协议方式登录时byMainProto、bySubProto、bySupport、bySupport1、bySupport2、bySupport3、bySupport4、bySupport5、bySupport6、bySupport7、byMultiStreamProto、byStartDTalkChan、byVoiceInChanNum、byStartVoiceInChanNo、byMirrorChanNum、wStartMirrorChanNo这些参数都不支持。</li>
+<li>如果byDVRType是0，则接口中解析wDevType作为设备型号；如果byDVRType非0，则接口中byDVRType和wDevType值相等，都是byDVRType。推荐使用wDevType作为设备类型。<BR/>
+	byDVRType和wDevType取值定义如下所示：</li>
+</ul>
+
+<table>
+<tr valign=top>
+<th align=left width=40%><b>宏定义</b></th>
+<th align=left width=20%>宏定义值</th>
+<th align=left width=40%>设备类型</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR</b></td>
+<td width=20%>1</td>
+<td width=40%>尚未定义的DVR类型</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>ATMDVR</b></td>
+<td width=20%>2</td>
+<td width=40%>ATM DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVS</b></td>
+<td width=20%>3</td>
+<td width=40%>DVS</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEC</b></td>
+<td width=20%>4</td>
+<td width=40%>6001D</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>ENC_DEC</b></td>
+<td width=20%>5</td>
+<td width=40%>6001F</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HC</b></td>
+<td width=20%>6</td>
+<td width=40%>8000HC</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HT</b></td>
+<td width=20%>7</td>
+<td width=40%>8000HT</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HF</b></td>
+<td width=20%>8</td>
+<td width=40%>8000HF</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HS</b></td>
+<td width=20%>9</td>
+<td width=40%>8000HS DVR(no audio)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HTS</b></td>
+<td width=20%>10</td>
+<td width=40%>8016HTS DVR(no audio)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HB</b></td>
+<td width=20%>11</td>
+<td width=40%>HB DVR(SATA HD)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HCS</b></td>
+<td width=20%>12</td>
+<td width=40%>8000HCS DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVS_A</b></td>
+<td width=20%>13</td>
+<td width=40%>带ATA硬盘的DVS</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HC_S</b></td>
+<td width=20%>14</td>
+<td width=40%>8000HC-S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HT_S</b></td>
+<td width=20%>15</td>
+<td width=40%>8000HT-S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HF_S</b></td>
+<td width=20%>16</td>
+<td width=40%>8000HF-S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HS_S</b></td>
+<td width=20%>17</td>
+<td width=40%>8000HS-S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>ATMDVR_S</b></td>
+<td width=20%>18</td>
+<td width=40%>ATM-S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_7000H</b></td>
+<td width=20%>19</td>
+<td width=40%>7000H系列</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEC_MAT</b></td>
+<td width=20%>20</td>
+<td width=40%>多路解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_MOBILE </b></td>
+<td width=20%>21</td>
+<td width=40%>mobile DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HD_S </b></td>
+<td width=20%>22</td>
+<td width=40%>8000HD-S</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HD_SL</b></td>
+<td width=20%>23</td>
+<td width=40%>8000HD-SL</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HC_SL</b></td>
+<td width=20%>24</td>
+<td width=40%>8000HC-SL</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVR_HS_ST</b></td>
+<td width=20%>25</td>
+<td width=40%>8000HS_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DVS_HW</b></td>
+<td width=20%>26</td>
+<td width=40%>6000HW</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS630X_D</b></td>
+<td width=20%>27</td>
+<td width=40%>多路解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><strong>DS640X_HD</strong></td>
+<td width=20%>28</td>
+<td width=40%>640X高清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><strong>DS610X_D</strong></td>
+<td width=20%>29</td>
+<td width=40%>610X解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM</b></td>
+<td width=20%>30</td>
+<td width=40%>标清网络摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MEGA_IPCAM</b></td>
+<td width=20%>31</td>
+<td width=40%>高清网络摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_X62MF</b></td>
+<td width=20%>32</td>
+<td width=40%>X62MF系列摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>ITCCAM</b></td>
+<td width=20%>35</td>
+<td width=40%>智能交通摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVS_IPCAM</b></td>
+<td width=20%>36</td>
+<td width=40%>智能分析高清网络摄像机(人脸抓拍机)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>ZOOMCAM</b></td>
+<td width=20%>38</td>
+<td width=40%>一体机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME</b></td>
+<td width=20%>40</td>
+<td width=40%>IP标清快球</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_MEGA200</b></td>
+<td width=20%>41</td>
+<td width=40%>IP 200万高清快球</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_MEGA130</b></td>
+<td width=20%>42</td>
+<td width=40%>IP 130万高清快球</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_AI</b></td>
+<td width=20%>43</td>
+<td width=40%>IP 高清智能快球</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>TII_IPCAM</b></td>
+<td width=20%>44</td>
+<td width=40%>红外热成像摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPTC_DOME</b></td>
+<td width=20%>45</td>
+<td width=40%>红外热成像双目球机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_2DP_Z</b></td>
+<td width=20%>46</td>
+<td width=40%>球型鹰眼（大）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_2DP</b></td>
+<td width=20%>47</td>
+<td width=40%>非球型鹰眼（小）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>ITS_WMS</b></td>
+<td width=20%>48</td>
+<td width=40%>称重数据管理服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPMOD</b></td>
+<td width=20%>50</td>
+<td width=40%>IP 模块</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>TRAFFIC_YTDOME</b></td>
+<td width=20%>51</td>
+<td width=40%>交通智能云台（不带雷达测速）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>TRAFFIC_RDDOME</b></td>
+<td width=20%>52</td>
+<td width=40%>交通智能云台（带雷达测速）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS6501_HF_P</b></td>
+<td width=20%>60</td>
+<td width=40%>6501 车牌识别</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS6101_HF_A</b></td>
+<td width=20%>61</td>
+<td width=40%>智能ATM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS6002_HF_B</b></td>
+<td width=20%>62</td>
+<td width=40%>双摄像机跟踪：DS6002-HF/B</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS6101_HF_B</b></td>
+<td width=20%>63</td>
+<td width=40%>行为分析：DS6101-HF/B</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>IDS52XX</b></td>
+<td width=20%>64</td>
+<td width=40%>智能分析仪</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS90XX</b></td>
+<td width=20%>65</td>
+<td width=40%>9000智能</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS8104_AHL_S_HX</b></td>
+<td width=20%>66</td>
+<td width=40%>海鑫人脸识别 ATM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS8104_AHL_S_H</b></td>
+<td width=20%>67</td>
+<td width=40%>私有人脸识别 ATM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS91XX</b></td>
+<td width=20%>68</td>
+<td width=40%>9100智能</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IIP_CAM_B</b></td>
+<td width=20%>69</td>
+<td width=40%>智能行为IP摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IIP_CAM_F</b></td>
+<td width=20%>70</td>
+<td width=40%>智能人脸IP摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS71XX_H </b></td>
+<td width=20%>71</td>
+<td width=40%>DS71XXH_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS72XX_H_S</b></td>
+<td width=20%>72</td>
+<td width=40%>DS72XXH_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS73XX_H_S</b></td>
+<td width=20%>73</td>
+<td width=40%>DS73XXH_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS72XX_HF_S</b></td>
+<td width=20%>74</td>
+<td width=40%>DS72XX_HF_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS73XX_HFI_S</b></td>
+<td width=20%>75</td>
+<td width=40%>DS73XX_HFI_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS76XX_H_S</b></td>
+<td width=20%>76</td>
+<td width=40%>DS76XX_H_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS76XX_N_S</b></td>
+<td width=20%>77</td>
+<td width=40%>DS76XX_N_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_TP3200_EC</b></td>
+<td width=20%>78</td>
+<td width=40%>机柜智能检测仪</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XX_HS_S</b></td>
+<td width=20%>81</td>
+<td width=40%>DS81XX_HS_S</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>DS81XX_HL_S</b></td>
+<td width=20%>82</td>
+<td width=40%>DS81XX_HL_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XX_HC_S</b></td>
+<td width=20%>83</td>
+<td width=40%>DS81XX_HC_S</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>DS81XX_HD_S</b></td>
+<td width=20%>84</td>
+<td width=40%>DS81XX_HD_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XX_HE_S</b></td>
+<td width=20%>85</td>
+<td width=40%>DS81XX_HE_S</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>DS81XX_HF_S</b></td>
+<td width=20%>86</td>
+<td width=40%>DS81XX_HF_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XX_AH_S</b></td>
+<td width=20%>87</td>
+<td width=40%>DS81XX_AH_S</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>DS81XX_AHF_S</b></td>
+<td width=20%>88</td>
+<td width=40%>DS81XX_AHF_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS90XX_HF_S</b></td>
+<td width=20%>90</td>
+<td width=40%>DS90XX_HF_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS91XX_HF_S</b></td>
+<td width=20%>91</td>
+<td width=40%>DS91XX_HF_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS91XX_HD_S</b></td>
+<td width=20%>92</td>
+<td width=40%>91XXHD-S(MD)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS90XX_A</b></td>
+<td width=20%>93</td>
+<td width=40%>9000智能 ATM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS91XX_A</b></td>
+<td width=20%>94</td>
+<td width=40%>9100智能 ATM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS95XX_N_S</b></td>
+<td width=20%>95</td>
+<td width=40%>DS95XXN-S NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS96XX_N_SH</b></td>
+<td width=20%>96</td>
+<td width=40%>DS96XXN-SH NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS90XX_HF_SH</b></td>
+<td width=20%>97</td>
+<td width=40%>DS90XX_HF_SH</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS91XX_HF_SH</b></td>
+<td width=20%>98</td>
+<td width=40%>DS91XX_HF_SH</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B10_XY</b></td>
+<td width=20%>100</td>
+<td width=40%>视频综合平台设备型号(X:编码板片数，Y:解码板片数)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504HF_B10</b></td>
+<td width=20%>101</td>
+<td width=40%>视频综合平台内部编码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B10</b></td>
+<td width=20%>102</td>
+<td width=40%>视频综合平台内部解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_1832_B10</b></td>
+<td width=20%>103</td>
+<td width=40%>视频综合平台内部码分器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B10</b></td>
+<td width=20%>104</td>
+<td width=40%>视频综合平台内部光纤板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXHC</b></td>
+<td width=20%>105</td>
+<td width=40%>65XXHC DVS</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXHC_S</b></td>
+<td width=20%>106</td>
+<td width=40%>65XXHC-SATA DVS</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXHF</b></td>
+<td width=20%>107</td>
+<td width=40%>65XXHF DVS</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXHF_S</b></td>
+<td width=20%>108</td>
+<td width=40%>65XXHF-SATA DVS</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6500HF_B</b></td>
+<td width=20%>109</td>
+<td width=40%>65 rack DVS</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_C</b></td>
+<td width=20%>110</td>
+<td width=40%>iVMS-6200(/C) 客流量统计</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_B</b></td>
+<td width=20%>111</td>
+<td width=40%>IVMS_6200_B 行为分析</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHV_ST15</b></td>
+<td width=20%>112</td>
+<td width=40%>72XXHV_ST15 DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHV_ST20</b></td>
+<td width=20%>113</td>
+<td width=40%>72XXHV_ST20 DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_T</b></td>
+<td width=20%>114</td>
+<td width=40%>IVMS-6200(/T)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_BP</b></td>
+<td width=20%>115</td>
+<td width=40%>IVMS-6200(/BP)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXHC_ST</b></td>
+<td width=20%>116</td>
+<td width=40%>DS_81XXHC_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXHS_ST</b></td>
+<td width=20%>117</td>
+<td width=40%>DS_81XXHS_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXAH_ST</b></td>
+<td width=20%>118</td>
+<td width=40%>DS_81XXAH_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXAHF_ST</b></td>
+<td width=20%>119</td>
+<td width=40%>DS_81XXAHF_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_66XXDVS</b></td>
+<td width=20%>120</td>
+<td width=40%>DS_66XXDVS</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_1964_B10</b></td>
+<td width=20%>121</td>
+<td width=40%>视频综合平台内部报警器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B10N04_IN</b></td>
+<td width=20%>122</td>
+<td width=40%>视频综合平台内部级联输入</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B10N04_OUT</b></td>
+<td width=20%>123</td>
+<td width=40%>视频综合平台内部级联输出</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B10N04_INTEL</b></td>
+<td width=20%>124</td>
+<td width=40%>视频综合平台内部智能</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6408HFH_B10E_RM</b></td>
+<td width=20%>125</td>
+<td width=40%>V6高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B10N64F1_RTM</b></td>
+<td width=20%>126</td>
+<td width=40%>V6级联不带DSP</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B10N64F1D_RTM</b></td>
+<td width=20%>127</td>
+<td width=40%>V6级联带DSP</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B10_SDS</b></td>
+<td width=20%>128</td>
+<td width=40%>视频综合平台子域控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B10_DS</b></td>
+<td width=20%>129</td>
+<td width=40%>视频综合平台域控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B10V</b></td>
+<td width=20%>130</td>
+<td width=40%>VGA高清编码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B10B</b></td>
+<td width=20%>131</td>
+<td width=40%>视频综合平台内部标清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B10H</b></td>
+<td width=20%>132</td>
+<td width=40%>视频综合平台内部高清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B10V</b></td>
+<td width=20%>133</td>
+<td width=40%>视频综合平台内部VGA解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6408HFH_B10S</b></td>
+<td width=20%>134</td>
+<td width=40%>视频综合平台SDI子板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_18XX_N</b></td>
+<td width=20%>135</td>
+<td width=40%>矩阵接入网关</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504HF_B10F_CLASS</b></td>
+<td width=20%>136</td>
+<td width=40%>光端机SD</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_18XX_PTZ</b></td>
+<td width=20%>141</td>
+<td width=40%>网络码分类产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_19AXX</b></td>
+<td width=20%>142</td>
+<td width=40%>通用报警主机类产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_19BXX</b></td>
+<td width=20%>143</td>
+<td width=40%>家用报警主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_19CXX</b></td>
+<td width=20%>144</td>
+<td width=40%>自助银行报警主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_19DXX</b></td>
+<td width=20%>145</td>
+<td width=40%>动环监控报警主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_19XX</b></td>
+<td width=20%>146</td>
+<td width=40%>1900系列报警主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_19SXX</b></td>
+<td width=20%>147</td>
+<td width=40%>视频报警主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_1HXX</b></td>
+<td width=20%>148</td>
+<td width=40%>ATM防护舱控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_PEAXX</b></td>
+<td width=20%>149</td>
+<td width=40%>紧急求助报警产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_PWXX</b></td>
+<td width=20%>150</td>
+<td width=40%>无线报警主机产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_PMXX</b></td>
+<td width=20%>151</td>
+<td width=40%>4G网络模块</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_19DXX_S</b></td>
+<td width=20%>152</td>
+<td width=40%>视频动环监控主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10H</b></td>
+<td width=20%>161</td>
+<td width=40%>多屏控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_BI</b></td>
+<td width=20%>162</td>
+<td width=40%>BNC处理器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_DI</b></td>
+<td width=20%>163</td>
+<td width=40%>RGB处理器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_SI</b></td>
+<td width=20%>164</td>
+<td width=40%>码流处理器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_DO</b></td>
+<td width=20%>165</td>
+<td width=40%>显示处理器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_SERVER</b></td>
+<td width=20%>166</td>
+<td width=40%>分布式服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_8104_AHFL_S_H</b></td>
+<td width=20%>171</td>
+<td width=40%>8104ATM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_65XX_HF_A</b></td>
+<td width=20%>172</td>
+<td width=40%>65 ATM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS90XX_HF_RH</b></td>
+<td width=20%>173</td>
+<td width=40%>9000 智能RH</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS91XX_HF_RH</b></td>
+<td width=20%>174</td>
+<td width=40%>9100 智能RH设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_65XX_HF_B</b></td>
+<td width=20%>175</td>
+<td width=40%>65 行为分析</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_65XX_HF_P</b></td>
+<td width=20%>176</td>
+<td width=40%>65 车牌识别</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_F</b></td>
+<td width=20%>177</td>
+<td width=40%>IVMS-6200(/F)人脸分析仪</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_A</b></td>
+<td width=20%>178</td>
+<td width=40%>iVMS-6200(/A)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_F_S</b></td>
+<td width=20%>179</td>
+<td width=40%>IVMS-6200(/F_S)人脸后检索分析仪</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS90XX_HF_RH</b></td>
+<td width=20%>181</td>
+<td width=40%>DS90XX_HF_RH</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS91XX_HF_RH</b></td>
+<td width=20%>182</td>
+<td width=40%>9100 RH设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS78XX_S</b></td>
+<td width=20%>183</td>
+<td width=40%>78系列设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XXHW_S</b></td>
+<td width=20%>185</td>
+<td width=40%>DVR_81XXHW_S</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XXHW_ST</b></td>
+<td width=20%>186</td>
+<td width=40%>DVR_81XXHW_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS91XXHW_ST</b></td>
+<td width=20%>187</td>
+<td width=40%>DVR_91XXHW_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS91XX_ST</b></td>
+<td width=20%>188</td>
+<td width=40%>DVR_91XX_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XX_ST</b></td>
+<td width=20%>189</td>
+<td width=40%>DVR_81XX_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XXH_ST</b></td>
+<td width=20%>190</td>
+<td width=40%>DS81XXHDI_ST,DS81XXHE_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS73XXH_ST</b></td>
+<td width=20%>191</td>
+<td width=40%>DS73XXHI_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XX_SH</b></td>
+<td width=20%>192</td>
+<td width=40%>审讯81SH，81SHF</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS81XX_SN</b></td>
+<td width=20%>193</td>
+<td width=40%>审讯81SNL</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS96XXN_ST</b></td>
+<td width=20%>194</td>
+<td width=40%>NVR：DS96xxN_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS86XXN_ST</b></td>
+<td width=20%>195</td>
+<td width=40%>NVR：DS86xxN_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS80XXHF_ST</b></td>
+<td width=20%>196</td>
+<td width=40%>DS80xxHF_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS90XXHF_ST</b></td>
+<td width=20%>197</td>
+<td width=40%>DS90xxHF_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS76XXN_ST</b></td>
+<td width=20%>198</td>
+<td width=40%>NVR：DS76xxN_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_9664N_RX</b></td>
+<td width=20%>199</td>
+<td width=40%>NVR：DS-9664N-RH、DS-9664N-RT</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>ENCODER_SERVER</b></td>
+<td width=20%>200</td>
+<td width=40%>编码卡服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DECODER_SERVER</b></td>
+<td width=20%>201</td>
+<td width=40%>解码卡服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>PCNVR_SERVER</b></td>
+<td width=20%>202</td>
+<td width=40%>PCNVR存储服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>CVR_SERVER</b></td>
+<td width=20%>203</td>
+<td width=40%>CVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_91XXHFH_ST</b></td>
+<td width=20%>204</td>
+<td width=40%>高清DVR：DS_91xxHFH_ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_66XXHFH</b></td>
+<td width=20%>205</td>
+<td width=40%>66高清编码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>TRAFFIC_TS_SERVER</b></td>
+<td width=20%>210</td>
+<td width=40%>终端服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>TRAFFIC_VAR</b></td>
+<td width=20%>211</td>
+<td width=40%>视频分析记录仪</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCALL</b></td>
+<td width=20%>212</td>
+<td width=40%>IP可视对讲主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>SAN_SERVER</b></td>
+<td width=20%>213</td>
+<td width=40%>SAN(与CVR_SERVER相同的程序，只是模式不同)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B11_M_CLASS</b></td>
+<td width=20%>301</td>
+<td width=40%>B11</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B12_M_CLASS</b></td>
+<td width=20%>302</td>
+<td width=40%>B12</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504HF_B11_CLASS</b></td>
+<td width=20%>303</td>
+<td width=40%>B11内部编码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504HF_B12_CLASS</b></td>
+<td width=20%>304</td>
+<td width=40%>B12内部编码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B11V_CLASS</b></td>
+<td width=20%>305</td>
+<td width=40%>VGA高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B12V_CLASS</b></td>
+<td width=20%>306</td>
+<td width=40%>VGA高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6408HFH_B11S_CLASS</b></td>
+<td width=20%>307</td>
+<td width=40%>SDI</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6408HFH_B12S_CLASS</b></td>
+<td width=20%>308</td>
+<td width=40%>SDI</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B11H_CLASS</b></td>
+<td width=20%>309</td>
+<td width=40%>B11内部高清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B11B_CLASS</b></td>
+<td width=20%>310</td>
+<td width=40%>B11内部标清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B12B_CLASS</b></td>
+<td width=20%>311</td>
+<td width=40%>B12内部标清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B11V_CLASS</b></td>
+<td width=20%>312</td>
+<td width=40%>B11内部VGA解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B12V_CLASS</b></td>
+<td width=20%>313</td>
+<td width=40%>B12内部VGA解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B10R_CLASS</b></td>
+<td width=20%>314</td>
+<td width=40%>B10 RGB高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B10D_CLASS</b></td>
+<td width=20%>315</td>
+<td width=40%>B10 DVI高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B10H_CLASS</b></td>
+<td width=20%>316</td>
+<td width=40%>B10 HDMI高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B11R_CLASS</b></td>
+<td width=20%>317</td>
+<td width=40%>B11 RGB高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B11D_CLASS</b></td>
+<td width=20%>318</td>
+<td width=40%>B11 DVI高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B11H_CLASS</b></td>
+<td width=20%>319</td>
+<td width=40%>B11 HDMI高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B12R_CLASS</b></td>
+<td width=20%>320</td>
+<td width=40%>B12 RGB高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B12D_CLASS</b></td>
+<td width=20%>321</td>
+<td width=40%>B12 DVI高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6401HFH_B12H_CLASS</b></td>
+<td width=20%>322</td>
+<td width=40%>B12 HDMI高清</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXD_B10Ex_CLASS</b></td>
+<td width=20%>323</td>
+<td width=40%>B10 netra高清解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6516HW_B10_CLASS</b></td>
+<td width=20%>324</td>
+<td width=40%>B10 netra高清编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B11Ex_CLASS</b></td>
+<td width=20%>328</td>
+<td width=40%>B11 netra高清解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B12Ex_CLASS</b></td>
+<td width=20%>329</td>
+<td width=40%>B12 netra高清解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6512_B11_CLASS</b></td>
+<td width=20%>330</td>
+<td width=40%>B11 netra高清编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6512_B12_CLASS</b></td>
+<td width=20%>331</td>
+<td width=40%>B12 netra高清编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_B10H_CLASS</b></td>
+<td width=20%>332</td>
+<td width=40%>视频综合平台内部高清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXT_B10_CLASS</b></td>
+<td width=20%>333</td>
+<td width=40%>视频综合平台转码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXD_B10_CLASS</b></td>
+<td width=20%>335</td>
+<td width=40%>视频综合平台万能解码板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_IVMSE_B10X_CLASS</b></td>
+<td width=20%>336</td>
+<td width=40%>X86服务器子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6532D_B10ES_CLASS</b></td>
+<td width=20%>337</td>
+<td width=40%>增强型解码板_SDI(B10)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508HFH_B10ES_CLASS</b></td>
+<td width=20%>338</td>
+<td width=40%>SDI输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_82NCG_CLASS</b></td>
+<td width=20%>340</td>
+<td width=40%>联网网关中的子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_82VAG_CLASS</b></td>
+<td width=20%>341</td>
+<td width=40%>联网网关中的子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_1802XXF_B10_CLASS</b></td>
+<td width=20%>342</td>
+<td width=40%>光口交换子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>iDS_6504_B10EVAC_CLASS</b></td>
+<td width=20%>343</td>
+<td width=40%>智能子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>iDS_6504_B10EDEC_CLASS</b></td>
+<td width=20%>344</td>
+<td width=40%>智能子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402HFH_B10EV_CLASS</b></td>
+<td width=20%>345</td>
+<td width=40%>netra编码(VGA)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402HFH_B10ED_CLASS</b></td>
+<td width=20%>346</td>
+<td width=40%>netra编码(DVI)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402HFH_B10EH_CLASS</b></td>
+<td width=20%>347</td>
+<td width=40%>netra编码(HDMI)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6404HFH_B10T_RX_CLASS</b></td>
+<td width=20%>348</td>
+<td width=40%>光纤接入编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6504D_AIO_CLASS</b></td>
+<td width=20%>349</td>
+<td width=40%>netra高清解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_IVMST_B10_CLASS</b></td>
+<td width=20%>350</td>
+<td width=40%>X86转码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_AIO_CLASS</b></td>
+<td width=20%>351</td>
+<td width=40%>netra编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_iVMSE_AIO_CLASS</b></td>
+<td width=20%>352</td>
+<td width=40%>x86服务器子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_AIO_M_CLASS</b></td>
+<td width=20%>353</td>
+<td width=40%>一体机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508HF_B10E_CLASS</b></td>
+<td width=20%>355</td>
+<td width=40%>BNC输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6404HFH_B10ES_CLASS</b></td>
+<td width=20%>356</td>
+<td width=40%>SDI输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402HFH_B10ER_CLASS</b></td>
+<td width=20%>358</td>
+<td width=40%>RGB输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6404HFH_B10T_RM_CLASS</b></td>
+<td width=20%>361</td>
+<td width=40%>光纤输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6516D_B10EB_CLASS</b></td>
+<td width=20%>362</td>
+<td width=40%>BNC输出解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6516D_B10ES_CLASS</b></td>
+<td width=20%>363</td>
+<td width=40%>SDI输出解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508_B11E_CLASS</b></td>
+<td width=20%>365</td>
+<td width=40%>BNC输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B11ES_CLASS</b></td>
+<td width=20%>366</td>
+<td width=40%>SDI输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B11EV_CLASS</b></td>
+<td width=20%>367</td>
+<td width=40%>VGA输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B11ER_CLASS</b></td>
+<td width=20%>368</td>
+<td width=40%>RGB输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B11ED_CLASS</b></td>
+<td width=20%>369</td>
+<td width=40%>DVI输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B11EH_CLASS</b></td>
+<td width=20%>370</td>
+<td width=40%>HDMI输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6516D_B11EB_CLASS</b></td>
+<td width=20%>371</td>
+<td width=40%>BNC输出解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6516D_B11ES_CLASS</b></td>
+<td width=20%>372</td>
+<td width=40%>SDI输出解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508_B12E_CLASS</b></td>
+<td width=20%>373</td>
+<td width=40%>BNC输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B12ES_CLASS</b></td>
+<td width=20%>375</td>
+<td width=40%>SDI输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B12EV_CLASS</b></td>
+<td width=20%>376</td>
+<td width=40%>VGA输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B12ER_CLASS</b></td>
+<td width=20%>377</td>
+<td width=40%>RGB输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B12ED_CLASS</b></td>
+<td width=20%>378</td>
+<td width=40%>DVI输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_B12EH_CLASS</b></td>
+<td width=20%>379</td>
+<td width=40%>HDMI输入编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6516D_B12EB_CLASS</b></td>
+<td width=20%>380</td>
+<td width=40%>BNC输出解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_iVMSE_AIO_8100x_CLASS</b></td>
+<td width=20%>381</td>
+<td width=40%>金融行业一体机X86子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_iVMSE_AIO_87x_CLASS</b></td>
+<td width=20%>382</td>
+<td width=40%>智能楼宇一体机X86子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6532D_B11ES_CLASS</b></td>
+<td width=20%>384</td>
+<td width=40%>增强型解码板_SDI(B11)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6532D_B12ES_CLASS</b></td>
+<td width=20%>385</td>
+<td width=40%>增强型解码板_SDI(B12)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B20_MSU_NP</b></td>
+<td width=20%>400</td>
+<td width=40%>B20主控板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6416HFH_B20S</b></td>
+<td width=20%>401</td>
+<td width=40%>SDI输入编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6416HFH_B20_RM</b></td>
+<td width=20%>402</td>
+<td width=40%>光纤输入高清编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6564D_B20D</b></td>
+<td width=20%>403</td>
+<td width=40%>DVI解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6564D_B20H</b></td>
+<td width=20%>404</td>
+<td width=40%>HDMI解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6564D_B20V</b></td>
+<td width=20%>405</td>
+<td width=40%>VGA解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B20_6516D_DEV_CLASS</b></td>
+<td width=20%>406</td>
+<td width=40%>B20解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6408HFH_B20V</b></td>
+<td width=20%>407</td>
+<td width=40%>VGA编码板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_MMC_B20_CLASS</b></td>
+<td width=20%>408</td>
+<td width=40%>B20主控</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_CARD_CHIP_B20_CLASS</b></td>
+<td width=20%>409</td>
+<td width=40%>B20主控子板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6564D_B20B_DEV_CLASS</b></td>
+<td width=20%>410</td>
+<td width=40%>BNC解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6564D_B20S_DEV_CLASS</b></td>
+<td width=20%>411</td>
+<td width=40%>SDI解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6532HF_B20B_DEV_CLASS</b></td>
+<td width=20%>412</td>
+<td width=40%>BNC编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6408HFH_B20D_DEV_CLASS</b></td>
+<td width=20%>413</td>
+<td width=40%>DVI编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6408HFH_B20H_DEV_CLASS</b></td>
+<td width=20%>414</td>
+<td width=40%>HDMI编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_IVMSE_B20_CLASS</b></td>
+<td width=20%>415</td>
+<td width=40%>X86服务器子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402HFH_B20Y_DEV_CLASS</b></td>
+<td width=20%>416</td>
+<td width=40%>YUV编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508HW_B20_DEV_CLASS</b></td>
+<td width=20%>417</td>
+<td width=40%>HW编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B20N128Fx_B20_DEV_CLASS</b></td>
+<td width=20%>418</td>
+<td width=40%>DS_B20N128Fx_M级联板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_AIO_MCU_NP_DEV_CLASS</b></td>
+<td width=20%>419</td>
+<td width=40%>IO主控板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402_AIO_EV_DEV_CLASS</b></td>
+<td width=20%>420</td>
+<td width=40%>VGA编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508D_AIO_EV_DEV_CLASS</b></td>
+<td width=20%>421</td>
+<td width=40%>VGA解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508D_AIO_ED_DEV_CLASS</b></td>
+<td width=20%>422</td>
+<td width=40%>DVI解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508D_AIO_EH_DEV_CLASS</b></td>
+<td width=20%>423</td>
+<td width=40%>HDMI解码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508HD_B20F_DEV_CLASS</b></td>
+<td width=20%>424</td>
+<td width=40%>视频增强板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402HFH_B20ES_DEV_CLASS</b></td>
+<td width=20%>425</td>
+<td width=40%>3G SID编码</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6532D_B20_DEV_CLASS</b></td>
+<td width=20%>426</td>
+<td width=40%>B20解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_IVMST_B20_DEV_CLASS</b></td>
+<td width=20%>427</td>
+<td width=40%>X86服务器子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6416HFH_B20DD_DEV_CLASS</b></td>
+<td width=20%>428</td>
+<td width=40%>DVI双链路</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6441VS_B20_DEV_CLASS</b></td>
+<td width=20%>429</td>
+<td width=40%>相机拼接类型</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6404HFH_B20T_CLASS</b></td>
+<td width=20%>431</td>
+<td width=40%>TVI</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_FS22_B20_DEV_CLASS</b></td>
+<td width=20%>432</td>
+<td width=40%>交换机子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_IVMSE_B20UH_DEV_CLASS</b></td>
+<td width=20%>433</td>
+<td width=40%>超高清X86输入</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6404HFH_B20Fx_DEV_CLASS</b></td>
+<td width=20%>436</td>
+<td width=40%>光端机接入子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_N128x_B20Fy_CLASS</b></td>
+<td width=20%>437</td>
+<td width=40%>级联子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_181600F_B20_CLASS</b></td>
+<td width=20%>438</td>
+<td width=40%>网络光纤子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6904UD_B20H_CLASS</b></td>
+<td width=20%>439</td>
+<td width=40%>超高清解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B21_MCU_NP_CLASS</b></td>
+<td width=20%>440</td>
+<td width=40%>B21主控</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_B21_S10_x_CLASS</b></td>
+<td width=20%>441</td>
+<td width=40%>B21机箱 x = A/S/D</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6402HFH_B21D_CLASS</b></td>
+<td width=20%>442</td>
+<td width=40%>B21编码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6508HD_B21D_CLASS</b></td>
+<td width=20%>443</td>
+<td width=40%>B21解码子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_iVMSE_B21HW_CLASS</b></td>
+<td width=20%>444</td>
+<td width=40%>B21 X86子系统</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10S</b></td>
+<td width=20%>501</td>
+<td width=40%>C10S 集中式大屏控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_SDI</b></td>
+<td width=20%>551</td>
+<td width=40%>SDI处理器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_BIW</b></td>
+<td width=20%>552</td>
+<td width=40%>8路BNC处理器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_DON</b></td>
+<td width=20%>553</td>
+<td width=40%>显示处理器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_TVI</b></td>
+<td width=20%>554</td>
+<td width=40%>TVI输入板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_DI2</b></td>
+<td width=20%>555</td>
+<td width=40%>DVI 2路输入板</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_AUDIO_OUT</b></td>
+<td width=20%>556</td>
+<td width=40%>DVI，HDMI，VGA输出板带音频</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C10N_AUDIO_IN</b></td>
+<td width=20%>557</td>
+<td width=40%>DVI，HDMI，VGA输入板带音频</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C20N</b></td>
+<td width=20%>570</td>
+<td width=40%>分布式大屏控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C20N_BNC</b></td>
+<td width=20%>571</td>
+<td width=40%>BNC输入设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C20N_DVI</b></td>
+<td width=20%>572</td>
+<td width=40%>DVI输入设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C20N_DP</b></td>
+<td width=20%>573</td>
+<td width=40%>DP输入设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C20N_OUT</b></td>
+<td width=20%>574</td>
+<td width=40%>输出设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_19M00_MN</b></td>
+<td width=20%>601</td>
+<td width=40%>报警主机百兆网络模块</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_KH8302_A</b></td>
+<td width=20%>602</td>
+<td width=40%>室内机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_KD8101_2</b></td>
+<td width=20%>603</td>
+<td width=40%>门口机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_KM8301</b></td>
+<td width=20%>604</td>
+<td width=40%>管理机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_KVXXXX_XX</b></td>
+<td width=20%>605</td>
+<td width=40%>别墅门口机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS64XXHD_T</b></td>
+<td width=20%>701</td>
+<td width=40%>64-T高清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXD</b></td>
+<td width=20%>703</td>
+<td width=40%>65万能解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS63XXD_T</b></td>
+<td width=20%>704</td>
+<td width=40%>63-T标清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>SCE_SERVER</b></td>
+<td width=20%>705</td>
+<td width=40%>抓屏服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_64XXHD_S</b></td>
+<td width=20%>706</td>
+<td width=40%>DS-64xxHD-S高清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_68XXT</b></td>
+<td width=20%>707</td>
+<td width=40%>多功能视音频转码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXD_T</b></td>
+<td width=20%>708</td>
+<td width=40%>65D-T万能解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXHD_T</b></td>
+<td width=20%>709</td>
+<td width=40%>65HD-T万能解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_69XXUD</b></td>
+<td width=20%>710</td>
+<td width=40%>69XXUD超高清解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXUD</b></td>
+<td width=20%>711</td>
+<td width=40%>65XXUD解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXUD_L</b></td>
+<td width=20%>712</td>
+<td width=40%>65XXUD_L解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65XXUD_T</b></td>
+<td width=20%>713</td>
+<td width=40%>65XXUD_T解码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_D20XX</b></td>
+<td width=20%>750</td>
+<td width=40%>LCD屏幕 解码卡</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_C50S</b></td>
+<td width=20%>751</td>
+<td width=40%>SDI矩阵</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_D50XX</b></td>
+<td width=20%>752</td>
+<td width=40%>LCD屏幕解码卡</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_D40</b></td>
+<td width=20%>760</td>
+<td width=40%>LED屏发送卡</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65VMXX</b></td>
+<td width=20%>770</td>
+<td width=40%>视频会议服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65VTXX</b></td>
+<td width=20%>771</td>
+<td width=40%>视频会议终端</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65VTA</b></td>
+<td width=20%>772</td>
+<td width=40%>视频会议一体式终端</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_65VT_RX</b></td>
+<td width=20%>773</td>
+<td width=40%>互动教学终端</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_CS_SERVER</b></td>
+<td width=20%>800</td>
+<td width=40%>虚拟屏服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K260X </b></td>
+<td width=20%>850</td>
+<td width=40%>门禁主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K1TXXX</b></td>
+<td width=20%>851</td>
+<td width=40%>指纹一体机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K280X</b></td>
+<td width=20%>852</td>
+<td width=40%>经济型门禁主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K1T80X</b></td>
+<td width=20%>854</td>
+<td width=40%>经济型门禁一体机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>RAC_6X00</b></td>
+<td width=20%>856</td>
+<td width=40%>汉军指纹门禁一体机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K2602_AX</b></td>
+<td width=20%>857</td>
+<td width=40%>人员通道主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K1T803F</b></td>
+<td width=20%>858</td>
+<td width=40%>经济型指纹门禁产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K2700</b></td>
+<td width=20%>859</td>
+<td width=40%>分布式三层架构门禁主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K270X</b></td>
+<td width=20%>860</td>
+<td width=40%>分布式三层架构就地控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K1T500S</b></td>
+<td width=20%>861</td>
+<td width=40%>视屏门禁一体机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K1A801F </b></td>
+<td width=20%>862</td>
+<td width=40%>经济型指纹门禁产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K1T600X</b></td>
+<td width=20%>863</td>
+<td width=40%>人脸识别门禁一体机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K22X</b></td>
+<td width=20%>864</td>
+<td width=40%>梯控主控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K2M0016AX</b></td>
+<td width=20%>865</td>
+<td width=40%>梯控分控制器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_K560XX</b></td>
+<td width=20%>870</td>
+<td width=40%>立式/台式智能身份识别终端</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_6800M</b></td>
+<td width=20%>900</td>
+<td width=40%>68M合码器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_68NTH</b></td>
+<td width=20%>901</td>
+<td width=40%>信息发布主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_D60S</b></td>
+<td width=20%>902</td>
+<td width=40%>信息发布服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_D10</b></td>
+<td width=20%>931</td>
+<td width=40%>背投显示设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_3K0X_NM</b></td>
+<td width=20%>951</td>
+<td width=40%>光纤收发器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_3E2328</b></td>
+<td width=20%>952</td>
+<td width=40%>百兆交换机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>SCREEN_LINK_SERVER</b></td>
+<td width=20%>971</td>
+<td width=40%>屏幕服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_D51OPSXX</b></td>
+<td width=20%>972</td>
+<td width=40%>OPS电脑盒</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IP_PTSYS_MEGA200</b></td>
+<td width=20%>1001</td>
+<td width=40%>IP 200万一体化云台</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_FISHEYE</b></td>
+<td width=20%>1002</td>
+<td width=40%>鱼眼摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_FISHEYE_E</b></td>
+<td width=20%>1003</td>
+<td width=40%>经济型鱼眼摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_BINOCULAR</b></td>
+<td width=20%>1004</td>
+<td width=40%>双目摄像机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_365</b></td>
+<td width=20%>1010</td>
+<td width=40%>支持365的平台的IPC CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_R0</b></td>
+<td width=20%>1011</td>
+<td width=40%>支持A5S的平台的IPC CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_R1</b></td>
+<td width=20%>1012</td>
+<td width=40%>支持385的平台的IPC CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_R2</b></td>
+<td width=20%>1013</td>
+<td width=40%>支持R2的平台的IPC CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_R3</b></td>
+<td width=20%>1014</td>
+<td width=40%>支持8127的平台的IPC CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPCAM_R4</b></td>
+<td width=20%>1015</td>
+<td width=40%>支持S2的平台的IPC CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_365</b></td>
+<td width=20%>1110</td>
+<td width=40%>支持365的平台的IPD CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_R0</b></td>
+<td width=20%>1111</td>
+<td width=40%>支持A5S的平台的IPD CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_R1</b></td>
+<td width=20%>1112</td>
+<td width=40%>支持385的平台的IPD CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_R2</b></td>
+<td width=20%>1113</td>
+<td width=40%>支持R2的平台的IPD CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_R3</b></td>
+<td width=20%>1114</td>
+<td width=40%>支持8127的平台的IPD CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPDOME_R4</b></td>
+<td width=20%>1115</td>
+<td width=40%>支持S2的平台的IPD CAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>ITCCAM_R3</b></td>
+<td width=20%>1211</td>
+<td width=40%>支持8127的平台的ITCCAM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>UAV_S </b></td>
+<td width=20%>1300</td>
+<td width=40%>无人机基站设备（Ummanned Aerial Vehicle – Station）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>TRAFFIC_ECT</b></td>
+<td width=20%>1400</td>
+<td width=40%>出入口终端服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>TRAFFIC_PARKING_SERVER</b></td>
+<td width=20%>1401</td>
+<td width=40%>停车场服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>TRAFFIC_TME</b></td>
+<td width=20%>1402</td>
+<td width=40%>TME出入口控制机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS90XXHW_ST</b></td>
+<td width=20%>2001</td>
+<td width=40%>混合DVR：DS-90xxHW-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS72XXHX_SH</b></td>
+<td width=20%>2002</td>
+<td width=40%>DS-72xxHV-SH，DS-72xxHF-SH </td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_92XX_HF_ST</b></td>
+<td width=20%>2003</td>
+<td width=40%>DS-92xxHF-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_91XX_HF_XT</b></td>
+<td width=20%>2004</td>
+<td width=40%>Netra DVR: DS-91xxHF-XT</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_90XX_HF_XT</b></td>
+<td width=20%>2005</td>
+<td width=40%>Netra 混合DVR: DS-90xxHF-XT</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_73XXHX_SH</b></td>
+<td width=20%>2006</td>
+<td width=40%>Netra DVR: DS-73xxHX-SH</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHFH_ST</b></td>
+<td width=20%>2007</td>
+<td width=40%>Netra DVR: DS-72xxHFH-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_67XXHF_SATA</b></td>
+<td width=20%>2008</td>
+<td width=40%>DVS: DS-67xxHF-SATA</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_67XXHW</b></td>
+<td width=20%>2009</td>
+<td width=40%>DVS: DS-67xxHW</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_67XXHW_SATA</b></td>
+<td width=20%>2010</td>
+<td width=40%>DVS: DS-67xxHW-SATA</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_67XXHF</b></td>
+<td width=20%>2011</td>
+<td width=40%>DVS: DS-67xxHF</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHF_SV</b></td>
+<td width=20%>2012</td>
+<td width=40%>DVR: DS-72xxHF-SV</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHW_SV</b></td>
+<td width=20%>2013</td>
+<td width=40%>DVR: DS-72xxHW-SV</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXHX_SH</b></td>
+<td width=20%>2014</td>
+<td width=40%>DVR: DS-81xxHX-SH</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_71XXHX_SL</b></td>
+<td width=20%>2015</td>
+<td width=40%>DVR: DS-71xxHX-SL</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_76XXH_ST</b></td>
+<td width=20%>2016</td>
+<td width=40%>DVR: DS-76xxH-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_73XXHFH_ST</b></td>
+<td width=20%>2017</td>
+<td width=40%>DVR: DS-73xxHFH-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXHFH_ST</b></td>
+<td width=20%>2018</td>
+<td width=40%>DVR: DS-81xxHFH-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHFH_SL</b></td>
+<td width=20%>2019</td>
+<td width=40%>DVR: DS-72xxHFH-SL</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_FDXXCGA_FLT</b></td>
+<td width=20%>2020</td>
+<td width=40%>2盘位ATM</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_91XX_HF_ST_A</b></td>
+<td width=20%>2100</td>
+<td width=40%>iDS-9100HF-ST/A</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_91XX_HF_ST_B</b></td>
+<td width=20%>2101</td>
+<td width=40%>iDS-9100HF-ST/B</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_90XX_HF_ST_A</b></td>
+<td width=20%>2102</td>
+<td width=40%>iDS-9000HF-ST/A</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_90XX_HF_ST_B</b></td>
+<td width=20%>2103</td>
+<td width=40%>iDS-9000HF-ST/B</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_81XX_HF_ST_A</b></td>
+<td width=20%>2104</td>
+<td width=40%>iDS-8100HF-ST/A</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_81XX_HF_ST_B</b></td>
+<td width=20%>2105</td>
+<td width=40%>iDS-8100HF-ST/B</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_80XX_HF_ST_A</b></td>
+<td width=20%>2106</td>
+<td width=40%>iDS-8000HF-ST/A</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_80XX_HF_ST_B</b></td>
+<td width=20%>2107</td>
+<td width=40%>iDS-8000HF-ST/B</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_8104_AHFL_ST</b></td>
+<td width=20%>2108</td>
+<td width=40%>智能混合ATM机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_2CD6812F_C</b></td>
+<td width=20%>2109</td>
+<td width=40%>垂直双目相机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_77XXN_ST</b></td>
+<td width=20%>2201</td>
+<td width=40%>Netra NVR: DS-77xxN-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_95XX_N_ST</b></td>
+<td width=20%>2202</td>
+<td width=40%>Netra NVR: DS-95xxN-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_85XX_N_ST</b></td>
+<td width=20%>2203</td>
+<td width=40%>Netra NVR: DS-85xxN-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_96XX_N_XT</b></td>
+<td width=20%>2204</td>
+<td width=40%>Netra NVR: DS-96xxN-XT</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_76XX_N_SE</b></td>
+<td width=20%>2205</td>
+<td width=40%>Netra NVR: DS-76xxN-SE、DS-78xxN-SH</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_86XXSN_SX</b></td>
+<td width=20%>2206</td>
+<td width=40%>Netra 审讯NVR，包括4种类型：DS-8608SNL-SP、DS-8608SNL-ST、DS-8608SN-SP、DS-8608SN-ST，L表示带LCD，P表POE</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_96XX_N_RX</b></td>
+<td width=20%>2207</td>
+<td width=40%>Netra NVR: DS-96xxN-RX</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_71XXN_SL</b></td>
+<td width=20%>2208</td>
+<td width=40%>DS-71XXN-SL 民用产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>CS_N1_1XX</b></td>
+<td width=20%>2209</td>
+<td width=40%>CS_N1_1XX，民用事业部所用</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_71XXN_SN</b></td>
+<td width=20%>2210</td>
+<td width=40%>71XX_N_SN  经济型民用产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>CS_N1_2XX</b></td>
+<td width=20%>2211</td>
+<td width=40%>N1_2XX 民用事业部所用</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_76XX_N_SHT</b></td>
+<td width=20%>2212</td>
+<td width=40%>76XX_N_SHT</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_96XXX_N_E</b></td>
+<td width=20%>2213</td>
+<td width=40%>高新性能NVR(256路)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_76XXN_EX</b></td>
+<td width=20%>2214</td>
+<td width=40%>76/78N-EX(/N/P)系列NVR，包括4/8/16路的E1一盘位设备和8/16/32路的E2两盘位设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_77XXN_E4</b></td>
+<td width=20%>2215</td>
+<td width=40%>77N-E4(/N/P)系列NVR，包括8/16/32路设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_86XXN_E8</b></td>
+<td width=20%>2216</td>
+<td width=40%>86N-E8(/N/P)系列NVR，包括8/16/32路设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_9616N_H8 </b></td>
+<td width=20%>2217</td>
+<td width=40%>DS_9616N_H8</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHX_EX_GXY</b></td>
+<td width=20%>2218</td>
+<td width=40%>72系列无线DVR产品（其中72后面的xx表示通道数，E后面的X表示的是盘位数，G XY表示的是无线类型）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_76XXN_EX_GXY</b></td>
+<td width=20%>2219</td>
+<td width=40%>76系列无线NVR产品（其中76后面的xx表示通道数，E后面的X表示的是盘位数，G XY表示的是无线类型）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHXH_SH_21</b></td>
+<td width=20%>2220</td>
+<td width=40%>XVR: 72HGH-SH系列4路</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_72XXHXH_SH_31</b></td>
+<td width=20%>2221</td>
+<td width=40%>XVR: 72HGH-SH系列8路16路、72HQH-SH系列</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_73XXHXH_SH_31</b></td>
+<td width=20%>2222</td>
+<td width=40%>XVR: 73HGH-SH系列、73HQH-SH系列</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXHXH_SH_31</b></td>
+<td width=20%>2223</td>
+<td width=40%>XVR: 81HGH-SH系列、81HQH-SH系列</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_71XXHXH_SH_21</b></td>
+<td width=20%>2224</td>
+<td width=40%>XVR: 71HGH-SH系列4路</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_71XXHXH_SH_31</b></td>
+<td width=20%>2225</td>
+<td width=40%>XVR: 71HGH-SH系列8路16路、71HQH-SH系列</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_NBXX_N_E1_X</b></td>
+<td width=20%>2226</td>
+<td width=40%>便携式主机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_96XXN_FX</b></td>
+<td width=20%>2230</td>
+<td width=40%>96N-Fx系列NVR，包括8/16/32路设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_86XXN_FX</b></td>
+<td width=20%>2231</td>
+<td width=40%>86N-Fx系列NVR，包括8/16/32路设备</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_96XXXN_HX</b></td>
+<td width=20%>2232</td>
+<td width=40%>96xxxN-Hx系列高性能NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_86XXN_I</b></td>
+<td width=20%>2233</td>
+<td width=40%>86N_I系列NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_77XX_N_I</b></td>
+<td width=20%>2234</td>
+<td width=40%>77N_I系列NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_76XX_N_I</b></td>
+<td width=20%>2235</td>
+<td width=40%>76N_I系列NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_78XX_N_I</b></td>
+<td width=20%>2236</td>
+<td width=40%>78N_I系列NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_96XXXN_IX</b></td>
+<td width=20%>2237</td>
+<td width=40%>96xxxN-Ix系列NVR（DS-96128N-I16、DS-96128N-I24、DS-96256N-I16、DS-96256N-I24）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_90XXHXH_XT</b></td>
+<td width=20%>2238</td>
+<td width=40%>DS-9016HQH-XT</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>PCNVR_IVMS_4200</b></td>
+<td width=20%>2301</td>
+<td width=40%>iVMS-4200的存储服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_TP</b></td>
+<td width=20%>2401</td>
+<td width=40%>IVMS-6200 交通诱导分析仪</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_TF</b></td>
+<td width=20%>2402</td>
+<td width=40%>IVMS-6200 交通取证分析仪</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_D</b></td>
+<td width=20%>2403</td>
+<td width=40%>iVMS-6200(/D)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_81XXAHW_ST</b></td>
+<td width=20%>2405</td>
+<td width=40%>iDS-81xxAHW-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_81XXAHW_SP</b></td>
+<td width=20%>2406</td>
+<td width=40%>iDS-81xxAHW-SP</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_81XXAHWL_ST</b></td>
+<td width=20%>2407</td>
+<td width=40%>iDS-81xxAHWL-ST</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_81XXAHWL_SP</b></td>
+<td width=20%>2408</td>
+<td width=40%>iDS-81xxAHWL-SP</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_9616N_H8</b></td>
+<td width=20%>2409</td>
+<td width=40%>iDS_9616N_H8</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IVMS_6200_SMD</b></td>
+<td width=20%>2500</td>
+<td width=40%>IVMS_6200_SMD</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXAHW_ST</b></td>
+<td width=20%>2501</td>
+<td width=40%>81HW-ST混合ATM DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXAHW_SP</b></td>
+<td width=20%>2502</td>
+<td width=40%>81HW-SP混合ATM DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXAHWL_ST</b></td>
+<td width=20%>2503</td>
+<td width=40%>81AHWL-ST混合ATM DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXAHWL_SP</b></td>
+<td width=20%>2504</td>
+<td width=40%>81AHWL-SP混合ATM DVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXAHGH_E4</b></td>
+<td width=20%>2601</td>
+<td width=40%>TVI ATM机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XX_SHXL_K4</b></td>
+<td width=20%>6101</td>
+<td width=40%>KY2017平台审讯机DS-8104SHFH（L）-K4/4P</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_8116THFHL_F4</b></td>
+<td width=20%>6201</td>
+<td width=40%>标准庭审主机DS-8116THFHL-F4</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_81XXAHQ_E4</b></td>
+<td width=20%>6301</td>
+<td width=40%>DS_81XXAHQ_E4(TVI ATM)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_81XXAHQ_E4</b></td>
+<td width=20%>6302</td>
+<td width=40%>IDS_81XXAHQ_E4(智能TVI ATM)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_96XX_NX_S</b></td>
+<td width=20%>7502</td>
+<td width=40%>超脑智能NVR(人体识别)</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_96XX_NX_V</b></td>
+<td width=20%>7503</td>
+<td width=40%>超脑加油站NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_96XX_NX_FA</b></td>
+<td width=20%>7504</td>
+<td width=40%>人脸超脑智能NVR</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_86XX_NX_IX_B</b></td>
+<td width=20%>7505</td>
+<td width=40%>86系列安全帽检测NVR产品：IDS-8632NX-I8/B</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>iDS_PT</b></td>
+<td width=20%>8451</td>
+<td width=40%>全景细节相机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_67XX_NX_L</b></td>
+<td width=20%>12502</td>
+<td width=40%>67系列录播NVS产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_ENIXX_XHE</b></td>
+<td width=20%>12503</td>
+<td width=40%>录播NVS行业专业产品</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IDS_67XX_NX_B</b></td>
+<td width=20%>12505</td>
+<td width=40%>67系列安全帽检测NVS产品：iDS-6708NX/B</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_IE63XX_E_FA</b></td>
+<td width=20%>13001</td>
+<td width=40%>脸谱单机</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS-GPKIA01XX</b></td>
+<td width=20%>13002</td>
+<td width=40%>猎鹰服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS-IC01XX-F</b></td>
+<td width=20%>13003</td>
+<td width=40%>脸谱纯分析</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_DS_FS</b></td>
+<td width=20%>13004</td>
+<td width=40%>人脸静态数据服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_DS_FD</b></td>
+<td width=20%>13005</td>
+<td width=40%>抓拍检测服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS-GPKIB01XX-V</b></td>
+<td width=20%>13006</td>
+<td width=40%>刀锋</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS-I01CP-CD</b></td>
+<td width=20%>13007</td>
+<td width=40%>模型对比服务器</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DS_LNX_RF</b></td>
+<td width=20%>13501</td>
+<td width=40%>智能锁盒子</td>
+</tr>
+</table>
+
+<h4>See Also</h4>
+<p><b><a href="../structures/NET_DVR_USER_LOGIN_INFO.html">NET_DVR_USER_LOGIN_INFO</a>&nbsp;&nbsp; <a href="../structures/NET_DVR_DEVICEINFO_V40.html">NET_DVR_DEVICEINFO_V40</a></b></p>
+<p><b><a href="../definitions/NET_DVR_Login_V30.html">NET_DVR_Login_V30</a></b></p>
+
+<hr color="#999999"><br>
+
+</body>
+</html>

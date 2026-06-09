@@ -1,0 +1,1042 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_EVENT_LINKAGE_INFO</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+    <style type="text/css">
+        .style1
+        {
+            width: 571px;
+        }
+        .style2
+        {
+            width: 81px;
+        }
+    </style>
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_EVENT_LINKAGE_INFO</h1>
+<p>事件联动参数结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  WORD</b><i>    wMainEventType</i><b>;</b>
+<b>  WORD</b><i>    wSubEventType</i><b>;</b>
+<b>  BYTE</b><i>    byRes[28]</i><b>;</b>
+<b>}NET_DVR_EVENT_LINKAGE_INFO,*LPNET_DVR_EVENT_LINKAGE_INFO;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>wMainEventType</i></dt>
+<dd> 事件主类型：0- 设备事件，1- 报警输入事件，2- 门事件，3- 读卡器事件</dd>
+
+<dt><i>wSubEventType</i></dt>
+<dd> 事件次类型，不同的主类型对应不同的次类型，详见“Remarks”说明</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<p>不同的事件主类型对应不同的事件次类型，具体定义如下所示：</p>
+<table>
+<tr valign=top>
+<th align=left class="style1"><b>主类型</b></th>
+<th align=left colspan="2">含义</th>
+</tr>
+<tr valign=top>
+<td class="style1"><b>0</b></td>
+<td colspan="2">设备事件</td>
+</tr>
+<tr valign=top>
+<th align=left class="style1"><b>次类型</b></th>
+<th align=left class="style2">宏定义值</th>
+<th align=left>含义</th>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_HOST_ANTI_DISMANTLE</b></td>
+<td class="style2">0</td>
+<td>主机防拆报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_OFFLINE_ECENT_NEARLY_FULL</b></td>
+<td class="style2">1</td>
+<td>离线事件满90%报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_NET_BROKEN</b></td>
+<td class="style2">2</td>
+<td>网络断开</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_NET_RESUME</b></td>
+<td class="style2">3</td>
+<td>网络恢复</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_LOW_BATTERY</b></td>
+<td class="style2">4</td>
+<td>蓄电池电压低</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_BATTERY_RESUME</b></td>
+<td class="style2">5</td>
+<td>蓄电池电压恢复正常</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_AC_OFF</b></td>
+<td class="style2">6</td>
+<td>交流电断电</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_AC_RESUME</b></td>
+<td class="style2">7</td>
+<td>交流电恢复</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_SD_CARD_FULL</b></td>
+<td class="style2">8</td>
+<td>SD卡存储满报警</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_LINKAGE_CAPTURE_PIC</b></td>
+<td class="style2">9</td>
+<td>联动抓拍事件报警</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_IMAGE_QUALITY_LOW</b></td>
+<td class="style2">10</td>
+<td>人脸图像画质低</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_FINGER_PRINT_QUALITY_LOW</b></td>
+<td class="style2">11</td>
+<td>指纹图像画质低</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_BATTERY_ELECTRIC_LOW</b></td>
+<td class="style2">12</td>
+<td>电池电压低（仅人脸设备使用）</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_BATTERY_ELECTRIC_RESUME</b></td>
+<td class="style2">13</td>
+<td>电池电压恢复正常（仅人脸设备使用）</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_FIRE_IMPORT_SHORT_CIRCUIT</b></td>
+<td class="style2">14</td>
+<td>消防输入短路报警</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_FIRE_IMPORT_BROKEN_CIRCUIT</b></td>
+<td class="style2">15</td>
+<td>消防输入断路报警</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_FIRE_IMPORT_RESUME</b></td>
+<td class="style2">16</td>
+<td>消防输入恢复</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_MASTER_RS485_LOOPNODE_BROKEN</b></td>
+<td class="style2">17</td>
+<td>主控RS485环路节点断开</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_MASTER_RS485_LOOPNODE_RESUME</b></td>
+<td class="style2">18</td>
+<td>主控RS485环路节点恢复</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_LOCAL_CONTROL_OFFLINE</b></td>
+<td class="style2">19</td>
+<td>就地控制器掉线</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_LOCAL_CONTROL_RESUME</b></td>
+<td class="style2">20</td>
+<td>就地控制器掉线恢复</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_LOCAL_DOWNSIDE_RS485_LOOPNODE_BROKEN</b></td>
+<td class="style2">21</td>
+<td>就地下行RS485环路断开</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_LOCAL_DOWNSIDE_RS485_LOOPNODE_RESUME</b></td>
+<td class="style2">22</td>
+<td>就地下行RS485环路恢复</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_DISTRACT_CONTROLLER_ONLINE</b></td>
+<td class="style2">23</td>
+<td>分控器在线</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_DISTRACT_CONTROLLER_OFFLINE</b></td>
+<td class="style2">24</td>
+<td>分控器离线</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_FIRE_BUTTON_TRIGGER</b></td>
+<td class="style2">25</td>
+<td>消防按钮触发</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_FIRE_BUTTON_RESUME</b></td>
+<td class="style2">26</td>
+<td>消防按钮恢复</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_MAINTENANCE_BUTTON_TRIGGER</b></td>
+<td class="style2">27</td>
+<td>维护按钮触发</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_MAINTENANCE_BUTTON_RESUME</b></td>
+<td class="style2">28</td>
+<td>维护按钮恢复</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_EMERGENCY_BUTTON_TRIGGER</b></td>
+<td class="style2">29</td>
+<td>紧急按钮触发</td>
+</tr>
+<tr>
+<td class="style1"><b>EVENT_ACS_EMERGENCY_BUTTON_RESUME</b></td>
+<td class="style2">30</td>
+<td>紧急按钮恢复</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_MAC_DETECT</b></td>
+<td class="style2">31</td>
+<td>MAC侦测</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_SUBMARINEBACK_COMM_BREAK</b></td>
+<td class="style2">32</td>
+<td>与反潜回服务器通信断开</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_SUBMARINEBACK_COMM_RESUME</b></td>
+<td class="style2">33</td>
+<td>与反潜回服务器通信恢复</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_REMOTE_ACTUAL_GUARD</b></td>
+<td class="style2">34</td>
+<td>远程实时布防</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_REMOTE_ACTUAL_UNGUARD</b></td>
+<td class="style2">35</td>
+<td>远程实时撤防</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_MOTOR_SENSOR_EXCEPTION</b></td>
+<td class="style2">36</td>
+<td>电机或传感器异常</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_CAN_BUS_EXCEPTION</b></td>
+<td class="style2">37</td>
+<td>CAN总线异常</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_CAN_BUS_RESUME</b></td>
+<td class="style2">38</td>
+<td>CAN总线恢复</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_GATE_TEMPERATURE_OVERRUN</b></td>
+<td class="style2">39</td>
+<td>闸机腔体温度超限</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_IR_EMITTER_EXCEPTION</b></td>
+<td class="style2">40</td>
+<td>红外对射异常</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_IR_EMITTER_RESUME</b></td>
+<td class="style2">41</td>
+<td>红外对射恢复</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_LAMP_BOARD_COMM_EXCEPTION</b></td>
+<td class="style2">42</td>
+<td>灯板通信异常</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_CAN_BUS_RESUME</b></td>
+<td class="style2">43</td>
+<td>灯板通信恢复</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_IR_ADAPTOR_BOARD_COMM_EXCEPTION</b></td>
+<td class="style2">44</td>
+<td>红外转接板通信异常</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_IR_ADAPTOR_BOARD_COMM_RESUME</b></td>
+<td class="style2">45</td>
+<td>红外转接板通信恢复</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_CHANNEL_CONTROLLER_DESMANTLE_ALARM</b></td>
+<td class="style2">46</td>
+<td>通道控制器防拆报警</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_CHANNEL_CONTROLLER_DESMANTLE_RESUME</b></td>
+<td class="style2">47</td>
+<td>通道控制器防拆报警恢复</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_CHANNEL_CONTROLLER_FIRE_IMPORT_ALARM</b></td>
+<td class="style2">48</td>
+<td>通道控制器消防输入报警</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_CHANNEL_CONTROLLER_FIRE_IMPORT_RESUME</b></td>
+<td class="style2">49</td>
+<td>通道控制器消防输入报警恢复</td>
+</tr>
+<td class="style1"><b>EVENT_ACS_STAY_EVENT</b></td>
+<td class="style2">50</td>
+<td>逗留事件</td>
+</tr>
+
+
+</table>
+<br>
+<table>
+<tr valign=top>
+<th align=left class="style1"><b>主类型</b></th>
+<th align=left colspan="2">含义</th>
+</tr>
+<tr valign=top>
+<td class="style1"><b>1</b></td>
+<td colspan="2">报警输入事件</td>
+</tr>
+<tr valign=top>
+<th align=left class="style1"><b>次类型</b></th>
+<th align=left class="style2">宏定义值</th>
+<th align=left>含义</th>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ALARMIN_SHORT_CIRCUIT</b></td>
+<td class="style2">0</td>
+<td>防区短路报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ALARMIN_BROKEN_CIRCUIT</b></td>
+<td class="style2">1</td>
+<td>防区断路报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ALARMIN_EXCEPTION</b></td>
+<td class="style2">2</td>
+<td>防区异常报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ALARMIN_RESUME</b></td>
+<td class="style2">3</td>
+<td>防区报警恢复</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CASE_SENSOR_ALARM</b></td>
+<td class="style2">4</td>
+<td>事件输入报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CASE_SENSOR_RESUME</b></td>
+<td class="style2">5</td>
+<td>事件输入恢复</td>
+</tr>
+</table>
+<br>
+<table>
+<tr valign=top>
+<th align=left class="style1"><b>主类型</b></th>
+<th align=left colspan="2">含义</th>
+</tr>
+<tr valign=top>
+<td class="style1"><b>2</b></td>
+<td colspan="2">门事件</td>
+</tr>
+<tr valign=top>
+<th align=left class="style1"><b>次类型</b></th>
+<th align=left class="style2">宏定义值</th>
+<th align=left>含义</th>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_LEADER_CARD_OPEN_BEGIN</b></td>
+<td class="style2">0</td>
+<td>首卡开门开始</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_LEADER_CARD_OPEN_END</b></td>
+<td class="style2">1</td>
+<td>首卡开门结束</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ALWAYS_OPEN_BEGIN</b></td>
+<td class="style2">2</td>
+<td>常开状态开始</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ALWAYS_OPEN_END</b></td>
+<td class="style2">3</td>
+<td>常开状态结束</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ALWAYS_CLOSE_BEGIN</b></td>
+<td class="style2">4</td>
+<td>常关状态开始</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ALWAYS_CLOSE_END</b></td>
+<td class="style2">5</td>
+<td>常关状态结束</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_LOCK_OPEN</b></td>
+<td class="style2">6</td>
+<td>门锁打开</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_LOCK_CLOSE</b></td>
+<td class="style2">7</td>
+<td>门锁关闭</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOOR_BUTTON_PRESS</b></td>
+<td class="style2">8</td>
+<td>开门按钮按下</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOOR_BUTTON_RELEASE</b></td>
+<td class="style2">9</td>
+<td>开门按钮放开</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOOR_OPEN_NORMAL</b></td>
+<td class="style2">10</td>
+<td>正常开门（门磁）</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOOR_CLOSE_NORMAL</b></td>
+<td class="style2">11</td>
+<td>正常关门（门磁）</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOOR_OPEN_ABNORMAL</b></td>
+<td class="style2">12</td>
+<td>门异常打开（门磁）</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOOR_OPEN_TIMEOUT</b></td>
+<td class="style2">13</td>
+<td>门打开超时（门磁）</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_OPEN_DOOR</b></td>
+<td class="style2">14</td>
+<td>远程开门</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_CLOSE_DOOR</b></td>
+<td class="style2">15</td>
+<td>远程关门</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_ALWAYS_OPEN</b></td>
+<td class="style2">16</td>
+<td>远程常开</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_ALWAYS_CLOSE</b></td>
+<td class="style2">17</td>
+<td>远程常关</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_NOT_BELONG_MULTI_GROUP</b></td>
+<td class="style2">18</td>
+<td>卡不属于多重认证群组</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_INVALID_MULTI_VERIFY_PERIOD</b></td>
+<td class="style2">19</td>
+<td>卡不在多重认证时间段内</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_MULTI_VERIFY_SUPER_RIGHT_FAIL</b></td>
+<td class="style2">20</td>
+<td>多重认证模式超级密码认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_MULTI_VERIFY_REMOTE_RIGHT_FAIL</b></td>
+<td class="style2">21</td>
+<td>多重认证模式远程认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_MULTI_VERIFY_SUCCESS</b></td>
+<td class="style2">22</td>
+<td>多重认证成功</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_MULTI_VERIFY_NEED_REMOTE_OPEN</b></td>
+<td class="style2">23</td>
+<td>多重多重认证需要远程开门</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_MULTI_VERIFY_SUPERPASSWD_VERIFY_SUCCESS</b></td>
+<td class="style2">24</td>
+<td>多重认证超级密码认证成功事件</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_MULTI_VERIFY_REPEAT_VERIFY_FAIL</b></td>
+<td class="style2">25</td>
+<td>多重认证重复认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_MULTI_VERIFY_TIMEOUT</b></td>
+<td class="style2">26</td>
+<td>多重认证超时失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_CAPTURE_PIC</b></td>
+<td class="style2">27</td>
+<td>远程抓拍</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORBELL_RINGING</b></td>
+<td class="style2">28</td>
+<td>门铃响</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_SECURITY_MODULE_DESMANTLE_ALARM</b></td>
+<td class="style2">29</td>
+<td>门控安全模块防拆报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CALL_CENTER</b></td>
+<td class="style2">30</td>
+<td>呼叫中心事件</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FIRSTCARD_AUTHORIZE_BEGIN</b></td>
+<td class="style2">31</td>
+<td>首卡授权开始</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FIRSTCARD_AUTHORIZE_END</b></td>
+<td class="style2">32</td>
+<td>首卡授权结束</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORLOCK_INPUT_SHORT_CIRCUIT</b></td>
+<td class="style2">33</td>
+<td>门锁输入短路报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORLOCK_INPUT_BROKEN_CIRCUIT</b></td>
+<td class="style2">34</td>
+<td>门锁输入断路报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORLOCK_INPUT_EXCEPTION</b></td>
+<td class="style2">35</td>
+<td>门锁输入异常报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORCONTACT_INPUT_SHORT_CIRCUIT</b></td>
+<td class="style2">36</td>
+<td>门磁输入短路报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORCONTACT_INPUT_BROKEN_CIRCUIT</b></td>
+<td class="style2">37</td>
+<td>门磁输入断路报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORCONTACT_INPUT_EXCEPTION</b></td>
+<td class="style2">38</td>
+<td>门磁输入异常报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_OPENBUTTON_INPUT_SHORT_CIRCUIT</b></td>
+<td class="style2">39</td>
+<td>开门按钮输入短路报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_OPENBUTTON_INPUT_BROKEN_CIRCUIT</b></td>
+<td class="style2">40</td>
+<td>开门按钮输入断路报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_OPENBUTTON_INPUT_EXCEPTION</b></td>
+<td class="style2">41</td>
+<td>开门按钮输入异常报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORLOCK_OPEN_EXCEPTION</b></td>
+<td class="style2">42</td>
+<td>门锁异常打开</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOORLOCK_OPEN_TIMEOUT</b></td>
+<td class="style2">43</td>
+<td>门锁打开超时</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FIRSTCARD_OPEN_WITHOUT_AUTHORIZE</b></td>
+<td class="style2">44</td>
+<td>首卡未授权开门失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CALL_LADDER_RELAY_BREAK</b></td>
+<td class="style2">45</td>
+<td>呼梯继电器断开</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CALL_LADDER_RELAY_CLOSE</b></td>
+<td class="style2">46</td>
+<td>呼梯继电器闭合</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_AUTO_KEY_RELAY_BREAK</b></td>
+<td class="style2">47</td>
+<td>自动按键继电器断开</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_AUTO_KEY_RELAY_CLOSE</b></td>
+<td class="style2">48</td>
+<td>自动按键继电器闭合</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_KEY_CONTROL_RELAY_BREAK</b></td>
+<td class="style2">49</td>
+<td>按键梯控继电器断开</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_KEY_CONTROL_RELAY_CLOSE</b></td>
+<td class="style2">50</td>
+<td>按键梯控继电器闭合</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_VISITOR_CALL_LADDER</b></td>
+<td class="style2">51</td>
+<td>访客呼梯</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_HOUSEHOLD_CALL_LADDER</b></td>
+<td class="style2">52</td>
+<td>住户呼梯</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_LEGAL_MESSAGE</b></td>
+<td class="style2">53</td>
+<td>合法短信</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ILLEGAL_MESSAGE</b></td>
+<td class="style2">54</td>
+<td>非法短信</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_TRAILING</b></td>
+<td class="style2">55</td>
+<td>尾随通行</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REVERSE_ACCESS</b></td>
+<td class="style2">56</td>
+<td>反向闯入</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FORCE_ACCESS</b></td>
+<td class="style2">57</td>
+<td>外力冲撞</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CLIMBING_OVER_GATE</b></td>
+<td class="style2">58</td>
+<td>翻越</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_PASSING_TIMEOUT</b></td>
+<td class="style2">59</td>
+<td>通行超时</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_INTRUSION_ALARM</b></td>
+<td class="style2">60</td>
+<td>误闯报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FREE_GATE_PASS_NOT_AUTH</b></td>
+<td class="style2">61</td>
+<td>闸机自由通行时未认证通过</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DROP_ARM_BLOCK</b></td>
+<td class="style2">62</td>
+<td>摆臂被阻挡</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DROP_ARM_BLOCK_RESUME</b></td>
+<td class="style2">63</td>
+<td>摆臂阻挡消除</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_CONTROL_CLOSE_DOOR</b></td>
+<td class="style2">64</td>
+<td>遥控器关门</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_CONTROL_OPEN_DOOR</b></td>
+<td class="style2">65</td>
+<td>遥控器开门</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_REMOTE_CONTROL_ALWAYS_OPEN_DOOR</b></td>
+<td class="style2">66</td>
+<td>遥控器常开门</td>
+</tr>
+
+
+
+</table>
+<br>
+<table>
+<tr valign=top>
+<th align=left class="style1"><b>主类型</b></th>
+<th align=left colspan="2">含义</th>
+</tr>
+<tr valign=top>
+<td class="style1"><b>3</b></td>
+<td colspan="2">读卡器事件</td>
+</tr>
+<tr valign=top>
+<th align=left class="style1"><b>次类型</b></th>
+<th align=left class="style2">宏定义值</th>
+<th align=left>含义</th>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_STRESS_ALARM</b></td>
+<td class="style2">0</td>
+<td>胁迫报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_READER_DESMANTLE_ALARM</b></td>
+<td class="style2">1</td>
+<td>读卡器防拆报警</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_LEGAL_CARD_PASS</b></td>
+<td class="style2">2</td>
+<td>合法卡认证通过</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_AND_PSW_PASS</b></td>
+<td class="style2">3</td>
+<td>刷卡加密码认证通过</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_AND_PSW_FAIL</b></td>
+<td class="style2">4</td>
+<td>刷卡加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_AND_PSW_TIMEOUT</b></td>
+<td class="style2">5</td>
+<td>刷卡加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_MAX_AUTHENTICATE_FAIL</b></td>
+<td class="style2">6</td>
+<td>读卡器认证失败超次</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_NO_RIGHT</b></td>
+<td class="style2">7</td>
+<td>卡未分配权限</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_INVALID_PERIOD</b></td>
+<td class="style2">8</td>
+<td>卡当前时段无效</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_OUT_OF_DATE</b></td>
+<td class="style2">9</td>
+<td>卡号过期</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_INVALID_CARD</b></td>
+<td class="style2">10</td>
+<td>无此卡号</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_ANTI_SNEAK_FAIL</b></td>
+<td class="style2">11</td>
+<td>反潜回认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_INTERLOCK_DOOR_NOT_CLOSE</b></td>
+<td class="style2">12</td>
+<td>互锁门未关闭  </td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FINGERPRINT_COMPARE_PASS</b></td>
+<td class="style2">13</td>
+<td>指纹比对通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FINGERPRINT_COMPARE_FAIL</b></td>
+<td class="style2">14</td>
+<td>指纹比对失败 </td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_FINGERPRINT_VERIFY_PASS</b></td>
+<td class="style2">15</td>
+<td>刷卡加指纹认证通过 </td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_FINGERPRINT_VERIFY_FAIL</b></td>
+<td class="style2">16</td>
+<td>刷卡加指纹认证失败 </td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_FINGERPRINT_VERIFY_TIMEOUT</b></td>
+<td class="style2">17</td>
+<td>刷卡加指纹认证超时 </td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_FINGERPRINT_PASSWD_VERIFY_PASS</b></td>
+<td class="style2">18</td>
+<td>刷卡加指纹加密码认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_FINGERPRINT_PASSWD_VERIFY_FAIL</b></td>
+<td class="style2">19</td>
+<td>刷卡加指纹加密码认证失败</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_FINGERPRINT_PASSWD_VERIFY_TIMEOUT</b></td>
+<td class="style2">20</td>
+<td>刷卡加指纹加密码认证超时</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FINGERPRINT_PASSWD_VERIFY_PASS</b></td>
+<td class="style2">21</td>
+<td>指纹加密码认证通过 </td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FINGERPRINT_PASSWD_VERIFY_FAIL</b></td>
+<td class="style2">22</td>
+<td>指纹加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FINGERPRINT_PASSWD_VERIFY_TIMEOUT</b></td>
+<td class="style2">23</td>
+<td>指纹加密码认证超时</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FINGERPRINT_INEXISTENCE</b></td>
+<td class="style2">24</td>
+<td>指纹不存在</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_VERIFY_PASS</b></td>
+<td class="style2">25</td>
+<td>人脸认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_VERIFY_FAIL</b></td>
+<td class="style2">26</td>
+<td>人脸认证失败</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_FP_VERIFY_PASS</b></td>
+<td class="style2">27</td>
+<td>人脸加指纹认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_FP_VERIFY_FAIL</b></td>
+<td class="style2">28</td>
+<td>人脸加指纹认证失败</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_FP_VERIFY_TIMEOUT</b></td>
+<td class="style2">29</td>
+<td>人脸加指纹认证超时</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_PW_VERIFY_PASS</b></td>
+<td class="style2">30</td>
+<td>人脸加密码认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_PW_VERIFY_FAIL</b></td>
+<td class="style2">31</td>
+<td>人脸加密码认证失败</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_PW_VERIFY_TIMEOUT</b></td>
+<td class="style2">32</td>
+<td>人脸加密码认证超时</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_CARD_VERIFY_PASS</b></td>
+<td class="style2">33</td>
+<td>人脸加刷卡认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_CARD_VERIFY_FAIL</b></td>
+<td class="style2">34</td>
+<td>人脸加刷卡认证失败</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_CARD_VERIFY_TIMEOUT</b></td>
+<td class="style2">35</td>
+<td>人脸加刷卡认证超时</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_PW_AND_FP_VERIFY_PASS</b></td>
+<td class="style2">36</td>
+<td>人脸加密码加指纹认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_PW_AND_FP_VERIFY_FAIL</b></td>
+<td class="style2">37</td>
+<td>人脸加密码加指纹认证失败</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_PW_AND_FP_VERIFY_TIMEOUT</b></td>
+<td class="style2">38</td>
+<td>人脸加密码加指纹认证超时</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_CARD_AND_FP_VERIFY_PASS</b></td>
+<td class="style2">39</td>
+<td>人脸加刷卡加指纹认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_CARD_AND_FP_VERIFY_FAIL</b></td>
+<td class="style2">40</td>
+<td>人脸加刷卡加指纹认证失败</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_AND_CARD_AND_FP_VERIFY_TIMEOUT</b></td>
+<td class="style2">41</td>
+<td>人脸加刷卡加指纹认证超时</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FP_VERIFY_PASS</b></td>
+<td class="style2">42</td>
+<td>工号加指纹认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FP_VERIFY_FAIL</b></td>
+<td class="style2">43</td>
+<td>工号加指纹认证失败</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FP_VERIFY_TIMEOUT</b></td>
+<td class="style2">44</td>
+<td>工号加指纹认证超时</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FP_AND_PW_VERIFY_PASS</b></td>
+<td class="style2">45</td>
+<td>工号加指纹加密码认证通过</td>
+</tr> 
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FP_AND_PW_VERIFY_FAIL</b></td>
+<td class="style2">46</td>
+<td>工号加指纹加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FP_AND_PW_VERIFY_TIMEOUT</b></td>
+<td class="style2">47</td>
+<td>工号加指纹加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FACE_VERIFY_PASS</b></td>
+<td class="style2">48</td>
+<td>工号加人脸认证通过</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FACE_VERIFY_FAIL</b></td>
+<td class="style2">49</td>
+<td>工号加人脸认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_FACE_VERIFY_TIMEOUT</b></td>
+<td class="style2">50</td>
+<td>工号加人脸认证超时</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_FACE_RECOGNIZE_FAIL</b></td>
+<td class="style2">51</td>
+<td>人脸识别失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_PW_PASS</b></td>
+<td class="style2">52</td>
+<td>工号加密码认证通过</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_PW_FAIL</b></td>
+<td class="style2">53</td>
+<td>工号加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_EMPLOYEENO_AND_PW_TIMEOUT</b></td>
+<td class="style2">54</td>
+<td>工号加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_HUMAN_DETECT_FAIL</b></td>
+<td class="style2">55</td>
+<td>真人检测失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_PEOPLE_AND_ID_CARD_COMPARE_PASS</b></td>
+<td class="style2">56</td>
+<td>人证比对通过</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_PEOPLE_AND_ID_CARD_COMPARE_FAIL</b></td>
+<td class="style2">57</td>
+<td>人证比对失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_DOOR_OPEN_OR_DORMANT_FAIL</b></td>
+<td class="style2">58</td>
+<td>门状态常闭或休眠状态认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_AUTH_PLAN_DORMANT_FAIL</b></td>
+<td class="style2">59</td>
+<td>认证计划休眠模式认证失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_CARD_ENCRYPT_VERIFY_FAIL</b></td>
+<td class="style2">60</td>
+<td>卡加密校验失败</td>
+</tr>
+<tr valign=top>
+<td class="style1"><b>EVENT_ACS_SUBMARINEBACK_REPLY_FAIL</b></td>
+<td class="style2">61</td>
+<td>反潜回服务器应答失败</td>
+</tr>
+</table>
+
+<h4>See Also</h4>
+<p><b><a href="../structures/NET_DVR_EVETN_CARD_LINKAGE_UNION.html">NET_DVR_EVETN_CARD_LINKAGE_UNION</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

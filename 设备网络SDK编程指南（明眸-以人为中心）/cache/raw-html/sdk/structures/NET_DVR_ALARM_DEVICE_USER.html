@@ -1,0 +1,130 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_ALARM_DEVICE_USER</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_ALARM_DEVICE_USER</h1>
+<p>报警主机设备用户配置结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>              dwSize</i><b>;</b>
+<b>  BYTE</b><i>               sUserName[<span title="#define NAME_LEN 32"><em id="mycolor">NAME_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               sPassword[<span title="#define PASSWD_LEN 16"><em id="mycolor">PASSWD_LEN</em></span>]</i><b>;</b>
+<b>  <a href="NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>     struUserIP</i><b>;</b>
+<b>  BYTE</b><i>               byMACAddr[<span title="#define MACADDR_LEN 6"><em id="mycolor">MACADDR_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               byUserType</i><b>;</b>
+<b>  BYTE</b><i>               byAlarmOnRight</i><b>;</b>
+<b>  BYTE</b><i>               byAlarmOffRight</i><b>;</b>
+<b>  BYTE</b><i>               byBypassRight</i><b>;</b>
+<b>  BYTE</b><i>               byOtherRight[<span title="#define MAX_RIGHT 32"><em id="mycolor">MAX_RIGHT</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               byNetPreviewRight[<span title="#define MAX_ALARMHOST_VIDEO_CHAN 8"><em id="mycolor">MAX_ALARMHOST_VIDEO_CHAN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               byNetRecordRight[<span title="#define MAX_ALARMHOST_VIDEO_CHAN 8"><em id="mycolor">MAX_ALARMHOST_VIDEO_CHAN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               byNetPlaybackRight[<span title="#define MAX_ALARMHOST_VIDEO_CHAN 8"><em id="mycolor">MAX_ALARMHOST_VIDEO_CHAN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               byNetPTZRight[<span title="#define MAX_ALARMHOST_VIDEO_CHAN 8"><em id="mycolor">MAX_ALARMHOST_VIDEO_CHAN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>  		  sOriginalPassword[<span title="#define PASSWD_LEN 16"><em id="Em1">PASSWD_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>   	           byRes2[152]</i><b>;</b>
+<b>}NET_DVR_ALARM_DEVICE_USER,*LPNET_DVR_ALARM_DEVICE_USER;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>sUserName</i></dt>
+<dd> 用户名</dd>
+
+<dt><i>sPassword</i></dt>
+<dd> 密码</dd>
+
+<dt><i>struUserIP</i></dt>
+<dd> 用户IP地址(为0时表示允许任何地址) </dd>
+
+<dt><i>byMACAddr</i></dt>
+<dd> 物理地址</dd>
+
+<dt><i>byUserType</i></dt>
+<dd> 用户类型：0- 普通用户，1- 管理员用户</dd>
+
+<dt><i>byAlarmOnRight</i></dt>
+<dd> 布防权限</dd>
+
+<dt><i>byAlarmOffRight</i></dt>
+<dd> 撤防权限</dd>
+
+<dt><i>byBypassRight</i></dt>
+<dd> 旁路权限</dd>
+
+<dt><i>byOtherRight</i></dt>
+<dd> 其他权限，参数取值为1表示使能：<br>
+byOtherRight[0]：日志权限<br>
+byOtherRight[1]：重启关机<br>
+byOtherRight[2]：参数设置权限<br>
+byOtherRight[3]：参数获取权限<br>
+byOtherRight[4]：恢复默认参数权限<br>
+byOtherRight[5]：警号输出权限<br>
+byOtherRight[6]：PTZ 控制权限<br>
+byOtherRight[7]：远程升级权限<br> 
+byOtherRight[8]：报警输出控制<br>
+byOtherRight[9]：串口控制<br>
+byOtherRight[10]：门禁控制<br>
+byOtherRight[11]：语音对讲<br>
+byOtherRight[12]：远程控制本地输出<br>
+byOtherRight[13]：硬盘配置<br>
+byOtherRight[14]：格式化硬盘<br>
+byOtherRight[15]：模拟量控制
+</dd>
+
+<dt><i>byNetPreviewRight</i></dt>
+<dd> 远程可以预览的通道，按位表示各通道（bit0：通道1，bit1：通道2，依次类推）：1- 有权限，0- 无权限</dd>
+
+<dt><i>byNetRecordRight</i></dt>
+<dd> 远程可以录像的通道，按位表示各通道（bit0：通道1，bit1：通道2，依次类推）：1- 有权限，0- 无权限</dd>
+
+<dt><i>byNetPlaybackRight</i></dt>
+<dd> 远程可以回放的通道，按位表示各通道（bit0：通道1，bit1：通道2，依次类推）：1- 有权限，0- 无权限</dd>
+
+<dt><i>byNetPTZRight</i></dt>
+<dd> 远程可以PTZ的通道，按位表示各通道（bit0：通道1，bit1：通道2，依次类推）：1- 有权限，0- 无权限</dd>
+
+
+<dt><i>sOriginalPassword</i></dt>
+<dd> 原始密码</dd>
+
+<dt><i>byRes2</i></dt>
+<dd> 保留</dd>
+</dl>
+
+<h4>Remarks</h4>
+<LI>admin用户：<BR>
+默认的第一个用户为admin用户，admin用户也属于管理员，但权限要高于其他普通管理员。一个设备只有一个admin用户，admin用户可以设置并修改普通用户的权限，可以查看所有用户的信息，admin用户的权限不可修改。</LI>
+<LI>管理员用户:<BR>
+对视频报警主机，拥有除了恢复默认参数、格式化硬盘、升级系统程序、重启外的所有admin用户的权限。其他报警主机的管理员用户可以拥有所有权限。管理员权限不能被修改，admin用户也不能修改管理员权限。</LI>
+管理员用户可以查看普通用户和自己的信息，不能查看admin用户及其他管理员用户信息，可以设置和修改普通用户的权限，不能修改自己的权限。
+<LI>普通用户:<BR>
+默认拥有获取参数权限，其他权限均需设置。设置的最大化权限为管理员用户所拥有的权限。
+普通用户只能查看自己的信息，不能查看admin用户、管理员用户及其他普通用户的信息，不能修改自己的权限。</LI>
+
+<h4>See Also</h4>
+<p><b><a href="..\接口定义\NET_DVR_GetAlarmDeviceUser.html">NET_DVR_GetAlarmDeviceUser</a>&nbsp;&nbsp;&nbsp; <a href="..\接口定义\NET_DVR_SetAlarmDeviceUser.html">NET_DVR_SetAlarmDeviceUser</a></b></p>
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

@@ -1,0 +1,51 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_CAPTURE_FACE_COND</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_CAPTURE_FACE_COND</h1>
+<p>采集人脸信息条件参数结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>    dwSize</i><b>;</b>
+<b>  BYTE</b><i>     byRes[128]</i><b>;</b>
+<b>}NET_DVR_CAPTURE_FACE_COND, *LPNET_DVR_CAPTURE_FACE_COND;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<ul>
+<li>设备是否支持采集人脸信息或者支持的参数能力，可以通过设备能力集进行判断，对应门禁能力集(<a href="../XMLs/ACS_ABILITY.html"><b>AcsAbility</b></a>)，相关接口：<a href="../definitions/NET_DVR_GetDeviceAbility_ACS.html"><b>NET_DVR_GetDeviceAbility</b></a>，能力集类型：ACS_ABILITY，节点：&lt;CaptureFace&gt;。 </li>
+</ul>
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_StartRemoteConfig_ACS_collect.html">NET_DVR_StartRemoteConfig</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

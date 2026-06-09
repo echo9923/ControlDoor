@@ -1,0 +1,63 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_STREAM_MEDIA_SERVER_CFG</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_STREAM_MEDIA_SERVER_CFG</h1>
+<p>流媒体服务器参数结构体。</p>
+<pre class="syntax"><b>struct{</b>
+<b>  BYTE</b><i>             byValid</i><b>;</b>
+<b>  BYTE</b><i>             byRes1[3]</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>   struDevIP</i><b>;</b>
+<b>  WORD</b><i>             wDevPort</i><b>;</b>
+<b>  BYTE</b><i>             byTransmitType</i><b>;</b>
+<b>  BYTE</b><i>             byRes2[69]</i><b>;</b>
+<b>}NET_DVR_STREAM_MEDIA_SERVER_CFG,*LPNET_DVR_STREAM_MEDIA_SERVER_CFG;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>byValid</i></dt>
+<dd> 
+   是否启用流媒体服务器取流：0-不启用，非0-启用</dd>
+<dt><i>byRes1</i></dt>
+<dd>
+   保留，置为0</dd>
+<dt><i>struDevIP</i></dt>
+<dd> 
+   流媒体服务器的IP地址</dd>
+<dt><i>wDevPort</i></dt>
+<dd> 
+   流媒体服务器端口</dd>
+<dt><i>byTransmitType</i></dt>
+<dd> 
+   传输协议类型：0-TCP，1-UDP</dd>
+<dt><i>byRes2</i></dt>
+<dd> 
+   保留，置为0</dd>
+</dl>
+
+<h4>See Also</h4>
+<p><b><a href="../structures/NET_DVR_MATRIX_CHAN_INFO_V30.html">NET_DVR_MATRIX_CHAN_INFO_V30</a>&nbsp;&nbsp;&nbsp; <a href="../structures/NET_DVR_MATRIX_DEC_CHAN_INFO_V30.html">NET_DVR_MATRIX_DEC_CHAN_INFO_V30</a>&nbsp;&nbsp;&nbsp; <a href="../structures/NET_DVR_PU_STREAM_CFG.html">NET_DVR_PU_STREAM_CFG</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

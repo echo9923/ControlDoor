@@ -1,0 +1,61 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_SetLogToFile</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_SetLogToFile</h1>
+<p>启用写日志文件。</p>
+
+<PRE class=syntax><b>BOOL NET_DVR_SetLogToFile(</b>
+<b>  DWORD</b><i>    nLogLevel</i><b>,</b>
+<b>  char</b><i>     *strLogDir</i><b>,</b>
+<b>  BOOL</b><i>     bAutoDel</i><b></b>
+<b>);</b></PRE>
+
+<h4>Parameters</h4>
+<dl>
+<dt><i>nLogLevel</i></dt>
+<dd>[in] 日志的等级（默认为0）：0-表示关闭日志，1-表示只输出ERROR错误日志，2-输出ERROR错误信息和DEBUG调试信息，3-输出ERROR错误信息、DEBUG调试信息和INFO普通信息等所有信息</dd>
+
+<dt><i>strLogDir</i></dt>
+<dd>[in] 日志文件的路径，windows默认值为"C:\\SdkLog\\"；linux默认值"/home/sdklog/"</dd>
+
+<dt><i>bAutoDel</i></dt>
+<dd>[in] 是否删除超出的文件数，默认值为TRUE</dd>
+</dl>
+
+<h4>Return Values</h4>
+<p>TRUE表示成功，FALSE表示失败。接口返回失败请调用<b><a href="../definitions/NET_DVR_GetLastError.html">NET_DVR_GetLastError</a></b>获取错误码，通过错误码判断出错原因。</p>
+
+<h4>Remarks</h4>
+<ul>
+<li>日志文件路径必须是绝对路径，且以"\\"结尾，例如"C:\\SdkLog\\"，建议用户先手动创建文件。若未指定文件路径，则采用默认路径"C:\\SdkLog\\"。</li>
+<li>可多次调用该接口创建新的日志文件，更改目录时到下一次写文件时才会使用新的目录写文件。</li>
+<li>bAutoDel为TRUE时表示覆盖模式，日志文件个数超过SDK限制个数时将会自动删除超出的文件。SDK限制个数默认为10个，可以调用接口<b><a href="NET_DVR_SetSDKLocalCfg.html">NET_DVR_SetSDKLocalCfg</a></b>(配置类型：NET_DVR_LOCAL_CFG_TYPE_LOG)进行修改配置。</li>
+</ul>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+
+</html>
+
+

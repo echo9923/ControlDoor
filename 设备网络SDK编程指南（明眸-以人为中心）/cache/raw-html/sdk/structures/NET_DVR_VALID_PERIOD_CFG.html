@@ -1,0 +1,66 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_VALID_PERIOD_CFG</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_VALID_PERIOD_CFG</h1>
+<p>有效期参数结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  BYTE</b><i>               byEnable</i><b>;</b>
+<b>  BYTE</b><i>               byBeginTimeFlag</i><b>;</b>
+<b>  BYTE</b><i>               byEnableTimeFlag</i><b>;</b>
+<b>  BYTE</b><i>               byTimeDurationNo</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_TIME_EX.html">NET_DVR_TIME_EX</a></b><i>    struBeginTime</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_TIME_EX.html">NET_DVR_TIME_EX</a></b><i>    struEndTime</i><b>;</b>
+<b>  BYTE</b><i>               byRes2[32]</i><b>;</b>
+<b>}NET_DVR_VALID_PERIOD_CFG,*LPNET_DVR_VALID_PERIOD_CFG;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>byEnable</i></dt>
+<dd> 是否启用该有效期：0- 不启用，1- 启用</dd>
+
+<dt><i>byBeginTimeFlag</i></dt>
+<dd> 是否限制起始时间的标志，0-不限制，1-限制</dd>
+
+<dt><i>byEnableTimeFlag</i></dt>
+<dd> 是否限制终止时间的标志，0-不限制，1-限制</dd>
+
+<dt><i>byTimeDurationNo</i></dt>
+<dd> 有效期索引,从0开始（时间段通过SDK设置给锁，后续在制卡时，只需要传递有效期索引即可，以减少数据量</dd>
+
+<dt><i>struBeginTime</i></dt>
+<dd> 有效期起始时间</dd>
+
+<dt><i>struEndTime</i></dt>
+<dd> 有效期结束时间</dd>
+
+<dt><i>byRes2</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>See Also</h4>
+<p><b><a href="../structures/NET_DVR_GROUP_CFG.html">NET_DVR_GROUP_CFG</a>&nbsp;&nbsp; <a href="../structures/NET_DVR_CARD_CFG.html">NET_DVR_CARD_CFG</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

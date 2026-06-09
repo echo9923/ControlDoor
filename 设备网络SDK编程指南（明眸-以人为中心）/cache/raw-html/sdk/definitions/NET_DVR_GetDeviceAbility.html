@@ -1,0 +1,383 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_GetDeviceAbility</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_GetDeviceAbility</h1>
+<p>获取设备能力集。</p>
+<pre class="syntax"><b>BOOL NET_DVR_GetDeviceAbility(</b>
+<b>  LONG</b><i>     lUserID</i><b>,</b>
+<b>  DWORD</b><i>    dwAbilityType</i><b>,</b>
+<b>  char</b><i>     *pInBuf</i><b>,</b>
+<b>  DWORD</b><i>    dwInLength</i><b>,</b>
+<b>  char </b><i>    *pOutBuf</i><b>,</b>
+<b>  DWORD </b><i>   dwOutLength</i>
+<b>);</b></pre>
+
+<h4>Parameters</h4>
+
+<dl>
+<dt><i>lUserID</i></dt>
+<dd>[in] NET_DVR_Login_V40等登录接口的返回值</dd>
+
+<dt><i>dwAbilityType</i></dt>
+<dd>[in] 能力类型，具体定义见下表：
+<table>
+<tr valign=top>
+<th align=left width=40%><b>宏定义</b></th>
+<th align=left width=20%>宏定义值</th>
+<th align=left width=40%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_SOFTHARDWARE_ABILITY</b></td>
+<td width=20%>0x001</td>
+<td width=40%>设备软硬件能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_NETWORK_ABILITY</b></td>
+<td width=20%>0x002</td>
+<td width=40%>设备无线网络能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_ENCODE_ALL_ABILITY_V20</b></td>
+<td width=20%>0x008</td>
+<td width=40%>设备所有编码能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>IPC_FRONT_PARAMETER_V20</b></td>
+<td width=20%>0x009</td>
+<td width=40%>设备前端参数</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_RAID_ABILITY</b></td>
+<td width=20%>0x007</td>
+<td width=40%>设备RAID能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_ALARM_ABILITY</b></td>
+<td width=20%>0x00a</td>
+<td width=40%>设备报警能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_DYNCHAN_ABILITY</b></td>
+<td width=20%>0x00b</td>
+<td width=40%>设备数字通道能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_USER_ABILITY</b></td>
+<td width=20%>0x00c</td>
+<td width=40%>设备用户管理参数能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_NETAPP_ABILITY</b></td>
+<td width=20%>0x00d</td>
+<td width=40%>设备网络应用参数能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_VIDEOPIC_ABILITY</b></td>
+<td width=20%>0x00e</td>
+<td width=40%>设备图像参数能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_JPEG_CAP_ABILITY</b></td>
+<td width=20%>0x00f</td>
+<td width=40%>设备JPEG抓图能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_SERIAL_ABILITY</b></td>
+<td width=20%>0x010</td>
+<td width=40%>设备RS232和RS485串口能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DEVICE_ABILITY_INFO</b></td>
+<td width=20%>0x011</td>
+<td width=40%>设备通用能力类型，具体能力根据发送的能力节点来区分</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>STREAM_ABILITY</b></td>
+<td width=20%>0x012</td>
+<td width=40%>设备流能力集</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MATRIXDECODER_ABILITY</b></td>
+<td width=20%>0x200</td>
+<td width=40%>多路解码器显示、解码能力</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>DECODER_ABILITY</b></td>
+<td width=20%>0x261</td>
+<td width=40%>解码器XML能力集</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>SNAPCAMERA_ABILITY</b></td>
+<td width=20%>0x300</td>
+<td width=40%>智能交通摄像机能力集</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>PIC_CAPTURE_ABILITY</b></td>
+<td width=20%>0x402</td>
+<td width=40%>抓图图片分辨率能力集</td>
+</tr>
+</table>
+</dd>
+   
+<dt><i>pInBuf</i></dt>
+<dd>[in] 输入缓冲区指针（按照设备规定的能力参数的描述方式组合，可以是XML文本或结构体形式，详见“Remarks”说明）</dd>
+
+<dt><i>dwInLength</i></dt>
+<dd>[in] 输入缓冲区的长度</dd>
+
+<dt><i>pOutBuf</i></dt>
+<dd>[out] 输出缓冲区指针（按照设备规定的能力集的描述方式，可以是XML文本或结构体形式，详见“Remarks”说明）</dd>
+
+<dt><i>dwOutLength</i></dt>
+<dd>[in] 接收数据的缓冲区的长度</dd>
+</dl>
+
+<h4>Return Values</h4>
+<p>TRUE表示成功，FALSE表示失败。接口返回失败请调用<b><a href="../definitions/NET_DVR_GetLastError.html">NET_DVR_GetLastError</a></b>获取错误码，通过错误码判断出错原因。</p>
+</table>
+
+<h4>Remarks</h4>
+<p>接口中pInBuf参数的具体定义格式按照不同的设备规定有所不同，可以是以结构体的形式或者XML描述方式。同样地，参数pOutBuf的输出表达格式也按不同的设备规定可以是以结构体的形式或者XML描述方式。下表列出了能力获取时，需要输入参数和输出参数的格式定义。<br>
+</p>
+<table class="HxLinkTable">
+	<tr valign="top">
+		<th align="left" width=20%>能力类型宏定义</th>
+		<th align="left" width=20%>能力类型说明</th>
+		<th align="left" width=30%>pInBuf</th>
+		<th align="left" width=30%>pOutBuf</th>
+	</tr>
+	<tr valign="top">
+		<td width=20%><b>DEVICE_SOFTHARDWARE_ABILITY</b></td>
+		<td width=20%>获取设备软硬件能力</td>
+		<td width=30%>无</td>
+		<td width=30%><a href="../XMLs/DEVICE_SOFTHARDWARE_ABILITY.html">设备软硬件能力XML描述(BasicCapability)</a></td>
+	</tr>
+	<tr valign="top">
+		<td width=20%><b>DEVICE_NETWORK_ABILITY</b></td>
+		<td width=20%>获取无线设备网络能力</td>
+		<td width=30%>无</td>
+		<td width=30%><a href="../XMLs/DEVICE_NETWORK_ABILITY.html">设备无线网络能力XML描述(NetworkSetting)</a></td>
+	</tr>
+	<tr valign="top">
+		<td width=20%><b>DEVICE_ENCODE_ALL_ABILITY_V20</b></td>
+		<td width=20%>获取设备所有编码能力</td>
+		<td width=30%><a href="../XMLs/DEVICE_ENCODE_ALL_ABILITY_V20_INPUT.html">编码能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ENCODE_ALL_ABILITY_V20.html">设备所有编码能力XML描述(AudioVideoCompressInfo)</a></td>
+	</tr>
+	<tr valign="top">
+		<td width=20%><b>IPC_FRONT_PARAMETER_V20</b></td>
+		<td width=20%>获取设备前端参数</td>
+		<td width=30%><a href="../XMLs/IPC_FRONT_PARAMETER_V20_INPUT.html">前端参数能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/IPC_FRONT_PARAMETER_V20.html">设备前端参数XML描述(CAMERAPARA)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DEVICE_RAID_ABILITY</b></td>
+		<td width=20%>获取设备RAID能力</td>
+		<td width=30%>无</td>
+		<td width=30%><a href="../XMLs/DEVICE_RAID_ABILITY.html">设备RAID能力XML描述(RAID)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DEVICE_ALARM_ABILITY</b></td>
+		<td width=20%>获取设备报警能力</td>
+		<td width=30%><a href="../XMLs/DEVICE_ALARM_ABILITY_INPUT.html">报警能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ALARM_ABILITY.html">设备报警能力XML描述(AlarmAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DEVICE_DYNCHAN_ABILITY</b></td>
+		<td width=20%>获取设备数字通道能力</td>
+		<td width=30%><a href="../XMLs/DEVICE_DYNCHAN_ABILITY_INPUT.html">数字通道能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_DYNCHAN_ABILITY.html">设备数字通道能力XML描述(DynChannelAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DEVICE_USER_ABILITY</b></td>
+		<td width=20%>获取设备用户管理参数能力</td>
+		<td width=30%><a href="../XMLs/DEVICE_USER_ABILITY_INPUT.html">用户管理参数能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_USER_ABILITY.html">设备用户管理参数能力XML描述(UserAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DEVICE_NETAPP_ABILITY</b></td>
+		<td width=20%>获取设备网络应用参数能力</td>
+		<td width=30%><a href="../XMLs/DEVICE_NETAPP_ABILITY_INPUT.html">网络应用参数能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_NETAPP_ABILITY.html">设备网络应用参数能力XML描述(NetAppAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DEVICE_VIDEOPIC_ABILITY</b></td>
+		<td width=20%>获取设备图像参数能力</td>
+		<td width=30%><a href="../XMLs/DEVICE_VIDEOPIC_ABILITY_INPUT.html">图像参数能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_VIDEOPIC_ABILITY.html">设备图像参数能力XML描述(VideoPicAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DEVICE_JPEG_CAP_ABILITY</b></td>
+		<td width=20%>获取设备JPEG抓图能力</td>
+		<td width=30%><a href="../XMLs/DEVICE_JPEG_CAP_ABILITY_INPUT.html">JPEG抓图能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_JPEG_CAP_ABILITY.html">设备JPEG抓图能力XML描述(JpegCaptureAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DEVICE_SERIAL_ABILITY</b></td>
+		<td width=20%>获取设备RS232和RS485串口能力</td>
+		<td width=30%><a href="../XMLs/DEVICE_SERIAL_ABILITY_INPUT.html">串口能力获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_SERIAL_ABILITY.html">设备串口能力XML描述(SerialAbility)</a></td>
+	</tr>    
+    <tr valign="top">
+		<td width=20% rowspan="24"><b>DEVICE_ABILITY_INFO</b></td>
+		<td width=20% rowspan="20">设备通用能力类型，具体能力根据发送的能力节点来区分</td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_PTZ.html">获取PTZ能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_PTZ.html">PTZ能力XML描述(PTZAbility)</a></td>
+	</tr>
+     <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_EVENT.html">获取报警事件处理能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_EVENT.html">报警事件处理能力XML描述(EventAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_ROI.html">获取ROI能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_ROI.html">ROI能力XML描述(ROIAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_RECORD.html">获取录像相关能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_RECORD.html">录像相关能力XML描述(RecordAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_IPACCESS.html">NVR前端待接入设备通道能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_IPACCESS.html">NVR前端待接入设备通道能力XML描述(GetAccessDeviceChannelAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_SWITCH.html">获取设备本地预览切换能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_SWITCH.html">设备本地预览切换能力XML描述(PreviewSwitchAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_NPLUS.html">获取设备N+1能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_NPLUS.html">设备N+1能力XML描述(NPlusOneAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_HD.html">获取设备磁盘相关能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_HD.html">设备磁盘相关能力XML描述(HardDiskAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_IPCCFGFILE.html">获取IPC配置文件导入导出能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_IPCCFGFILE.html">IPC配置文件导入导出能力XML描述(IPAccessConfigFileAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_CHANINPUT.html">获取设备通道输入能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_CHANINPUT.html">设备通道输入能力XML描述(ChannelInputAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_DYNAMIC.html">获取前端参数动态能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_DYNAMIC.html">设备前端参数动态能力XML描述(CameraParaDynamicAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_TRIGGER.html">获取报警触发录像能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_TRIGGER.html">设备报警触发录像能力XML描述(AlarmTriggerRecordAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_GBT28181.html">获取GB/T28181能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_GBT28181.html">设备GB/T28181能力XML描述(GBT28181AccessAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_IO.html">获取IO口输入输出能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_IO.html">设备IO口输入输出能力XML描述(IOAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_PROTOCOL.html">获取协议接入能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_PROTOCOL.html">设备协议接入能力XML描述(AccessProtocolAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_SECURITY.html">获取安全认证配置能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_SECURITY.html">安全认证配置能力XML描述(SecurityAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_MOUNT.html">获取摄像机架设参数能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_MOUNT.html">摄像机架设参数能力XML描述(CameraMountAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_LOG.html">获取日志搜索能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_LOG.html">日志搜索能力XML描述(SearchLogAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_CVR.html">获取CVR设备能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_CVR.html">CVR设备能力XML描述(CVRAbility)</a></td>
+	</tr>
+        <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_ImageDisplay.html">获取图像显示参数能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_ImageDisplay.html">图像显示参数能力XML描述(ImageDisplayParamAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20% rowspan="4">设备智能相关能力集</td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_VCADEV.html">获取智能设备能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_VCADEV.html">智能设备能力XML描述(VcaDevAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_VCACTRL.html">获取智能通道控制能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_VCACTRL.html">智能通道控制能力XML描述(VcaCtrlAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_VCACHAN.html">获取智能通道分析能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_VCACHAN.html">智能通道分析能力XML描述(VcaChanAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_INPUT_BINOCULAR.html">获取双目能力集</a></td>
+		<td width=30%><a href="../XMLs/DEVICE_ABILITY_INFO_BINOCULAR.html">双目能力XML描述(BinocularAbility)</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>STREAM_ABILITY</b></td>
+		<td width=20%>获取设备流能力</td>
+		<td width=30%><a href="../XMLs/STREAM_ABILITY_INPUT.html">获取流能力集</a></td>
+		<td width=30%><a href="../XMLs/STREAM_ABILITY.html">流能力XML描述(StreamAbility)</a></td>
+	</tr>
+	<tr valign="top">
+		<td width=20%><b>MATRIXDECODER_ABILITY</b></td>
+		<td width=20%>获取多路解码器显示、解码能力</td>
+		<td width=30%>无</td>
+		<td width=30%><a href="../structures/NET_DVR_MATRIX_ABILITY.html">NET_DVR_MATRIX_ABILITY</a></td>
+	</tr>
+    <tr valign="top">
+		<td width=20%><b>DECODER_ABILITY</b></td>
+		<td width=20%>获取解码器XML能力集</td>
+		<td width=30%><a href="../XMLs/DECODER_ABILITY_INPUT.html">解码器能力集获取输入描述</a></td>
+		<td width=30%><a href="../XMLs/DECODER_ABILITY.html">解码器能力集XML描述</a></td>
+	</tr>
+	<tr valign="top">
+		<td width=20%><b>SNAPCAMERA_ABILITY</b></td>
+		<td width=20%>获取智能交通摄像机的能力</td>
+		<td width=30%>无</td>
+		<td width=30%><a href="../structures/NET_DVR_SNAP_ABILITY.html">NET_DVR_SNAP_ABILITY</a></td>
+	</tr>
+	<tr valign="top">
+		<td width=20%><b>PIC_CAPTURE_ABILITY</b></td>
+		<td width=20%>获取图片能力</td>
+		<td width=30%>通道号（4个字节）</td>
+		<td width=30%><a href="../structures/NET_DVR_COMPRESSIONCFG_ABILITY.html">NET_DVR_COMPRESSIONCFG_ABILITY</a></td>
+	</tr>
+
+
+</table>
+<LI>设备能力集中所有编码能力和前端参数能力集在4.2版本的SDK中已经做了扩展，扩展前V1.0版本的能力集请参见<a href="../definitions/NET_DVR_GetDeviceAbility_OLD.html">NET_DVR_GetDeviceAbility</a>。</LI>
+<LI>在调用该接口获取设备能力集之前可以先调用<strong><a href="../definitions/NET_DVR_SetSDKLocalCfg.html">NET_DVR_SetSDKLocalCfg</a></strong>启用模拟能力集，同时加载LocalXml.zip（要求和网络通讯库放在同一个目录下）。 </LI>
+
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_Login.html">NET_DVR_Login</a>&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_Login_V30.html">NET_DVR_Login_V30</a> </b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

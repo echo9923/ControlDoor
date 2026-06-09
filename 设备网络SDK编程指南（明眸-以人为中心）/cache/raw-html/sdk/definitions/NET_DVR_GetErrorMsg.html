@@ -1,0 +1,3730 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_GetErrorMsg</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+    <style type="text/css">
+        .style1
+        {
+            width: 59px;
+        }
+        .style2
+        {
+            width: 61px;
+        }
+        .style3
+        {
+            font-weight: bold;
+        }
+    </style>
+    </head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_GetErrorMsg</h1>
+<p>返回最后操作的错误码信息。</p>
+
+<pre class=syntax><b>char* NET_DVR_GetErrorMsg(</b>
+<b>  LONG</b><i>   *pErrorNo</i>
+<b>);</b></pre>
+
+<h4>Parameters</h4>
+<dl>
+<dt><i>pErrorNo</i></dt>
+<dd>[out] 错误码数值的指针</dd>
+</dl>
+
+<h4>Return Values</h4>
+<p>返回值为错误码信息的指针。错误码主要分为网络通讯库、RTSP通讯库、软硬解库、语音对讲库等错误码，详见下表。</p>
+
+<h1 align="center">网络通讯库错误码</h1>
+
+<table>
+<tr valign=top>
+<th align=left><b>错误类型</b></th>
+<th align=left class="style1">错误值</th>
+<th align=left>错误信息</th>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOERROR</b></td>
+<td class="style1">0</td>
+<td>No error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PASSWORD_ERROR</b></td>
+<td class="style1">1</td>
+<td>User name or password error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOENOUGHPRI</b></td>
+<td class="style1">2</td>
+<td>Not authorized to do this operation.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOINIT</b></td>
+<td class="style1">3</td>
+<td>SDK is not initialized.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CHANNEL_ERROR</b></td>
+<td class="style1">4</td>
+<td>Channel number error. There is no corresponding channel number on the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_OVER_MAXLINK</b></td>
+<td class="style1">5</td>
+<td>The number of connection with the device has exceeded the max limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_VERSIONNOMATCH</b></td>
+<td class="style1">6</td>
+<td>Version mismatch. SDK version is not matching with the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NETWORK_FAIL_CONNECT</b></td>
+<td class="style1">7</td>
+<td>Failed to connect to the device. The device is off-line, or connection timeout caused by network.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NETWORK_SEND_ERROR</b></td>
+<td class="style1">8</td>
+<td>Failed to send data to the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NETWORK_RECV_ERROR</b></td>
+<td class="style1">9</td>
+<td>Failed to receive data from the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NETWORK_RECV_TIMEOUT</b></td>
+<td class="style1">10</td>
+<td>Timeout when receiving data from the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NETWORK_ERRORDATA</b></td>
+<td class="style1">11</td>
+<td>The data sent to the device is illegal, or the data received from the device error.  E.g. The input data is not supported by the device for remote configuration.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ORDER_ERROR</b></td>
+<td class="style1">12</td>
+<td>API calling order error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_OPERNOPERMIT</b></td>
+<td class="style1">13</td>
+<td>Not authorized for this operation.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_COMMANDTIMEOUT</b></td>
+<td class="style1">14</td>
+<td>Executing command on the device is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERRORSERIALPORT</b></td>
+<td class="style1">15</td>
+<td>Serial port number error. The assigned serial port does not exist on the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERRORALARMPORT</b></td>
+<td class="style1">16</td>
+<td>Alarm port number error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PARAMETER_ERROR</b></td>
+<td class="style1">17</td>
+<td>Parameter error. Input or output parameters in the SDK API is NULL, or the value or format of the parameters does not match with the requirement.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CHAN_EXCEPTION</b></td>
+<td class="style1">18</td>
+<td>Device channel is in exception status.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NODISK</b></td>
+<td class="style1">19</td>
+<td>No hard disk on the device, and the operation of recording and hard disk configuration will fail.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERRORDISKNUM</b></td>
+<td class="style1">20</td>
+<td>Hard disk number error. The assigned hard disk number does not exist during hard disk management.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DISK_FULL </b></td>
+<td class="style1">21</td>
+<td>Device hark disk is full.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DISK_ERROR </b></td>
+<td class="style1">22</td>
+<td>Device hard disk error.</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOSUPPORT</b></td>
+<td class="style1">23</td>
+<td>Device does not support this function.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_BUSY</b></td>
+<td class="style1">24</td>
+<td>Device is busy.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MODIFY_FAIL</b></td>
+<td class="style1">25</td>
+<td>Failed to modify device parameters.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PASSWORD_FORMAT_ERROR</b></td>
+<td class="style1">26</td>
+<td>The inputting password format is not correct.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DISK_FORMATING</b></td>
+<td class="style1">27</td>
+<td>Hard disk is formatting, and the operation cannot be done.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DVRNORESOURCE</b></td>
+<td class="style1">28</td>
+<td>Not enough resource on the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DVROPRATEFAILED</b></td>
+<td class="style1">29</td>
+<td>Device operation failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_OPENHOSTSOUND_FAIL</b></td>
+<td class="style1">30</td>
+<td>Failed to collect local audio data or to open audio output during voice talk / broadcasting.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DVRVOICEOPENED</b></td>
+<td class="style1">31</td>
+<td>Voice talk channel on the device has been occupied.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_TIMEINPUTERROR</b></td>
+<td class="style1">32</td>
+<td>Time input is not correct.</td>
+</tr>
+
+<tr valign=top>
+<td><b>NET_DVR_NOSPECFILE </b></td>
+<td class="style1">33</td>
+<td>There is no selected file for playback.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CREATEFILE_ERROR</b></td>
+<td class="style1">34</td>
+<td>Failed to create a file, during local recording, saving picture, getting configuration file or downloading record file.</td>
+</tr>
+
+<tr valign=top>
+<td><b>NET_DVR_FILEOPENFAIL</b></td>
+<td class="style1">35</td>
+<td>Failed to open a file. </td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_OPERNOTFINISH</b></td>
+<td class="style1">36</td>
+<td>The last operation has not been completed.</td>
+</tr>
+
+<tr valign=top>
+<td><b>NET_DVR_GETPLAYTIMEFAIL</b></td>
+<td class="style1">37</td>
+<td>Failed to get the current played time.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PLAYFAIL</b></td>
+<td class="style1">38</td>
+<td>Failed to start playback.</td>
+</tr>
+
+<tr valign=top>
+<td><b>NET_DVR_FILEFORMAT_ERROR</b></td>
+<td class="style1">39</td>
+<td>The file format is not correct.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DIR_ERROR</b></td>
+<td class="style1">40</td>
+<td>File directory error.</td>
+</tr>
+
+<tr valign=top>
+<td><b>NET_DVR_ALLOC_RESOURCE_ERROR</b></td>
+<td class="style1">41</td>
+<td>Resource allocation error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_AUDIO_MODE_ERROR</b></td>
+<td class="style1">42</td>
+<td>Sound adapter mode error. Currently opened sound playing mode does not match with the set mode.</td>
+</tr>
+
+<tr valign=top>
+<td><b>NET_DVR_NOENOUGH_BUF</b></td>
+<td class="style1">43</td>
+<td>Buffer is not enough.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CREATESOCKET_ERROR</b></td>
+<td class="style1">44</td>
+<td>Create SOCKET error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SETSOCKET_ERROR</b></td>
+<td class="style1">45</td>
+<td>Set SOCKET error</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MAX_NUM</b></td>
+<td class="style1">46</td>
+<td>The number of login or preview connections has exceeded the SDK limitation.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_USERNOTEXIST</b></td>
+<td class="style1">47</td>
+<td>User doest not exist. The user ID has been logged out or unavailable. </td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_WRITEFLASHERROR</b></td>
+<td class="style1">48</td>
+<td>Writing FLASH error. Failed to write FLASH during device upgrade.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_UPGRADEFAIL</b></td>
+<td class="style1">49</td>
+<td>Failed to upgrade device. It is caused by network problem or the language mismatch between the device and the upgrade file. </td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CARDHAVEINIT</b></td>
+<td class="style1">50</td>
+<td>The decode card has alreadly been initialed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PLAYERFAILED</b></td>
+<td class="style1">51</td>
+<td>Failed to call API of player SDK.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MAX_USERNUM</b></td>
+<td class="style1">52</td>
+<td>The number of login user has reached the maximum limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_GETLOCALIPANDMACFAIL</b></td>
+<td class="style1">53</td>
+<td>Failed to get the IP address or physical address of local PC.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOENCODEING</b></td>
+<td class="style1">54</td>
+<td>This channel hasn't started encoding.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_IPMISMATCH</b></td>
+<td class="style1">55</td>
+<td>IP address not match</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MACMISMATCH</b></td>
+<td class="style1">56</td>
+<td>MAC address not match</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_UPGRADELANGMISMATCH</b></td>
+<td class="style1">57</td>
+<td>The language of upgrading file does not match the language of the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MAX_PLAYERPORT</b></td>
+<td class="style1">58</td>
+<td>The number of player ports has reached the maximum limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOSPACEBACKUP</b></td>
+<td class="style1">59</td>
+<td>No enough space to backup file in backup device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NODEVICEBACKUP</b></td>
+<td class="style1">60</td>
+<td>No backup device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PICTURE_BITS_ERROR</b></td>
+<td class="style1">61</td>
+<td>The color quality seeting of the picture does not match the requirement, and it should be limited to 24.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PICTURE_DIMENSION_ERROR</b></td>
+<td class="style1">62</td>
+<td>The dimension is over 128x256.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PICTURE_SIZ_ERROR</b></td>
+<td class="style1">63</td>
+<td>The size of picture is over 100K</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOADPLAYERSDKFAILED</b></td>
+<td class="style1">64</td>
+<td>Failed to load player SDK.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOADPLAYERSDKPROC_ERROR</b></td>
+<td class="style1">65</td>
+<td>Can not find the function in player SDK.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOADDSSDKFAILED</b></td>
+<td class="style1">66</td>
+<td>Failed to load the library file-"DsSdk".</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOADDSSDKPROC_ERROR</b></td>
+<td class="style1">67</td>
+<td>Can not find the API in "DsSdk".</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DSSDK_ERROR</b></td>
+<td class="style1">68</td>
+<td>Failed to call the API in "DsSdk".</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_VOICEMONOPOLIZE</b></td>
+<td class="style1">69</td>
+<td>Sound adapter has been monopolized.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_JOINMULTICASTFAILED</b></td>
+<td class="style1">70</td>
+<td>Failed to join to multicast group.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CREATEDIR_ERROR</b></td>
+<td class="style1">71</td>
+<td>Failed to create log file directory.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_BINDSOCKET_ERROR</b></td>
+<td class="style1">72</td>
+<td>Failed to bind socket.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SOCKETCLOSE_ERROR</b></td>
+<td class="style1">73</td>
+<td>Socket disconnected. It is caused by network disconnection or destination unreachable.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_USERID_ISUSING</b></td>
+<td class="style1">74</td>
+<td>The user ID is operating when logout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SOCKETLISTEN_ERROR</b></td>
+<td class="style1">75</td>
+<td>Failed to listen</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PROGRAM_EXCEPTION</b></td>
+<td class="style1">76</td>
+<td>Sdk program exception</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_WRITEFILE_FAILED</b></td>
+<td class="style1">77</td>
+<td>Failed to write file, during local recording, saving picture or downloading record file.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FORMAT_READONLY</b></td>
+<td class="style1">78</td>
+<td>Failed to format read-only HD</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_WITHSAMEUSERNAME</b></td>
+<td class="style1">79</td>
+<td>This user name already exists in the user configuration structure.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DEVICETYPE_ERROR</b></td>
+<td class="style1">80</td>
+<td>Device type does not match when import configuration.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LANGUAGE_ERROR</b></td>
+<td class="style1">81</td>
+<td>Language does not match when import configuration.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PARAVERSION_ERROR</b></td>
+<td class="style1">82</td>
+<td>Software version does not match when import configuration.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_IPCHAN_NOTALIVE</b></td>
+<td class="style1">83</td>
+<td>IP channel is not on-line when previewing.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_SDK_ERROR</b></td>
+<td class="style1">84</td>
+<td>Load StreamTransClient.dll failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CONVERT_SDK_ERROR</b></td>
+<td class="style1">85</td>
+<td>Load SystemTransform.dll failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_IPC_COUNT_OVERFLOW</b></td>
+<td class="style1">86</td>
+<td>over maximun ipc count</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MAX_ADD_NUM</b></td>
+<td class="style1">87</td>
+<td>add label or other operation reach the maximum number</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PARAMMODE_ERROR</b></td>
+<td class="style1">88</td>
+<td>Image intensifier, parameter mode error. This error may occur when client sets software or hardware parameters. </td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CODESPITTER_OFFLINE</b></td>
+<td class="style1">89</td>
+<td>Code splitter is offline.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_BACKUP_COPYING</b></td>
+<td class="style1">90</td>
+<td>Device is backing up.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CHAN_NOTSUPPORT</b></td>
+<td class="style1">91</td>
+<td>Channel not support</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALLINEINVALID</b></td>
+<td class="style1">92</td>
+<td>The height line location is too concentrated, or the length line is not inclined enough.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALCANCELCONFLICT</b></td>
+<td class="style1">93</td>
+<td>Cancel calibration conflict, if the rule and overall actual size filter have been set.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALPOINTOUTRANGE</b></td>
+<td class="style1">94</td>
+<td>Calibration point exceeds the range.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FILTERRECTINVALID</b></td>
+<td class="style1">95</td>
+<td>The size filter does not meet the requirement.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DDNS_DEVOFFLINE</b></td>
+<td class="style1">96</td>
+<td>Device has not registered to DDNS.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DDNS_INTER_ERROR</b></td>
+<td class="style1">97</td>
+<td>DDNS inner error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FUNCTION_NOT_SUPPORT_OS</b></td>
+<td>98</td>
+<td>This function don't support this OS.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DEC_CHAN_REBIND</b></td>
+<td>99</td>
+<td>Decode channel can not bind with two display channel.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_INTERCOM_SDK_ERROR</b></td>
+<td>100</td>
+<td>Failed to load the audio intercom SDK from current directory.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NO_CURRENT_UPDATEFILE </b></td>
+<td>101</td>
+<td>No current upgrade pack.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_USER_NOT_SUCC_LOGIN</b></td>
+<td>102</td>
+<td>The user has not logined the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_USE_LOG_SWITCH_FILE</b></td>
+<td>103</td>
+<td>It is using the log swtich file.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_POOL_PORT_EXHAUST</b></td>
+<td>104</td>
+<td>The ports used to bound in port pool is exhausted.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PACKET_TYPE_NOT_SUPPORT</b></td>
+<td>105</td>
+<td>The packet type of stream is error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_IPPARA_IPID_ERROR</b></td>
+<td>106</td>
+<td>IPID of IP access configuration is error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_HCPREVIEW_SDK_ERROR</b></td>
+<td>107</td>
+<td>Load Preview component Failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_HCVOICETALK_SDK_ERROR</b></td>
+<td>108</td>
+<td>Load Voice talk component Failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_HCALARM_SDK_ERROR</b></td>
+<td>109</td>
+<td>Load Alarm component Failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_HCPLAYBACK_SDK_ERROR</b></td>
+<td>110</td>
+<td>Load Playback component Failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_HCDISPLAY_SDK_ERROR</b></td>
+<td>111</td>
+<td>Load Display component Failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_HCINDUSTRY_SDK_ERROR</b></td>
+<td>112</td>
+<td>Load Industry component Failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_HCGENERALCFGMGR_SDK_ERROR</b></td>
+<td>113</td>
+<td>Load general configuration management component failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_HCCOREDEVCFG_SDK_ERROR</b></td>
+<td>114</td>
+<td>Load configuration core component failed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CORE_VER_MISMATCH</b></td>
+<td>121</td>
+<td>There is a mismatch between the component and core version.</td>
+</tr> 
+<tr valign=top>
+<td><b>NET_DVR_CORE_VER_MISMATCH_HCPREVIEW</b></td>
+<td>122</td>
+<td>There is a mismatch  between Live view component and core version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CORE_VER_MISMATCH_HCVOICETALK</b></td>
+<td>123</td>
+<td>There is a mismatch  between voice component and core version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CORE_VER_MISMATCH_HCALARM</b></td>
+<td>124</td>
+<td>There is a mismatch  between alarm component and core version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CORE_VER_MISMATCH_HCPLAYBACK</b></td>
+<td>125</td>
+<td>There is a mismatch  between playback component and core version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CORE_VER_MISMATCH_HCDISPLAY</b></td>
+<td>126</td>
+<td>There is a mismatch  between display component and core version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CORE_VER_MISMATCH_HCINDUSTRY</b></td>
+<td>127</td>
+<td>There is a mismatch  between industrial application component and core version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CORE_VER_MISMATCH_HCGENERALCFGMGR</b></td>
+<td>128</td>
+<td>There is a mismatch  between general configuration management component and the core version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_COM_VER_MISMATCH_HCPREVIEW</b></td>
+<td>136</td>
+<td>There is a mismatch  between Live view component and HCNetSDK version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_COM_VER_MISMATCH_HCVOICETALK</b></td>
+<td>137</td>
+<td>There is a mismatch  between voice component and HCNetSDK version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_COM_VER_MISMATCH_HCALARM</b></td>
+<td>138</td>
+<td>here is a mismatch  between alarm component and HCNetSDK version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_COM_VER_MISMATCH_HCPLAYBACK</b></td>
+<td>139</td>
+<td>There is a mismatch  between playback component and HCNetSDK version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_COM_VER_MISMATCH_HCDISPLAY</b></td>
+<td>140</td>
+<td>There is a mismatch  between display component and HCNetSDK version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_COM_VER_MISMATCH_HCINDUSTRY</b></td>
+<td>141</td>
+<td>There is a mismatch  between industrial application component and HCNetSDK version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_COM_VER_MISMATCH_HCGENERALCFGMGR</b></td>
+<td>142</td>
+<td>There is a mismatch  between General configuration management component and the HCNetSDK version.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ALIAS_DUPLICATE</b></td>
+<td>150</td>
+<td>Alias is duplicate (for HiDDNS)</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_USERNAME_NOT_EXIST</b></td>
+<td>152</td>
+<td>The user name doesn't exist.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_USERNAME_LOCKED</b></td>
+<td>153</td>
+<td>The user name is locked.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_INVALID_USERID</b></td>
+<td>154</td>
+<td>Invalid User ID.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOW_LOGIN_VERSION</b></td>
+<td>155</td>
+<td>The login version is too low.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_LIBEAY32_DLL_ERROR</b></td>
+<td>156</td>
+<td>Failed to load libeay32.dll.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LOAD_SSLEAY32_DLL_ERROR</b></td>
+<td>157</td>
+<td>Failed to load ssleay32.dll.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LOAD_LIBICONV</b></td>
+<td>158</td>
+<td>Failed to load libiconv.dll。</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_TEST_SERVER_FAIL_CONNECT</b></td>
+<td>165</td>
+<td>Failed to connect to test server.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NAS_SERVER_INVALID_DIR</b></td>
+<td>166</td>
+<td>Failed to mount to NAS server (No such directory, or user name/password error).</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NAS_SERVER_NOENOUGH_PRI</b></td>
+<td>167</td>
+<td>Failed to mount to NAS server (not authorized)</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_EMAIL_SERVER_NOT_CONFIG_DNS</b></td>
+<td>168</td>
+<td>DNS has not been configured, so domain address may invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_EMAIL_SERVER_NOT_CONFIG_GATEWAY</b></td>
+<td>169</td>
+<td>GateWay of Email server has not been configured, so it may be failed to send mail.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_TEST_SERVER_PASSWORD_ERROR</b></td>
+<td>170</td>
+<td>User name and password tried to login the test server are not matching.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_EMAIL_SERVER_CONNECT_EXCEPTION_WITH_SMTP</b></td>
+<td>171</td>
+<td>The connection between device and SMTP server is abnormal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FTP_SERVER_FAIL_CREATE_DIR</b></td>
+<td>172</td>
+<td>Failed to create directory in the FTP server.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FTP_SERVER_NO_WRITE_PIR</b></td>
+<td>173</td>
+<td>Do not have permission to write in the FTP server.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_IP_CONFLICT</b></td>
+<td>174</td>
+<td>IP conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_INSUFFICIENT_STORAGEPOOL_SPACE</b></td>
+<td>175</td>
+<td>The storage pool is full.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_STORAGEPOOL_INVALID</b></td>
+<td>176</td>
+<td>The storage pool of cloud server is invalid, for not configure the storage pool or the ID of storage pool error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_EFFECTIVENESS_REBOOT</b></td>
+<td>177</td>
+<td>Need reboot the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ANR_ARMING_EXIST</b></td>
+<td>178</td>
+<td>ANR arming is already established.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_UPLOADLINK_EXIST</b></td>
+<td>179</td>
+<td>Upload Link is already established.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_INCORRECT_FILE_FORMAT</b></td>
+<td>180</td>
+<td>Incorrect file format.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_INCORRECT_FILE_CONTENT</b></td>
+<td>181</td>
+<td>Incorrect file content.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MAX_HRUDP_LINK</b></td>
+<td>182</td>
+<td>HRUDP limit the number of connections over equipment.</td>
+</tr>
+<tr valign=top>
+<td><b>阵列错误码</b></td>
+<td class="style1"></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NAME_NOT_ONLY</b></td>
+<td class="style1">200</td>
+<td>Existing name.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_OVER_MAX_ARRAY</b></td>
+<td class="style1">201</td>
+<td>Number of arrays has reached its limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_OVER_MAX_VD</b></td>
+<td class="style1">202</td>
+<td>Number of virtual disks  has reached its limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_VD_SLOT_EXCEED</b></td>
+<td class="style1">203</td>
+<td>Virtual disk slot is full.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PD_STATUS_INVALID</b></td>
+<td class="style1">204</td>
+<td>Physical disk for rebuilding array is with error status.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PD_BE_DEDICATE_SPARE</b></td>
+<td class="style1">205</td>
+<td>Physical disk for rebuilding array is specified as spare drive.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PD_NOT_FREE</b></td>
+<td class="style1">206</td>
+<td>Physical disk for rebuilding array is not idle.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CANNOT_MIG2NEWMODE</b></td>
+<td class="style1">207</td>
+<td>Unable to migrate from the current array type to the new array type.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MIG_PAUSE</b></td>
+<td class="style1">208</td>
+<td>The migration operation has been paused.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MIG_CANCEL</b></td>
+<td class="style1">209</td>
+<td>The migration operation has been cancelled.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_EXIST_VD</b></td>
+<td class="style1">210</td>
+<td>Operation failed! Please delete the virtual disk existed in the array first.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_TARGET_IN_LD_FUNCTIONAL</b></td>
+<td class="style1">211</td>
+<td>Target physical disk is part of the virtual disk and is functional.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_HD_IS_ASSIGNED_ALREADY</b></td>
+<td class="style1">212</td>
+<td>Specified physical disk is assigned to a virtual disk</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_INVALID_HD_COUNT</b></td>
+<td class="style1">213</td>
+<td>Number of physical disks doesn't fit the specified RAID level.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LD_IS_FUNCTIONAL</b></td>
+<td class="style1">214</td>
+<td>Specified virtual disk is functional.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_BGA_RUNNING</b></td>
+<td class="style1">215</td>
+<td>BGA is running.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LD_NO_ATAPI</b></td>
+<td class="style1">216</td>
+<td>Can not create virtual disk with ATAPI drive.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_MIGRATION_NOT_NEED</b></td>
+<td class="style1">217</td>
+<td>Migration is not necessary.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_HD_TYPE_MISMATCH</b></td>
+<td class="style1">218</td>
+<td>Physical disks are not of the same type.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NO_LD_IN_DG</b></td>
+<td class="style1">219</td>
+<td>No virtual disk exist on the specified array.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NO_ROOM_FOR_SPARE</b></td>
+<td class="style1">220</td>
+<td>Disk space is too small to be assigned as spare drive.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SPARE_IS_IN_MULTI_DG</b></td>
+<td class="style1">221</td>
+<td>Disk is already assigned as a spare drive for an array.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DG_HAS_MISSING_PD</b></td>
+<td class="style1">222</td>
+<td>Disk is missing from an array.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NAME_EMPTY</b></td>
+<td>223</td>
+<td>Name is empty.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_INPUT_PARAM</b></td>
+<td>224</td>
+<td>The input parameter is error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PD_NOT_AVAILABLE</b></td>
+<td>225</td>
+<td>The physical disk is not available.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ARRAY_NOT_AVAILABLE</b></td>
+<td>226</td>
+<td>The RAID is not available</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PD_COUNT</b></td>
+<td>227</td>
+<td>The count of physical disks is not correct.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_VD_SMALL</b></td>
+<td>228</td>
+<td>Virtual disk is too small.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NO_EXIST</b></td>
+<td>229</td>
+<td>Not exist.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOT_SUPPORT</b></td>
+<td>230</td>
+<td>Not support the operation.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOT_FUNCTIONAL</b></td>
+<td>231</td>
+<td>The status of RAID is abnormal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DEV_NODE_NOT_FOUND</b></td>
+<td>232</td>
+<td>The device node of virtual disk does not exist.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SLOT_EXCEED</b></td>
+<td>233</td>
+<td>The count of slots reaches the upper limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NO_VD_IN_ARRAY</b></td>
+<td>234</td>
+<td>There is not virtual disk in the RAID.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_VD_SLOT_INVALID</b></td>
+<td>235</td>
+<td>The slot of virtual disk is invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PD_NO_ENOUGH_SPACE</b></td>
+<td>236</td>
+<td>The required space of physical disk  is not enough.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ARRAY_NONFUNCTION</b></td>
+<td>237</td>
+<td>Only the RAID on normal state supports to be migrated.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ARRAY_NO_ENOUGH_SPACE</b></td>
+<td>238</td>
+<td>The space of RAID is not enough.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_STOPPING_SCANNING_ARRAY</b></td>
+<td>239</td>
+<td>It is pulling the disk out safely or rescanning the disk.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOT_SUPPORT_16T</b></td>
+<td>240</td>
+<td>Not support create the RAID larger than 16T.</td>
+</tr>
+<tr valign=top>
+<td><b>安全激活相关错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERROR_DEVICE_NOT_ACTIVATED</b></td>
+<td>250</td>
+<td>The device has not been activated.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERROR_RISK_PASSWORD</b></td>
+<td>251</td>
+<td>There is a risk of the password.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERROR_DEVICE_HAS_ACTIVATED</b></td>
+<td>252</td>
+<td>The device has been activated.</td>
+</tr>
+<tr valign=top>
+<td><b>智能设备错误值</b></td>
+<td class="style1"></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ID_ERROR </b></td>
+<td class="style1">300</td>
+<td>Configuration ID is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_POLYGON_ERROR</b></td>
+<td class="style1">301</td>
+<td>Polygon does not match requirement.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RULE_PARAM_ERROR</b></td>
+<td class="style1">302</td>
+<td>Rule parameter is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RULE_CFG_CONFLICT</b></td>
+<td class="style1">303</td>
+<td>Configuration conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALIBRATE_NOT_READY</b></td>
+<td class="style1">304</td>
+<td>Calibration not ready.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CAMERA_DATA_ERROR</b></td>
+<td class="style1">305</td>
+<td>Camera parameter is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALIBRATE_DATA_UNFIT</b></td>
+<td class="style1">306</td>
+<td>Not tilt enough, not fit to calibrate.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALIBRATE_DATA_CONFILICT</b></td>
+<td class="style1">307</td>
+<td>Calibration error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALIBRATE_CALC_FAIL</b></td>
+<td class="style1">308</td>
+<td>Failed to calculate camera calibration parameter.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALIBRATE_LINE_OUT_RECT</b></td>
+<td class="style1">309</td>
+<td>The input calibrating line exceeds the external rectangle sample.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ENTER_RULE_NOT_READY</b></td>
+<td class="style1">310</td>
+<td>Enter rule not ready.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_AID_RULE_NO_INCLUDE_LANE</b></td>
+<td class="style1">311</td>
+<td>It does not include lane in the traffic event rule 
+    (especial for traffic jam or driving against the traffic).</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LANE_NOT_READY</b></td>
+<td class="style1">312</td>
+<td>Lane not ready.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RULE_INCLUDE_TWO_WAY</b></td>
+<td class="style1">313</td>
+<td> There are two different directions in event rule.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LANE_TPS_RULE_CONFLICT</b></td>
+<td class="style1">314</td>
+<td>The lane conflicts with the data rule. </td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NOT_SUPPORT_EVENT_TYPE</b></td>
+<td class="style1">315</td>
+<td>The event type is not supported by the device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LANE_NO_WAY</b></td>
+<td class="style1">316</td>
+<td>The lane has no direction.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SIZE_FILTER_ERROR</b></td>
+<td class="style1">317</td>
+<td>The size of filter is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LIB_FFL_NO_FACE</b></td>
+<td class="style1">318</td>
+<td>There is no face when feature point positioning.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LIB_FFL_IMG_TOO_SMALL</b></td>
+<td class="style1">319</td>
+<td>The input image is too small when feature point positioning.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LIB_FD_IMG_NO_FACE</b></td>
+<td class="style1">320</td>
+<td>The input image has no face when detecting face in single image.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LIB_FACE_TOO_SMALL</b></td>
+<td class="style1">321</td>
+<td>Face is too small when building model.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LIB_FACE_QUALITY_TOO_BAD</b></td>
+<td class="style1">322</td>
+<td>Face image is of poor quality when building model.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_KEY_PARAM_ERR</b></td>
+<td class="style1">323</td>
+<td>Advanced parameter setting error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALIBRATE_DATA_ERR</b></td>
+<td class="style1">324</td>
+<td>Calibration sample size error, or data value error, or sample points beyond the horizon</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CALIBRATE_DISABLE_FAIL</b></td>
+<td class="style1">325</td>
+<td>The configured rules do not allow to cancel calibration.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_VCA_LIB_FD_SCALE_OUTRANGE</b></td>
+<td>326</td>
+<td>Filter scale is out range.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_LIB_FD_REGION_TOO_LARGE </b></td>
+<td>327</td>
+<td>Region is too big.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_TRIAL_OVERDUE</b></td>
+<td>328</td>
+<td>Trial overdue.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CONFIG_FILE_CONFLICT</b></td>
+<td>329</td>
+<td>Config file conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FR_FPL_FAIL</b></td>
+<td>330</td>
+<td>Feature points location is error in face recognition.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FR_IQA_FAIL </b></td>
+<td>331</td>
+<td>Image quality assessment is error in face recognition.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FR_FEM_FAIL</b></td>
+<td>332</td>
+<td>Feature extract & match error in face recognition.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FPL_DT_CONF_TOO_LOW</b></td>
+<td>333</td>
+<td>Detection confidence is too low in feature points location.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FPL_CONF_TOO_LOW</b></td>
+<td>334</td>
+<td>Confidence is too low in feature points location.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_E_DATA_SIZE</b></td>
+<td>335</td>
+<td>Size of model data error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FR_MODEL_VERSION_ERR</b></td>
+<td>336</td>
+<td>Model version is error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FR_FD_FAIL</b></td>
+<td>337</td>
+<td>Face detection error in face recognition.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FA_NORMALIZE_ERR</b></td>
+<td>338</td>
+<td>Face attribute normalize error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DOG_PUSTREAM_NOT_MATCH</b></td>
+<td>339</td>
+<td>Pustream and softdog are mismatched.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DEV_PUSTREAM_NOT_MATCH</b></td>
+<td>340</td>
+<td>Pustream device version is error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PUSTREAM_ALREADY_EXISTS</b></td>
+<td>341</td>
+<td>The pustream has existence.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SEARCH_CONNECT_FAILED</b></td>
+<td>342</td>
+<td>Failed to connect face retrieval device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_INSUFFICIENT_DISK_SPACE</b></td>
+<td>343</td>
+<td>Storage space is insufficient.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DATABASE_CONNECTION_FAILED</b></td>
+<td>344</td>
+<td>Failed to connect database.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DATABASE_ADM_PW_ERROR</b></td>
+<td>345</td>
+<td>Username or password is error for database.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DECODE_YUV</b></td>
+<td>346</td>
+<td>Failed to decode image.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_IMAGE_RESOLUTION_ERROR</b></td>
+<td>347</td>
+<td>Image resolution is unreasonable.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CHAN_WORKMODE_ERROR</b></td>
+<td>348</td>
+<td>Channel work mode error.</td>
+</tr>
+<tr valign=top>
+<td><b>RTSP通讯库错误码</b></td>
+<td>400~446</td>
+<td>详见：<a href="#RTSPCODE"><strong>RTSP通讯库错误码</strong></a></td>
+</tr>
+<tr valign=top>
+<td><b>软解码库错误码</b></td>
+<td>500~528</td>
+<td>详见：<a href="#PLAYCODE"><strong>软解码库错误码</strong></a></td>
+</tr>
+<tr valign=top>
+<td><b>转封装库错误码</b></td>
+<td>581</td>
+<td>详见：<a href="#TRANSCODE"><strong>转封装库错误码</strong></a></td>
+</tr>
+<tr valign=top>
+<td><b>语音对讲库错误码</b></td>
+<td>600~619</td>
+<td>详见：<a href="#VOICECODE"><strong>语音对讲库错误码</strong></a></td>
+</tr>
+<tr valign=top>
+<td><b>Qos流控库错误码</b></td>
+<td>678~700</td>
+<td>详见：<a href="#QOSCODE"><strong>Qos流控库错误码</strong></a></td>
+</tr>
+<tr valign=top>
+<td><b>其他错误码</b></td>
+<td class="style1"></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERROR_SCENE_USING</b></td>
+<td class="style1">717</td>
+<td>The scene is in use.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_TERMINAL_BUSY</b></td>
+<td>780</td>
+<td>The terminal is busy, and the terminal is in one meeting.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_TERMINAL_BUSY</b></td>
+<td>780</td>
+<td>Equipment other resource-intensive function, cause the function could not be opened.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_DEV_NET_OVERFLOW</b></td>
+<td class="style1">800</td>
+<td>Network traffic is over device ability limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_STATUS_RECORDFILE_WRITING_NOT_LOCK</b></td>
+<td class="style1">801</td>
+<td>The video file is recording and can't be locked.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_STATUS_CANT_FORMAT_LITTLE_DISK</b></td>
+<td class="style1">802</td>
+<td>The hard disk capacity is too small and can not be formatted.</td>
+</tr>
+<tr valign=top>
+<td><b>N+1功能错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_REMOTE_DISCONNEC</b></td>
+<td>803</td>
+<td>Unable to connect to the remote device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_RD_ADD_RD</b></td>
+<td>804</td>
+<td>It does not support add spare device to a spare device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_BACKUP_DISK_EXCEPT</b></td>
+<td>805</td>
+<td>The backup disk is abnormal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_RD_LIMIT</b></td>
+<td>806</td>
+<td>The count of spare devices has reached the maximum limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_ADDED_RD_IS_WD</b></td>
+<td>807</td>
+<td>The spare device to be added is a working device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_ADD_ORDER_WRONG</b></td>
+<td>808</td>
+<td>The adding order is wrong, such as, to add the working device to the spare device before adding the spare device to the working device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_WD_ADD_WD</b></td>
+<td>809</td>
+<td>It does not support add working device to a working device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_WD_SERVICE_EXCETP</b></td>
+<td>810</td>
+<td>The CVR server is abnormal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_RD_SERVICE_EXCETP</b></td>
+<td>811</td>
+<td>The spare device is abnormal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_ADDED_WD_IS_RD</b></td>
+<td>812</td>
+<td>The working device to be added is a spare device.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_PERFORMANCE_LIMIT</b></td>
+<td>813</td>
+<td>The performance reaches the upper limit</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_ADDED_DEVICE_EXIST</b></td>
+<td>814</td>
+<td>The devcie to be added has existed.</td>
+</tr>
+<tr valign=top>
+<td><b>审讯机错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_INQUEST_RESUMING</b></td>
+<td>815</td>
+<td>Inquest resuming.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_RECORD_BACKUPING</b></td>
+<td>816</td>
+<td>Record backuping.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_DISK_PLAYING	</b></td>
+<td>817</td>
+<td>Disk playing.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_INQUEST_STARTED</b></td>
+<td>818</td>
+<td>Inquest started.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_LOCAL_OPERATING</b></td>
+<td>819</td>
+<td>Local operating.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_INQUEST_NOT_START</b></td>
+<td>820</td>
+<td>Inquest not start.</td>
+</tr>
+<tr valign=top>
+<td><b>其他错误码</b></td>
+<td class="style1"></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_CHAN_AUDIO_BIND</b></td>
+<td>821</td>
+<td>Chan bind aduio error or no bind.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_N_PLUS_ONE_MODE</b></td>
+<td>822</td>
+<td>Not support to set cloud storage mode, for the device is in N+1 mode.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CLOUD_STORAGE_OPENED</b></td>
+<td>823</td>
+<td>The cloud storage mode has been opened.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_OPER_NOT_ALLOWED</b></td>
+<td>824</td>
+<td>Fot the device has been taken over, the operation is not allowed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NEED_RELOCATE</b></td>
+<td>825</td>
+<td>Fot the device has been taken over, it requires to get the redirection information and then re-operate.</td>
+</tr>
+<tr valign=top>
+<td><b>庭审主机错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_IR_PORT_ERROR</b></td>
+<td>830</td>
+<td>The IR output error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_IR_CMD_ERROR</b></td>
+<td>831</td>
+<td>The command of IR output is not correct.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_NOT_INQUESTING</b></td>
+<td>832</td>
+<td>The device is not inquestiong.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_SDK_ERR_INQUEST_NOT_PAUSED</b></td>
+<td>833</td>
+<td>The device is not in paused status.</td>
+</tr>
+<tr valign=top>
+<td><b>其他错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CHECK_PASSWORD_MISTAKE_ERROR</b></td>
+<td>834</td>
+<td>Check the password mistake.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CHECK_PASSWORD_NULL_ERROR</b></td>
+<td>835</td>
+<td>Check the password do not NULL.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_UNABLE_CALIB_ERROR</b></td>
+<td>836</td>
+<td>Unable to calibrate currently.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PLEASE_CALIB_ERROR</b></td>
+<td>837</td>
+<td>Please finish the calibration first.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PANORAMIC_CAL_EMPTY</b></td>
+<td>838</td>
+<td>No panorama image for PanoVu camera calibration in flash.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CALIB_FAIL_PLEASEAGAIN</b></td>
+<td>839</td>
+<td>Calibration failed. Please calibrate again.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_DETECTION_LINE</b></td>
+<td>840</td>
+<td>Please set detection line again. The detection line should be within the red count area.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_EXCEED_FACE_IMAGES_ERROR</b></td>
+<td>843</td>
+<td>Exceed face images error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ANALYSIS_FACE_IMAGES_ERROR</b></td>
+<td>844</td>
+<td>Analysis face picture error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ALARM_INPUT_OCCUPIED</b></td>
+<td>845</td>
+<td>Alarm Input No. A&lt;-1 is used to trigger vehicle capture.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FACELIB_DATABASE_ERROR</b></td>
+<td>846</td>
+<td>Face lib database error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FACELIB_DATA_ERROR</b></td>
+<td>847</td>
+<td>Face libary data error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FACE_DATA_ID_ERROR</b></td>
+<td>848</td>
+<td>Face data ID error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FACELIB_ID_ERROR</b></td>
+<td>849</td>
+<td>Face libary ID error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_EXCEED_FACE_LIBARY_ERROR</b></td>
+<td>850</td>
+<td>Face exceed face libary error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PIC_ANALYSIS_NO_TARGET_ERROR</b></td>
+<td>851</td>
+<td>Picture analysis no target error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SUBPIC_ANALYSIS_MODELING_ERROR</b></td>
+<td>852</td>
+<td>Subpicture analysis modeling error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PIC_ANALYSIS_NO_RESOURCE_ERROR</b></td>
+<td>853</td>
+<td>Picture Analysis no resource error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ANALYSIS_ENGINES_NO_RESOURCE_ERROR</b></td>
+<td>854</td>
+<td>Analysis engines no resource error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ANALYSIS_ENGINES_USAGE_EXCEED_ERROR</b></td>
+<td>855</td>
+<td>Analysis engines usage exceed error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_EXCEED_HUMANMISINFO_FILTER_ENABLED_ERROR</b></td>
+<td>856</td>
+<td>Exceed human misinfo filter enabled max channel number error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NAME_ERROR</b></td>
+<td>857</td>
+<td>Name error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NAME_EXIST_ERROR</b></td>
+<td>858</td>
+<td>Name exist error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FACELIB_PIC_IMPORTING_ERROR</b></td>
+<td>859</td>
+<td>Face lib picture importing error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PIC_FORMAT_ERROR</b></td>
+<td>864</td>
+<td>Picture format error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PIC_RESOLUTION_INVALID_ERROR</b></td>
+<td>865</td>
+<td>Picture resolution invalid error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PIC_SIZE_EXCEED_ERROR</b></td>
+<td>866</td>
+<td>Picture size exceed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PIC_ANALYSIS_TARGRT_NUM_EXCEED_ERROR</b></td>
+<td>867</td>
+<td>Picture target num exceed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ANALYSIS_ENGINES_LOADING_ERROR</b></td>
+<td>868</td>
+<td>Engine loading error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ANALYSIS_ENGINES_ABNORMA_ERROR</b></td>
+<td>869</td>
+<td>Engine abnorma.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ANALYSIS_ENGINES_FACELIB_IMPORTING</b></td>
+<td>870</td>
+<td>Analysis engine is import face library.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NO_DATA_FOR_MODELING_ERROR</b></td>
+<td>871</td>
+<td>No data for modeling error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FACE_DATA_MODELING_ERROR</b></td>
+<td>872</td>
+<td>face data modeling error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_FACELIBDATA_OVERLIMIT</b></td>
+<td>873</td>
+<td>face lib data over limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ANALYSIS_ENGINES_ASSOCIATED_CHANNEL</b></td>
+<td>874</td>
+<td>Analysis engine has been associated channel.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CUSTOMID_LEN</b></td>
+<td>875</td>
+<td>CustomID length error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CUSTOMFACELIBID_REPEAT</b></td>
+<td>876</td>
+<td>CustomFaceLibID repeat.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CUSTOMHUMANID_REPEAT</b></td>
+<td>877</td>
+<td>CustomHumanID Repeat.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_URL_DOWNLOAD_FAIL</b></td>
+<td>878</td>
+<td>URL download fail.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_URL_DOWNLOAD_NOTSTART</b></td>
+<td>879</td>
+<td>URL not start download.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CFG_FILE_SECRETKEY_ERROR</b></td>
+<td>880</td>
+<td>Config file secret key error.</td>
+</tr>
+<tr valign=top>
+<td><b>多屏控制器错误码</b></td>
+<td class="style1"></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_WINCHAN_IDX</b></td>
+<td class="style1">901</td>
+<td>Window channel index error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_WIN_LAYER</b></td>
+<td class="style1">902</td>
+<td>Window layer number error(the count of window layers on a single screen exceeds the max number).</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_WIN_BLK_NUM</b></td>
+<td class="style1">903</td>
+<td>Window block number error(the count of screens that single window overlays exceeds the max number).</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_OUTPUT_RESOLUTION</b></td>
+<td class="style1">904</td>
+<td>The output resolution error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LAYOUT</b></td>
+<td class="style1">905</td>
+<td>Layout index error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_INPUT_RESOLUTION</b></td>
+<td class="style1">906</td>
+<td>The input resolution is not supported.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_SUBDEVICE_OFFLINE</b></td>
+<td class="style1">907</td>
+<td>The sub-device is off-line.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_NO_DECODE_CHAN</b></td>
+<td class="style1">908</td>
+<td>There is no free decoding channel.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MAX_WINDOW_ABILITY</b></td>
+<td class="style1">909</td>
+<td>The upper limit of window number.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ORDER_ERROR</b></td>
+<td class="style1">910</td>
+<td>Calling order error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_PLAYING_PLAN</b></td>
+<td class="style1">911</td>
+<td>Be playing plan.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DECODER_USED</b></td>
+<td class="style1">912</td>
+<td>Decoder board is in use.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_OUTPUT_BOARD_DATA_OVERFLOW</b></td>
+<td>913</td>
+<td>The data of output board is over the limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_SAME_USER_NAME</b></td>
+<td>914</td>
+<td>The user name is duplicate.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_INVALID_USER_NAME</b></td>
+<td>915</td>
+<td>Invalid username.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MATRIX_USING</b></td>
+<td>916</td>
+<td>The input matrix is in use.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DIFFERENT_CHAN_TYPE</b></td>
+<td>917</td>
+<td>The channel type is error (the output channel of matrix is different with the input of controller)</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_INPUT_CHAN_BINDED</b></td>
+<td>918</td>
+<td>The input channel has been bound by other matrix.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_BINDED_OUTPUT_CHAN_OVERFLOW</b></td>
+<td>919</td>
+<td>The number of the matrix output channels in use has exceeded the number of channels bound with controller.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MAX_SIGNAL_NUM</b></td>
+<td>920</td>
+<td>The number of input signal sources is over the limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_INPUT_CHAN_USING</b></td>
+<td>921</td>
+<td>The input channel is in use.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MANAGER_LOGON</b></td>
+<td>922</td>
+<td>The operation failed, for the manager has logged in.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_USERALREADY_LOGON</b></td>
+<td>923</td>
+<td>The operation failed, for the user has logged in.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LAYOUT_INIT</b></td>
+<td>924</td>
+<td>The operation failed, for the layout is being initialized.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_BASEMAP_SIZE_NOT_MATCH</b></td>
+<td>925</td>
+<td>The size of traced drawing not match</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_WINDOW_OPERATING</b></td>
+<td>926</td>
+<td>The operation failed, for the window is performing other operation.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_SIGNAL_UPLIMIT</b></td>
+<td>927</td>
+<td>The number of windows has reached the maximum limit.</td>
+</tr>
+<tr valign=top>
+<td><b>解码器错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_WINDOW_SIZE_OVERLIMIT</b></td>
+<td>943</td>
+<td>The window size exceeds the limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MAX_WIN_OVERLAP</b></td>
+<td>951</td>
+<td>The number of windows overlap has reached the maximum limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_STREAMID_CHAN_BOTH_VALID</b></td>
+<td>952</td>
+<td>stream ID and channel number are both valid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_NO_ZERO_CHAN</b></td>
+<td>953</td>
+<td>The device has no zero channel.</td>
+</tr>
+<tr valign=top>
+<td><b>NEED_RECONNECT</b></td>
+<td>955</td>
+<td>Need redirection (for transcoding system)</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_NO_STREAM_ID</b></td>
+<td>956</td>
+<td>The stream ID does not exist.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_TRANS_NOT_START</b></td>
+<td>957</td>
+<td>The transcoding has not been started.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MAXNUM_STREAM_ID</b></td>
+<td>958</td>
+<td>The number of stream ID has reached the maximum limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_WORKMODE_MISMATCH</b></td>
+<td>959</td>
+<td>The work mode does not match with the requirement.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MODE_IS_USING</b></td>
+<td>960</td>
+<td>It Has been working in current mode.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DEV_PROGRESSING</b></td>
+<td>961</td>
+<td>The device is in processing</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_PASSIVE_TRANSCODING</b></td>
+<td>962</td>
+<td>It is in transcoding.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_WINDOW_SIZE_PLACE</b></td>
+<td>975</td>
+<td>Wrong window position.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RGIONAL_RESTRICTIONS</b></td>
+<td>976</td>
+<td>Screen distance exceeds the limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CLOSE_WINDOWS</b></td>
+<td>984</td>
+<td>Operation failed. Close the window first.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_MATRIX_LOOP_ABILITY</b></td>
+<td>985</td>
+<td>Beyond the cycle decoding capacity.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_MATRIX_LOOP_TIME</b></td>
+<td>986</td>
+<td>Invalid cycle decoding time.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LINKED_OUT_ABILITY</b></td>
+<td>987</td>
+<td>No more linked camera can be added.</td>
+</tr>
+<tr valign=top>
+<td><b>能力集错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>XML_ABILITY_NOTSUPPORT</b></td>
+<td>1000</td>
+<td>Not support to get this node of the capability set.</td>
+</tr>
+<tr valign=top>
+<td><b>XML_ANALYZE_NOENOUGH_BUF</b></td>
+<td>1001</td>
+<td>The output buffer is not enough</td>
+</tr>
+<tr valign=top>
+<td><b>XML_ANALYZE_FIND_LOCALXML_ERROR</b></td>
+<td>1002</td>
+<td>Can not find the corresponding xml file.</td>
+</tr>
+<tr valign=top>
+<td><b>XML_ANALYZE_LOAD_LOCALXML_ERROR</b></td>
+<td>1003</td>
+<td>Failed to load the local xml file.</td>
+</tr>
+<tr valign=top>
+<td><b>XML_NANLYZE_DVR_DATA_FORMAT_ERROR</b></td>
+<td>1004</td>
+<td>Data format of the capability is wrong.</td>
+</tr>
+<tr valign=top>
+<td><b>XML_ANALYZE_TYPE_ERROR</b></td>
+<td>1005</td>
+<td>The type of capability set is wrong.</td>
+</tr>
+<tr valign=top>
+<td><b>XML_ANALYZE_XML_NODE_ERROR</b></td>
+<td>1006</td>
+<td>Format of XML capability node is wrong.</td>
+</tr>
+<tr valign=top>
+<td><b>XML_INPUT_PARAM_ERROR</b></td>
+<td>1007</td>
+<td>The input value of XML capability node is wrong.</td>
+</tr>
+<tr valign=top>
+<td><b>XML_VERSION_MISMATCH</b></td>
+<td>1008</td>
+<td>XML version not match</td>
+</tr>
+<tr valign=top>
+<td><b>其他错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_TRANS_CHAN_START</b></td>
+<td>1101</td>
+<td>The operation is failed, for transparent channel has been opened.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DEV_UPGRADING</b></td>
+<td>1102</td>
+<td>The device is upgrading.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MISMATCH_UPGRADE_PACK_TYPE</b></td>
+<td>1103</td>
+<td>The type of upgrade package not match.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DEV_FORMATTING</b></td>
+<td>1104</td>
+<td>The device is being formatted.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MISMATCH_UPGRADE_PACK_VERSION</b></td>
+<td>1105</td>
+<td>The version of upgrade package not match.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_PT_LOCKED</b></td>
+<td>1106</td>
+<td>The device PT has been locked.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_ILLEGAL_VERIFICATION_CODE</b></td>
+<td>1111</td>
+<td>Verification Code illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LACK_VERIFICATION_CODE</b></td>
+<td>1112</td>
+<td>Verification Code missing.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_FORBIDDEN_IP</b></td>
+<td>1113</td>
+<td>This IP address has been banned, do not allow the configuration.</td>
+</tr>
+<tr valign=top>
+<td><b>报警设备错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_SEARCHING_MODULE</b></td>
+<td>1201</td>
+<td>The device is searching for the external module.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_REGISTERING_MODULE</b></td>
+<td>1202</td>
+<td>The device is registering to the external module.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_GETTING_ZONES</b></td>
+<td>1203</td>
+<td>The device is getting defense zone parameters.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_GETTING_TRIGGERS</b></td>
+<td>1204</td>
+<td>The device is getting triggers.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ARMED_STATUS</b></td>
+<td>1205</td>
+<td>The system is armed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_PROGRAM_MODE_STATUS</b></td>
+<td>1206</td>
+<td>The system is in programming mode.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_WALK_TEST_MODE_STATUS</b></td>
+<td>1207</td>
+<td>The system is in pacing mode.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_BYPASS_STATUS</b></td>
+<td>1208</td>
+<td>Bypass state</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DISABLED_MODULE_STATUS</b></td>
+<td>1209</td>
+<td>The function is disabled.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_NOT_SUPPORT_OPERATE_ZONE</b></td>
+<td>1210</td>
+<td>The defense zone does not support the operation.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_NOT_SUPPORT_MOD_MODULE_ADDR</b></td>
+<td>1211</td>
+<td>The module address can not be modified.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_UNREGISTERED_MODULE</b></td>
+<td>1212</td>
+<td>The module is unregistered.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_PUBLIC_SUBSYSTEM_ASSOCIATE_SELF</b></td>
+<td>1213</td>
+<td>The public subsystem is set to associate with itself.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_EXCEEDS_ASSOCIATE_SUBSYSTEM_NUM</b></td>
+<td>1214</td>
+<td>The number of subsystems associated with the public subsystem exceeds the max limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_BE_ASSOCIATED_BY_PUBLIC_SUBSYSTEM</b></td>
+<td>1215</td>
+<td>The subsystem has been associated with the other public subsystem.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ZONE_FAULT_STATUS</b></td>
+<td>1216</td>
+<td>The defense zone is in the fault state.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_SAME_EVENT_TYPE</b></td>
+<td>1217</td>
+<td>The opening and close of alarm output triggered by event have associated with same event type.</td>
+</tr>	
+<tr valign=top>
+<td><b>NET_ERR_ZONE_ALARM_STATUS</b></td>
+<td>1218</td>
+<td>The defense zone is in the alarm state.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_EXPANSION_BUS_SHORT_CIRCUIT</b></td>
+<td>1219</td>
+<td>Short circuit of expansion bus.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_PWD_CONFLICT</b></td>
+<td>1220</td>
+<td>Password conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DETECTOR_GISTERED_BY_OTHER_ZONE</b></td>
+<td>1221</td>
+<td>Detector gistered by other zone.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DETECTOR_GISTERED_BY_OTHER_PU</b></td>
+<td>1222</td>
+<td>Detector gistered by other PU.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DETECTOR_DISCONNECT</b></td>
+<td>1223</td>
+<td>Detector disconnect.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_CALL_BUSY</b></td>
+<td>1224</td>
+<td>Call busy.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_FILE_NAME</b></td>
+<td>1357</td>
+<td>File name error, null or illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_BROADCAST_BUSY</b></td>
+<td>1358</td>
+<td>Broadcast busy.</td>
+</tr>
+<tr valign=top>
+<td><b>智能交通摄像机错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LANENUM_EXCEED</b></td>
+<td>1400</td>
+<td>The number of lanes exceeds the limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PRAREA_EXCEED</b></td>
+<td>1401</td>
+<td>License plate recognition region is too large.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHT_PARAM</b></td>
+<td>1402</td>
+<td>The access parameters of traffic light is error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LANE_LINE_INVALID</b></td>
+<td>1403</td>
+<td>The configuration of lane line is invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_STOP_LINE_INVALID</b></td>
+<td>1404</td>
+<td>The configuration of stop line is invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LEFTORRIGHT_LINE_INVALID</b></td>
+<td>1405</td>
+<td>The boundary line configuration of left-turn or right-turn lane is invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LANE_NO_REPEAT</b></td>
+<td>1406</td>
+<td>The overlaid lane number is repeated.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PRAREA_INVALID</b></td>
+<td>1407</td>
+<td>The polygon region of license plate recognition does not meet the requirement.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHT_NUM_EXCEED</b></td>
+<td>1408</td>
+<td>The number of traffic lights of the video detection exceeds the max limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_SUBLIGHT_NUM_INVALID</b></td>
+<td>1409</td>
+<td>The number of the sub traffic lights of video detection is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHT_AREASIZE_INVALID</b></td>
+<td>1410</td>
+<td>The input area size of the video detection traffic light is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHT_COLOR_INVALID</b></td>
+<td>1411</td>
+<td>The color of the video detection traffic light is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHT_DIRECTION_INVALID</b></td>
+<td>1412</td>
+<td>The direction of the video detection traffic light is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LACK_IOABLITY</b></td>
+<td>1413</td>
+<td>Lack of IO ablity.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_FTP_PORT</b></td>
+<td>1414</td>
+<td>FTP port error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_FTP_CATALOGUE</b></td>
+<td>1415</td>
+<td>FTP catalogue error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_FTP_UPLOAD_TYPE</b></td>
+<td>1416</td>
+<td>FTP upload type error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_FLASH_PARAM_WRITE</b></td>
+<td>1417</td>
+<td>Setting param flash write error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_FLASH_PARAM_READ</b></td>
+<td>1418</td>
+<td>Getting param flash read error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PICNAME_DELIMITER</b></td>
+<td>1419</td>
+<td>Pic name delimiter error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PICNAME_ITEM</b></td>
+<td>1420</td>
+<td>Pic name item error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PLATE_RECOGNIZE_TYPE</b></td>
+<td>1421</td>
+<td>Plate recognize type error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CAPTURE_TIMES</b></td>
+<td>1422</td>
+<td>Capture times error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LOOP_DISTANCE</b></td>
+<td>1423</td>
+<td>Loop distance error.</td>
+</tr>
+<tr valign=top><td><b>NET_DVR_ERR_LOOP_INPUT_STATUS</b></td>
+<td>1424</td>
+<td>Loop input status error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RELATE_IO_CONFLICT</b></td>
+<td>1425</td>
+<td>Related IO conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_INTERVAL_TIME</b></td>
+<td>1426</td>
+<td>Interval time error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_SIGN_SPEED</b></td>
+<td>1427</td>
+<td>Sign speed error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PIC_FLIP</b></td>
+<td>1428</td>
+<td>Flip is used.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RELATE_LANE_NUMBER</b></td>
+<td>1429</td>
+<td>Related lane number error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_TRIGGER_MODE</b></td>
+<td>1430</td>
+<td>Trigger mode error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_DELAY_TIME</b></td>
+<td>1431</td>
+<td>Delay time error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_EXCEED_RS485_COUNT</b></td>
+<td>1432</td>
+<td>Exceed RS485 count.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RADAR_TYPE</b></td>
+<td>1433</td>
+<td>Radar type error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RADAR_ANGLE</b></td>
+<td>1434</td>
+<td>Radar angle error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RADAR_SPEED_VALID_TIME</b></td>
+<td>1435</td>
+<td>Radar speed valid time error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RADAR_LINE_CORRECT</b></td>
+<td>1436</td>
+<td>Radar line correct error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RADAR_CONST_CORRECT</b></td>
+<td>1437</td>
+<td>Radar const correct error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RECORD_PARAM</b></td>
+<td>1438</td>
+<td>Record param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHT_WITHOUT_COLOR_AND_DIRECTION</b></td>
+<td>1439 </td>
+<td>Light number and other param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHT_WITHOUT_DETECTION_REGION</b></td>
+<td>1440 </td>
+<td>Light number and detection region error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RECOGNIZE_PROVINCE_PARAM</b></td>
+<td>1441 </td>
+<td>Plate recognize Province param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_SPEED_TIMEOUT</b></td>
+<td>1442</td>
+<td>IO Speed TimeOut Param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NTP_TIMEZONE</b></td>
+<td>1443</td>
+<td>NTP TimeZone Param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NTP_INTERVAL_TIME</b></td>
+<td>1444</td>
+<td>NTP Interval Time error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NETWORK_CARD_NUM</b></td>
+<td>1445</td>
+<td>Network Card Num error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_DEFAULT_ROUTE</b></td>
+<td>1446</td>
+<td>Default Route error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_BONDING_WORK_MODE</b></td>
+<td>1447</td>
+<td>Banding Work Mode error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_SLAVE_CARD</b></td>
+<td>1448</td>
+<td>Slave Card error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PRIMARY_CARD</b></td>
+<td>1449</td>
+<td>Primary Card error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_DHCP_PPOE_WORK</b></td>
+<td>1450</td>
+<td>DHCP and PPOE not Meanwhile start.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NET_INTERFACE</b></td>
+<td>1451</td>
+<td>Net Interface invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_MTU</b></td>
+<td>1452</td>
+<td>MTU Param invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NETMASK</b></td>
+<td>1453</td>
+<td>Netmask address invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IP_INVALID</b></td>
+<td>1454</td>
+<td>IP address invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_MULTICAST_IP_INVALID</b></td>
+<td>1455</td>
+<td>Multicast IP address invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_GATEWAY_INVALID</b></td>
+<td>1456</td>
+<td>Gateway address invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_DNS_INVALID</b></td>
+<td>1457</td>
+<td>DNS Param invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_ALARMHOST_IP_INVALID</b></td>
+<td>1458</td>
+<td>AlarmHost IP invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IP_CONFLICT</b></td>
+<td>1459</td>
+<td>IP address Conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NETWORK_SEGMENT</b></td>
+<td>1460</td>
+<td>IP not support Multi Network segment.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NETPORT</b></td>
+<td>1461</td>
+<td>NetPort param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PPPOE_NOSUPPORT</b></td>
+<td>1462</td>
+<td>Unsupport PPPOE.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_DOMAINNAME_NOSUPPORT</b></td>
+<td>1463</td>
+<td>Not Support Domain Name.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NO_SPEED</b></td>
+<td>1464</td>
+<td>Speed Not Enabled.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IOSTATUS_INVALID</b></td>
+<td>1465</td>
+<td>IO Status invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_BURST_INTERVAL_INVALID</b></td>
+<td>1466</td>
+<td>Burst Interval invalid.</td>
+</tr>   
+<tr valign=top>
+<td><b>NET_DVR_ERR_RESERVE_MODE</b></td>
+<td>1467</td>
+<td>Reserve Mode invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LANE_NO</b></td>
+<td>1468</td>
+<td>Lane No error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_COIL_AREA_TYPE</b></td>
+<td>1469</td>
+<td>Coil Area Type error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_TRIGGER_AREA_PARAM</b></td>
+<td>1470</td>
+<td>Trigger Area Param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_SPEED_LIMIT_PARAM</b></td>
+<td>1471</td>
+<td>Speed Limit Param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LANE_PROTOCOL_TYPE</b></td>
+<td>1472</td>
+<td>Lane Protocol Type error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_INTERVAL_TYPE</b></td>
+<td>1473</td>
+<td>Capture Interval Type error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_INTERVAL_DISTANCE</b></td>
+<td>1474</td>
+<td>Capture Interval Distance error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RS485_ASSOCIATE_DEVTYPE</b></td>
+<td>1475</td>
+<td>Rs485 Associate DevType error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RS485_ASSOCIATE_LANENO</b></td>
+<td>1476</td>
+<td>Rs485 Associate LaneNo error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LANENO_ASSOCIATE_MULTIRS485</b></td>
+<td>1477</td>
+<td>LaneNo Associate MulitRs485 error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHT_DETECTION_REGION</b></td>
+<td>1478</td>
+<td>Light Detection Region error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_DN2D_NOSUPPORT</b></td>
+<td>1479</td>
+<td>UnSupport Capture Frame 2D Noise Reduction.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IRISMODE_NOSUPPORT</b></td>
+<td>1480</td>
+<td>UnSupport scene Mode.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_WB_NOSUPPORT</b></td>
+<td>1481</td>
+<td>UnSupport White Balance Mode.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IO_EFFECTIVENESS</b></td>
+<td>1482</td>
+<td>IO Effectiveness invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHTNO_MAX</b></td>
+<td>1483</td>
+<td>Access Detector Lights Red / Yellow Overrun.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LIGHTNO_CONFLICT</b></td>
+<td>1484</td>
+<td>Access Detector Lights Red / Yellow Conflict.</td>
+</tr>    
+<tr valign=top>
+<td><b>NET_DVR_ERR_CANCEL_LINE</b></td>
+<td>1485</td>
+<td>Trigger straight line error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_STOP_LINE</b></td>
+<td>1486</td>
+<td>Subject line area stop line error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RUSH_REDLIGHT_LINE</b></td>
+<td>1487</td>
+<td>Red light trigger lines error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IOOUTNO_MAX</b></td>
+<td>1488</td>
+<td>IO out port error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IOOUTNO_AHEADTIME_MAX</b></td>
+<td>1489</td>
+<td>IO out ahead time error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IOOUTNO_IOWORKTIME</b></td>
+<td>1490</td>
+<td>IO out inwork time error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IOOUTNO_FREQMULTI</b></td>
+<td>1491</td>
+<td>IO out frequency multiplication error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IOOUTNO_DUTYRATE</b></td>
+<td>1492</td>
+<td>IO out duty rate error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_VIDEO_WITH_EXPOSURE</b></td>
+<td>1493</td>
+<td>IO out work mode error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PLATE_BRIGHTNESS_WITHOUT_FLASHDET</b></td>
+<td>1494</td>
+<td>Plate enable in plate compensate mode on.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RECOGNIZE_TYPE_PARAM</b></td>
+<td>1495</td>
+<td>Recognize Type error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PALTE_RECOGNIZE_AREA_PARAM</b></td>
+<td>1496</td>
+<td>Plate Recognize Area Param error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PORT_CONFLICT</b></td>
+<td>1497</td>
+<td>Port Conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LOOP_IP </b></td>
+<td>1498</td>
+<td>IP cannot be the loopback address.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_DRIVELINE_SENSITIVE</b></td>
+<td>1499</td>
+<td>Driveline sensitivity error.</td>
+</tr>
+<tr valign=top>
+<td><b>VQD错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_VQD_TIME_CONFLICT</b></td>
+<td>1500</td>
+<td>The time period conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_VQD_PLAN_NO_EXIST</b></td>
+<td>1501</td>
+<td>The diagnostic plan of VQD dese not exist.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_VQD_CHAN_NO_EXIST</b></td>
+<td>1502</td>
+<td>The channel dese not exist.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_VQD_CHAN_MAX</b></td>
+<td>1503</td>
+<td>The total number of VQD plans exceeds the max limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_VQD_TASK_MAX</b></td>
+<td>1504</td>
+<td>The total number of VQD tasks exceeds the max limit.</td>
+</tr>
+<tr valign=top>
+<td><b>抓拍机错误码新增</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_EXCEED_MAX_CAPTURE_TIMES</b></td>
+<td>1600</td>
+<td>Capture times exceed 2 in flash mode.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_REDAR_TYPE_CONFLICT</b></td>
+<td>1601</td>
+<td>Radar type conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LICENSE_PLATE_NULL</b></td>
+<td>1602</td>
+<td>The license plate is null.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_WRITE_DATABASE</b></td>
+<td>1603</td>
+<td>Failed to write data into the database.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LICENSE_EFFECTIVE_TIME</b></td>
+<td>1604</td>
+<td>The effective time of licence plate error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PRERECORDED_STARTTIME_LONG</b></td>
+<td>1605</td>
+<td>The pre recorded start time is greater than the number of illegal capture.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_TRIGGER_RULE_LINE</b></td>
+<td>1606</td>
+<td>Trigger rule line error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LEFTRIGHT_TRIGGERLINE_NOTVERTICAL</b></td>
+<td>1607</td>
+<td>Left and right trigger line is not vertical.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_FLASH_LAMP_MODE</b></td>
+<td>1608</td>
+<td>Flash lamp mode error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_ILLEGAL_SNAPSHOT_NUM</b></td>
+<td>1609</td>
+<td>Illegal capture number error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_ILLEGAL_DETECTION_TYPE</b></td>
+<td>1610</td>
+<td>Illegal detection type error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_POSITIVEBACK_TRIGGERLINE_HIGH</b></td>
+<td>1611</td>
+<td>Positive back to trigger line height error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_MIXEDMODE_CAPTYPE_ALLTARGETS</b></td>
+<td>1612</td>
+<td>Mixed mode only supports capture type all targets.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CARSIGNSPEED_GREATERTHAN_LIMITSPEED</b></td>
+<td>1613</td>
+<td>Car sign speed greater than speed limit value.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_BIGCARSIGNSPEED_GREATERTHAN_LIMITSPEED</b></td>
+<td>1614</td>
+<td>Big car sign speed limit greater than speed limit value.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_BIGCARSIGNSPEED_GREATERTHAN_CARSIGNSPEED</b></td>
+<td>1615</td>
+<td>Big car sign speed limit is greater than the car sign speed limit value.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_BIGCARLIMITSPEED_GREATERTHAN_CARLIMITSPEED</b></td>
+<td>1616</td>
+<td>Big car speed limit value is greater than the car speed limit value.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_BIGCARLOWSPEEDLIMIT_GREATERTHAN_CARLOWSPEEDLIMIT</b></td>
+<td>1617</td>
+<td>Big car low speed limit value is greater than the car low speed limit value.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CARLIMITSPEED_GREATERTHAN_EXCEPHIGHSPEED</b></td>
+<td>1618</td>
+<td>Car speed limit greater than exception high speed value.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_BIGCARLIMITSPEED_GREATERTHAN_EXCEPHIGHSPEED</b></td>
+<td>1619</td>
+<td>Big car speed limit greater than exception high speed value.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_STOPLINE_MORETHAN_TRIGGERLINE</b></td>
+<td>1620</td>
+<td>Stopping more than straight lines trigger lines.</td>
+</tr>
+<tr valign=top>
+<td><b>门禁主机错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_TIME_OVERLAP</b></td>
+<td>1900</td>
+<td>The time period is overlapped.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_HOLIDAY_PLAN_OVERLAP</b></td>
+<td>1901</td>
+<td>The holiday plan is overlapped.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_CARDNO_NOT_SORT</b></td>
+<td>1902</td>
+<td>The card number is not sorted.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_CARDNO_NOT_EXIST</b></td>
+<td>1903</td>
+<td>The card number is not existed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ILLEGAL_CARDNO</b></td>
+<td>1904</td>
+<td>The card number is false.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ZONE_ALARM</b></td>
+<td>1905</td>
+<td>The zone is armed(the modification of parameters is not allowed)</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ZONE_OPERATION_NOT_SUPPORT</b></td>
+<td>1906</td>
+<td>The zone does not support the operation.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_INTERLOCK_ANTI_CONFLICT</b></td>
+<td>1907</td>
+<td>Both the multi-door interlocking and anti-sneak configuration are false.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DEVICE_CARD_FULL</b></td>
+<td>1908</td>
+<td>The card is full(return when up to 10W).</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_HOLIDAY_GROUP_DOWNLOAD</b></td>
+<td>1909</td>
+<td>Holiday group download error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LOCAL_CONTROL_OFF</b></td>
+<td>1910</td>
+<td>Local control off.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LOCAL_CONTROL_DISADD</b></td>
+<td>1911</td>
+<td>Local control disadd.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LOCAL_CONTROL_HASADD</b></td>
+<td>1912</td>
+<td>Local control hasadd.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LOCAL_CONTROL_DOORNO_CONFLICT</b></td>
+<td>1913</td>
+<td>Local control doorNO conflict.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LOCAL_CONTROL_COMMUNICATION_FAIL</b></td>
+<td>1914</td>
+<td>Local control communication fail.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_OPERAND_INEXISTENCE</b></td>
+<td>1915</td>
+<td>Operand inexistence.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LOCAL_CONTROL_OVER_LIMIT</b></td>
+<td>1916</td>
+<td>Local control over limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DOOR_OVER_LIMIT</b></td>
+<td>1917</td>
+<td>Door over limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_ALARM_OVER_LIMIT</b></td>
+<td>1918</td>
+<td>Alarm over limit.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_LOCAL_CONTROL_ADDRESS_INCONFORMITY_TYPE</b></td>
+<td>1919</td>
+<td>Local control address inconformity type.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_NOT_SUPPORT_ONE_MORE_CARD</b></td>
+<td>1920</td>
+<td>Device not support one more card.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DELETE_NO_EXISTENCE_FACE</b></td>
+<td>1921</td>
+<td>NET_ERR_DELETE_NO_EXISTENCE_FACE*/"Delete no existence face.</td>
+</tr>
+<tr valign=top>
+<td><b>可视对讲错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_OUTDOOR_COMMUNICATION</b></td>
+<td>1950</td>
+<td>Communication the door machine abnormality.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_ROOMNO_UNDEFINED</b></td>
+<td>1951</td>
+<td>Not configured  room no.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NO_CALLING</b></td>
+<td>1952</td>
+<td>No call.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RINGING</b></td>
+<td>1953</td>
+<td>Ring the bell.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IS_CALLING_NOW</b></td>
+<td>1954</td>
+<td>Is calling now.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LOCK_PASSWORD_WRONG</b></td>
+<td>1955</td>
+<td>Intelligent lock password mistake.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CONTROL_LOCK_FAILURE</b></td>
+<td>1956</td>
+<td>Switch lock failure.</td>
+</tr>    
+<tr valign=top>
+<td><b>NET_DVR_ERR_CONTROL_LOCK_OVERTIME</b></td>
+<td>1957</td>
+<td>Switch lock timeout.</td>
+</tr>	
+<tr valign=top>
+<td><b>NET_DVR_ERR_LOCK_DEVICE_BUSY</b></td>
+<td>1958</td>
+<td>Intelligent lock device is busy.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_UNOPEN_REMOTE_LOCK_FUNCTION</b></td>
+<td>1959</td>
+<td>Remote lock function is not open.</td>
+</tr>
+<tr valign=top>
+<td><b>其他错误码</b></td>
+<td></td>
+<td></td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_FILE_NOT_COMPLETE</b></td>
+<td>2100</td>
+<td>The downloaded file is incomplete.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IPC_EXIST</b></td>
+<td>2101</td>
+<td>The IPC has been existed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_ADD_IPC</b></td>
+<td>2102</td>
+<td>The channel has added one IPC.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_OUT_OF_RES</b></td>
+<td>2103</td>
+<td>Out of network bandwidth capacity.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CONFLICT_TO_LOCALIP</b></td>
+<td>2104</td>
+<td>IP conflict between IPC and DVR.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_IP_SET</b></td>
+<td>2105</td>
+<td>Illegal IP.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PORT_SET</b></td>
+<td>2106</td>
+<td>Illegal port.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_WAN_NOTSUPPORT</b></td>
+<td>2107</td>
+<td>Not in the same WLAN, not support security question config or export GUID.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_MUTEX_FUNCTION</b></td>
+<td>2108</td>
+<td>Mutual exclusion function error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_QUESTION_CONFIGNUM</b></td>
+<td>2109</td>
+<td>Security question config amount error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_FACECHAN_NORESOURCE</b></td>
+<td>2110</td>
+<td>Face intelligent channel resource has run out.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_ERR_DATA_CALLBACK</b></td>
+<td>2111</td>
+<td>Data is Callbacking.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SMD_ENCODING_NORESOURSE</b></td>
+<td>2116</td>
+<td>SMD insufficient encoding resources.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_SMD_DECODING_NORESOURSE</b></td>
+<td>2117</td>
+<td>SMD insufficient decoding resources.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_FACELIB_DATA_PROCESSING</b></td>
+<td>2118</td>
+<td>Facelib data is being processed.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LARGE_TIME_DIFFRENCE</b></td>
+<td>2119</td>
+<td>Too large time difference between device and server.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_NO_SUPPORT_WITH_PLAYBACK</b></td>
+<td>2120</td>
+<td>Open the playback,this function is not supported.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CHANNEL_NO_SUPPORT_WITH_SMD</b></td>
+<td>2121</td>
+<td>The channel has opened SMD,this function is not supported.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_CHANNEL_NO_SUPPORT_WITH_FD</b></td>
+<td>2122</td>
+<td>The channel has opened Face snap,this function is not supported.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ILLEGAL_PHONE_NUMBER</b></td>
+<td>2123</td>
+<td>The phone number is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ILLEGAL_CERITIFICATE_NUMBER</b></td>
+<td>2124</td>
+<td>The certificate number is illegal.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CHANNEL_RESOLUTION_NO_SUPPORT</b></td>
+<td>2125</td>
+<td>The resolving power of this chanel is not supported.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_CHANNEL_COMPRESSION_NO_SUPPORT</b></td>
+<td>2126</td>
+<td>The encoding format of this chanel is not supported.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_INSUFFICIENT_DEEP_LEARNING_RESOURCES</b></td>
+<td>2146</td>
+<td>Deep learning resources exceed limits.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_PANEL_MODE_NOT_CONFIG</b></td>
+<td>2153</td>
+<td>The panel mode is not configured.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_NOTSUPPORT_DEICING</b></td>
+<td>3001</td>
+<td>Not support Deicing.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_THERMENABLE_CLOSE</b></td>
+<td>3002</td>
+<td>Thermometry is not enabled.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_PANORAMIC_LIMIT_OPERATED</b></td>
+<td>3004</td>
+<td>Panoramic view and position limit can not be operated at the same time.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_SMARTH264_ROI_OPERATED</b></td>
+<td>3005</td>
+<td>SmartH264 and ROI can not be operated at the same time.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_RULENUM_LIMIT</b></td>
+<td>3006</td>
+<td>Upper limit of rule number.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_LASER_DEICING_OPERATED</b></td>
+<td>3007</td>
+<td>Laser and deicing cannot be operated at the same time.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_ERR_OFFDIGITALZOOM_OR_MINZOOMLIMIT</b></td>
+<td>3008</td>
+<td>Turn off the digital zoom function or set the zoom limit to the minimum.</td>
+</tr>
+</table>
+<br><br>
+
+<h1 align="center"><a name="RTSPCODE" id="001" >RTSP通讯库错误码</a></h1><br><br>
+
+<table>
+<tr valign=top>
+<th align=left><b>错误类型</b></th>
+<th align=left class="style2">错误值</th>
+<th align=left>错误信息</th>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_ERROR_NOENOUGHPRI</td>
+<td class="style2">401</td>
+<td>Authentication failed: if server returns 401, it will change to this error code</td>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_ERROR_ALLOC_RESOURCE</td>
+<td class="style2">402</td>
+<td>Failed to allocate the resource</td>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_ERROR_PARAMETER</td>
+<td class="style2">403</td>
+<td>Parameter error</td>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_ERROR_NO_URL</td>
+<td class="style2">404</td>
+<td>The assigned URL does not exist: when the server returns 404, SDK turns into this error code.
+E.g. the channel is not available, or the channel does not support sub stream</td>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_ERROR_FORCE_STOP</td>
+<td class="style2">406</td>
+<td>The user forces to exit midway</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_GETPORTFAILED</b></td>
+<td class="style2">407</td>
+<td>RTSP port getting error.</td>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_DESCRIBERROR</td>
+<td class="style2">410</td>
+<td>RTSP DESCRIBE communicate error</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_DESCRIBESENDTIMEOUT</b></td>
+<td class="style2">411</td>
+<td>Sending RTSP DESCRIBE is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_DESCRIBESENDERROR</b></td>
+<td class="style2">412</td>
+<td>Failed to send RTSP DESCRIBE.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_DESCRIBERECVTIMEOUT</b></td>
+<td class="style2">413</td>
+<td>Receiving RTSP DESCRIBE is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_DESCRIBERECVDATALOST</b></td>
+<td class="style2">414</td>
+<td>Receiving data of RTSP DESCRIBE error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_DESCRIBERECVERROR</b></td>
+<td class="style2">415</td>
+<td>Failed to receive RTSP DESCRIBE.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_DESCRIBESERVERERR</b></td>
+<td class="style2">416</td>
+<td>RTSP DESCRIBE device returns the error.</td>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_SETUPERROR</td>
+<td class="style2">420</td>
+<td>(or 419), RTSP SETUP interaction error. Generally, it is that the address(URL) returned by the device is not accessible,
+or it is rejected by the server</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_SETUPSENDTIMEOUT</b></td>
+<td class="style2">421</td>
+<td>Sending RTSP SETUP is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_SETUPSENDERROR</b></td>
+<td class="style2">422</td>
+<td>Sending RTSP SETUP error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_SETUPRECVTIMEOUT</b></td>
+<td class="style2">423</td>
+<td>Receiving RTSP SETUP is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_SETUPRECVDATALOST</b></td>
+<td class="style2">424</td>
+<td>Receiving data of RTSP SETUP error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_SETUPRECVERROR</b></td>
+<td class="style2">425</td>
+<td>Failed to receive RTSP SETUP.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_OVER_MAX_CHAN</b></td>
+<td class="style2">426</td>
+<td>It exceeds the max connection number of server. or server has not enough resource.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_SETUPSERVERERR</b></td>
+<td class="style2">427</td>
+<td>RTSP SETUP device returns the error.</td>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_PLAYERROR</td>
+<td class="style2">430</td>
+<td>RTSP PLAY interaction error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_PLAYSENDTIMEOUT</b></td>
+<td class="style2">431</td>
+<td>Sending RTSP PLAY is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_PLAYSENDERROR</b></td>
+<td class="style2">432</td>
+<td>Sending RTSP PLAY error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_PLAYRECVTIMEOUT</b></td>
+<td class="style2">433</td>
+<td>Receiving RTSP PLAY is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_PLAYRECVDATALOST</b></td>
+<td class="style2">434</td>
+<td>Receiving data of RTSP PLAY error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_PLAYRECVERROR</b></td>
+<td class="style2">435</td>
+<td>Failed to receive RTSP PLAY.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_PLAYSERVERERR</b></td>
+<td class="style2">436</td>
+<td>RTSP PLAY device returns the error.</td>
+</tr>
+<tr valign=top>
+<td class="style3">NET_DVR_RTSP_TEARDOWNERROR</td>
+<td class="style2">440</td>
+<td>RTSP TEARDOWN interaction error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_TEARDOWNSENDTIMEOUT</b></td>
+<td class="style2">441</td>
+<td>Sending RTSP TEARDOWN is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_TEARDOWNSENDERROR</b></td>
+<td class="style2">442</td>
+<td>Sending RTSP TEARDOWN error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_TEARDOWNRECVTIMEOUT</b></td>
+<td class="style2">443</td>
+<td>Receiving RTSP TEARDOWN is timeout.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_TEARDOWNRECVDATALOST</b></td>
+<td class="style2">444</td>
+<td>Receiving data of RTSP TEARDOWN error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_TEARDOWNRECVERROR</b></td>
+<td class="style2">445</td>
+<td>Failed to receive RTSP TEARDOWN.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_DVR_RTSP_TEARDOWNSERVERERR</b></td>
+<td class="style2">446</td>
+<td>RTSP TEARDOWN device returns the error.</td>
+</tr>
+</table>
+
+<h1 align="center"><a name="PLAYCODE" id="002" >软解码库错误码</a></h1><br><br>
+
+<table>
+<tr valign=top>
+<th align=left><b>错误类型</b></th>
+<th align=left>错误值</th>
+<th align=left>错误信息</th>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_NOERROR</b></td>
+<td>500</td>
+<td>no error</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_PARA_OVER</b></td>
+<td>501</td>
+<td>input parameter is invalid</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_ORDER_ERROR</b></td>
+<td>502</td>
+<td>The order of the function to be called is error</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_TIMER_ERROR</b></td>
+<td>503</td>
+<td>Create multimedia clock failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_DEC_VIDEO_ERROR</b></td>
+<td>504</td>
+<td>Decode video data failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_DEC_AUDIO_ERROR</b></td>
+<td>505</td>
+<td>Decode audio data failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_ALLOC_MEMORY_ERROR</b></td>
+<td>506</td>
+<td>Allocate memory failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_OPEN_FILE_ERROR</b></td>
+<td>507</td>
+<td>Open the file failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_CREATE_OBJ_ERROR</b></td>
+<td>508</td>
+<td>Create thread or event failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_CREATE_DDRAW_ERROR</b></td>
+<td>509</td>
+<td>Create DirectDraw object failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_CREATE_OFFSCREEN_ERROR</b></td>
+<td>510</td>
+<td>failed when creating off-screen surface</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_BUF_OVER</b></td>
+<td>511</td>
+<td>buffer is overflow</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_CREATE_SOUND_ERROR</b></td>
+<td>512</td>
+<td>failed when creating audio device</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_SET_VOLUME_ERROR</b></td>
+<td>513</td>
+<td>Set volume failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_SUPPORT_FILE_ONLY</b></td>
+<td>514</td>
+<td>The function only support play file</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_SUPPORT_STREAM_ONLY</b></td>
+<td>515</td>
+<td>The function only support play stream</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_SYS_NOT_SUPPORT</b></td>
+<td>516</td>
+<td>System not support</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_FILEHEADER_UNKNOWN</b></td>
+<td>517</td>
+<td>No file header</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_VERSION_INCORRECT</b></td>
+<td>518</td>
+<td>The version of decoder and encoder is not adapted</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PALYM4_INIT_DECODER_ERROR</b></td>
+<td>519</td>
+<td>nitialize decoder failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_CHECK_FILE_ERROR</b></td>
+<td>520</td>
+<td>The file data is unknown</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_INIT_TIMER_ERROR</b></td>
+<td>521</td>
+<td>Initialize decoder failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_BLT_ERROR</b></td>
+<td>522</td>
+<td>Blt failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_UPDATE_ERROR</b></td>
+<td>523</td>
+<td>Update failed</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_OPEN_FILE_ERROR_MULTI</b></td>
+<td>524</td>
+<td>openfile error, streamtype is multi</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_OPEN_FILE_ERROR_VIDEO</b></td>
+<td>525</td>
+<td>openfile error, streamtype is video</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_JPEG_COMPRESS_ERROR</b></td>
+<td>526</td>
+<td>JPEG compress error</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_EXTRACT_NOT_SUPPORT</b></td>
+<td>527</td>
+<td>Don't support the version of this file.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_PLAYM4_EXTRACT_DATA_ERROR</b></td>
+<td>528</td>
+<td>Extract video data failed.</td>
+</tr>
+</table>
+<h1 align="center"><a name="TRANSCODE" id="A1" >转封装库错误码</a></h1><br><br>
+<table>
+<tr valign=top>
+<th align=left width=40%><b>错误类型</b></th>
+<th align=left width=20%>错误值</th>
+<th align=left width=40%>错误信息</th>
+</tr>
+<tr valign=top>
+<td><b>NET_CONVERT_ERROR_NOT_SUPPORT</b></td>
+<td>581</td>
+<td>Convert not support.</td>
+</tr>
+</table>
+<h1 align="center"><a name="VOICECODE" id="003" >语音对讲库错误码</a></h1><br><br>
+<table>
+<tr valign=top>
+<th align=left width=40%><b>错误类型</b></th>
+<th align=left width=20%>错误值</th>
+<th align=left width=40%>错误信息</th>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTERCOM_OK</b></td>
+<td>600</td>
+<td>No error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_NOTSUPORT</b></td>
+<td>601</td>
+<td>Not support.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_ALLOC_MEMERY</b></td>
+<td>602</td>
+<td>Memory allocation error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_PARAMETER</b></td>
+<td>603</td>
+<td>Parameter error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_CALL_ORDER</b></td>
+<td>604</td>
+<td>API calling order error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_FIND_DEVICE</b></td>
+<td>605</td>
+<td>No audio device</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_OPEN_DEVICE</b></td>
+<td>606</td>
+<td>Failed to open the audio device</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_NO_CONTEXT</b></td>
+<td>607</td>
+<td>Context error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_NO_WAVFILE</b></td>
+<td>608</td>
+<td>WAV file error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_INVALID_TYPE</b></td>
+<td>609</td>
+<td>The type of WAV parameter is invalid</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_ENCODE_FAIL</b></td>
+<td>610</td>
+<td>Failed to encode data</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_DECODE_FAIL</b></td>
+<td>611</td>
+<td>Failed to decode data</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_NO_PLAYBACK</b></td>
+<td>612</td>
+<td>Failed to play audio</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_DENOISE_FAIL</b></td>
+<td>613</td>
+<td>Failed to denoise</td>
+</tr>
+<tr valign=top>
+<td><b>NET_AUDIOINTECOM_ERR_UNKOWN</b></td>
+<td>619</td>
+<td>Unknown</td>
+</tr>
+</table>
+
+<h1 align="center"><a name="QOSCODE" id="004" >Qos流控库错误码</a></h1><br><br>
+
+<table>
+<tr valign=top>
+<th align=left><b>错误类型</b></th>
+<th align=left>错误值</th>
+<th align=left>错误信息</th>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_SCHEDPARAMS_BAD_MINIMUM_INTERVAL</b></td>
+<td>678</td>
+<td>Scheduled parameter of minimum interval is bad .</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_SCHEDPARAMS_BAD_FRACTION</b></td>
+<td>679</td>
+<td>Scheduled parameter of fraction is bad.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_SCHEDPARAMS_INVALID_BANDWIDTH</b></td>
+<td>680</td>
+<td>Scheduled parameter of bandwidth is not invalid.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_PACKET_TOO_BIG</b></td>
+<td>687</td>
+<td>Packet too big.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_PACKET_LENGTH</b></td>
+<td>688</td>
+<td>Packet length error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_PACKET_VERSION</b></td>
+<td>689</td>
+<td>Packet version error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_PACKET_UNKNOW</b></td>
+<td>690</td>
+<td>Packet unknow.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_OUTOFMEM</b></td>
+<td>695</td>
+<td>Out of memory.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_LIB_NOT_INITIALIZED</b></td>
+<td>696</td>
+<td>Lib not initialized.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_SESSION_NOT_FOUND</b></td>
+<td>697</td>
+<td>Session not found.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERR_INVALID_ARGUMENTS</b></td>
+<td>698</td>
+<td>Invalid arguments.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_ERROR</b></td>
+<td>699</td>
+<td>Qos error.</td>
+</tr>
+<tr valign=top>
+<td><b>NET_QOS_OK</b></td>
+<td>700</td>
+<td>No error.</td>
+</tr>
+</table>
+<h4>Remarks</h4>
+<p>
+通过NET_DVR_GetLastError函数可获取错误号值。
+</p>
+<h4>See Also</h4>
+<p><b><a href="NET_DVR_GetLastError.html">NET_DVR_GetLastError</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+
+</html>
+
+

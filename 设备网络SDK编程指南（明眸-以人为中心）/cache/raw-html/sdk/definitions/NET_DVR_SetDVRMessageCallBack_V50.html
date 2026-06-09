@@ -1,0 +1,1023 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_SetDVRMessageCallBack_V50</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+    <style type="text/css">
+        .style4
+        {
+            background-color: #F3F3F3;
+        }
+        .style5
+        {
+            background-color: #F3F3F3;
+        }
+        .style6
+        {
+            font-weight: bold;
+            background-color: #F3F3F3;
+        }
+    </style>
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_SetDVRMessageCallBack_V50</h1>
+<p>注册报警信息回调函数。</p>
+
+<PRE class=syntax><b>BOOL NET_DVR_SetDVRMessageCallBack_V50(</b>
+<b>  int</b><i>            iIndex</i><b>,</b>
+<b>  MSGCallBack</b><i>    fMessageCallBack</i><b>,</b>
+<b>  void</b><i>           *pUser</i><b></b>
+<b>);</b></PRE>
+
+<h4>Parameters</h4>
+<dl>
+<dt><i>iIndex</i></dt>
+<dd>[in] 回调函数索引，取值范围：[0,15]</dd>
+
+<dt><i>fMessageCallBack</i></dt>
+<dd>[in] 回调函数</dd>
+
+<dt><i>pUser</i></dt>
+<dd>[in] 用户数据
+</dd>
+</dl>
+
+<h4>Callback Function</h4>
+<PRE class=syntax><b>typedef void (CALLBACK *MSGCallBack)(</b>
+<b>  LONG</b><i>               lCommand</i><b>,</b>
+<b>  <a href="../structures/NET_DVR_ALARMER.html">NET_DVR_ALARMER</a></b><i>    *pAlarmer</i><b>,</b>
+<b>  char</b><i>               *pAlarmInfo</i><b>,</b>
+<b>  DWORD</b><i>              dwBufLen</i><b>,</b>
+<b>  void</b><i>               *pUser</i><b></b>
+<b>);</b></PRE>
+<h4>Callback Function Parameters</h4>
+<dl>
+<dt><i>lCommand</i></dt>
+<dd>[out] 上传的消息类型，不同的报警信息对应不同的类型，通过类型区分是什么报警信息，详见“Remarks”中列表
+</dd>
+<dt><i>pAlarmer</i></dt>
+<dd>[out] 报警设备信息，包括设备序列号、IP地址、登录IUserID句柄等</dd>
+
+<dt><i>pAlarmInfo</i></dt>
+<dd>[out] 报警信息，通过lCommand值判断pAlarmer对应的结构体，详见“Remarks”中列表</dd>
+
+<dt><i>dwBufLen</i></dt>
+<dd>[out] 报警信息缓存大小</dd>
+
+<dt><i>pUser</i></dt>
+<dd>[out] 用户数据</dd>
+</dl>
+
+<h4>Return Values</h4>
+<p>TRUE表示成功，FALSE表示失败。接口返回失败请调用<b><a href="../definitions/NET_DVR_GetLastError.html">NET_DVR_GetLastError</a></b>获取错误码，通过错误码判断出错原因。</p>
+
+<h4>Remarks</h4>
+<ul>
+<li>V30、V31的接口设置报警回调函数是全局唯一的，注册多次会覆盖之前的，只有最后设置的回调函数有效，所有设备报警信息都是在同一个回调函数中返回的，通过报警设备信息（pAlarmInfo）区分是哪台设备；通过V50接口设置报警回调函数，支持设置多路不同的回调函数，最大支持16路，通过索引进行区分，所有的设备报警信息会同时在设置的各个回调函数里面返回，返回相同的数据，同样需要通过报警设备信息（pAlarmInfo）区分是哪台设备。</li>
+<li>该接口中回调函数的第一个参数（lCommand）和第三个参数（pAlarmInfo）是密切关联的，其关系见下表：
+<table>
+<tr valign=top>
+<th align=left width=30%><b>消息类型（lCommand）</b></th>
+<th align=left width=10%>宏定义值</th>
+<th align=left width=40%>上传内容</th>
+<th align=left width=30%>pAlarmInfo对应的结构体</th>
+</tr>
+<tr valign=top>
+<td width=30%><b>智能报警</b></td>
+<td width=10%></td>
+<td width=40%></td>
+<td width=30%></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_RULE</b></td>
+<td width=10%>0x1102</td>
+<td width=40%>行为分析信息</td>
+<td width=30%><a href="../structures/NET_VCA_RULE_ALARM.html"><b>NET_VCA_RULE_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_PDC</b></td>
+<td width=10%>0x1103</td>
+<td width=40%>客流量统计报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_PDC_ALRAM_INFO.html"><b>NET_DVR_PDC_ALRAM_INFO</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_RULE_INFO_UPLOAD</b></td>
+<td width=10%>0x1107</td>
+<td width=40%>事件数据信息</td>
+<td width=30%><a href="../structures/NET_DVR_RULE_INFO_ALARM.html"><b>NET_DVR_RULE_INFO_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_FACE</b></td>
+<td width=10%>0x1106</td>
+<td width=40%>人脸检测识别报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_FACEDETECT_ALARM.html"><b>NET_DVR_FACEDETECT_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_UPLOAD_FACESNAP_RESULT</b></td>
+<td width=10%>0x1112</td>
+<td width=40%>人脸抓拍结果信息</td>
+<td width=30%><a href="../structures/NET_VCA_FACESNAP_RESULT.html"><b>NET_VCA_FACESNAP_RESULT</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_FACECAPTURE_STATISTICS_RESULT</b></td>
+<td width=10%>0x112a</td>
+<td width=40%>人脸抓拍人员统计信息</td>
+<td width=30%><a href="../structures/NET_DVR_FACECAPTURE_STATISTICS_RESULT.html"><b>NET_DVR_FACECAPTURE_STATISTICS_RESULT</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_SNAP_MATCH_ALARM</b></td>
+<td width=10%>0x2902</td>
+<td width=40%>人脸黑名单比对结果信息</td>
+<td width=30%><a href="../structures/NET_VCA_FACESNAP_MATCH_ALARM.html"><b>NET_VCA_FACESNAP_MATCH_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_FACE_DETECTION</b></td>
+<td width=10%>0x4010</td>
+<td width=40%>人脸侦测报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_FACE_DETECTION.html"><b>NET_DVR_FACE_DETECTION</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_TARGET_LEFT_REGION</b></td>
+<td width=10%>0x4011</td>
+<td width=40%>教师离开讲台报警</td>
+<td width=30%><a href="../structures/NET_DVR_TARGET_LEFT_REGION_ALARM.html"><b>NET_DVR_TARGET_LEFT_REGION_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_PEOPLE_DETECTION_UPLOAD</b></td>
+<td width=10%>0x4014</td>
+<td width=40%>人员侦测信息</td>
+<td width=30%><a href="../structures/NET_DVR_PEOPLE_DETECTION_RESULT.html"><b>NET_DVR_PEOPLE_DETECTION_RESULT</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% rowspan="7"><b>COMM_VCA_ALARM</b></td>
+<td width=10% rowspan="7">0x4993</td>
+<td width=40% rowspan="7">智能检测通用报警(Json数据结构)</td>
+<td width=30%><a href="../JSONs/EVENT_JSON_Human.html"><b>人体目标识别报警Json数据</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><a href="../JSONs/EVENT_JSON_Density.html"><b>人员密度报警Json数据</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><a href="../ISAPI文档/personQueueDetection/39.html"><b>人员排队时长检测报警JSON数据</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><a href="../ISAPI文档/personQueueDetection/40.html"><b>人员排队人数检测报警JSON数据</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><a href="../JSONs/EVENT_JSON_safetyHelmet.html"><b>安全帽检测报警JSON数据</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><a href="../ISAPI文档/medical/43.html"><b>录制状态报警信息上传JSON数据</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><a href="../ISAPI文档/medical/44.html"><b>资源上传云存储状态报警信息上传JSON数据</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_SIGN_ABNORMAL_ALARM</b></td>
+<td class="style7">0x6120</td>
+<td width=40%>体征异常报警(Json数据结构)</td>
+<td width=30%><a href="../JSONs/EVENT_JSON_signInstrument.html">EVENT_JSON</a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_HFPD_ALARM</b></td>
+<td class="style7">0x6121</td>
+<td width=40%>高频人员检测报警(Json数据结构)</td>
+<td width=30%><a href="../JSONs/EVENT_JSON_HFPDalertStream.html">EVENT_JSON</a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_VQD_EX</b></td>
+<td width=10%>0x1116</td>
+<td width=40%>VQD报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_VQD_ALARM.html"><b>NET_DVR_VQD_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_VQD</b></td>
+<td width=10%>0x6000</td>
+<td width=40%>VQD诊断报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_VQD_DIAGNOSE_INFO.html"><b>NET_DVR_VQD_DIAGNOSE_INFO</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_SCENECHANGE_DETECTION_UPLOAD</b></td>
+<td width=10%>0x1130</td>
+<td width=40%>场景变更报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_SCENECHANGE_DETECTION_RESULT.html"><b>NET_DVR_SCENECHANGE_DETECTION_RESULT</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_CROSSLINE_ALARM</b></td>
+<td width=10%>0x1131</td>
+<td width=40%>压线报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_CROSSLINE_ALARM.html"><b>NET_DVR_CROSSLINE_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_AUDIOEXCEPTION</b></td>
+<td width=10%>0x1150</td>
+<td width=40%>声音报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_AUDIOEXCEPTION_ALARM.html"><b>NET_DVR_AUDIOEXCEPTION_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_DEFOCUS</b></td>
+<td width=10%>0x1151</td>
+<td width=40%>虚焦报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_DEFOCUS_ALARM.html"><b>NET_DVR_DEFOCUS_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_SWITCH_LAMP_ALARM</b></td>
+<td width=10%>0x6002</td>
+<td width=40%>开关灯检测报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_SWITCH_LAMP_ALARM.html"><b>NET_DVR_SWITCH_LAMP_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_UPLOAD_HEATMAP_RESULT</b></td>
+<td width=10%>0x4008</td>
+<td width=40%>热度图报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_HEATMAP_RESULT.html"><b>NET_DVR_HEATMAP_RESULT</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_FIREDETECTION_ALARM</b></td>
+<td width=10%>0x4991</td>
+<td width=40%>火点检测报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_FIREDETECTION_ALARM.html"><b>NET_DVR_FIREDETECTION_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_THERMOMETRY_DIFF_ALARM</b></td>
+<td width=10%>0x5211</td>
+<td width=40%>温差报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_THERMOMETRY_DIFF_ALARM.html"><b>NET_DVR_THERMOMETRY_DIFF_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_THERMOMETRY_ALARM</b></td>
+<td width=10%>0x5212</td>
+<td width=40%>温度报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_THERMOMETRY_ALARM.html"><b>NET_DVR_THERMOMETRY_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_SHIPSDETECTION</b></td>
+<td width=10%>0x4521</td>
+<td width=40%>船只检测报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_SHIPSDETECTION_ALARM.html"><b>NET_DVR_SHIPSDETECTION_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">智能交通</td>
+<td width=10% class="style4"></td>
+<td width=40% style="background-color: #F3F3F3"></td>
+<td width=30% style="background-color: #F3F3F3"></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_AID</td>
+<td width=10% class="style5">0x1110</td>
+<td width=40% class="style4">交通事件报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_AID_ALARM.html">NET_DVR_AID_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_TPS</td>
+<td width=10% class="style5">0x1111</td>
+<td width=40% class="style4">交通参数统计报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_TPS_ALARM.html">NET_DVR_TPS_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_TFS</td>
+<td width=10% class="style5">0x1113</td>
+<td width=40% class="style4">交通取证报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_TFS_ALARM.html">NET_DVR_TFS_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_TPS_V41</td>
+<td width=10% class="style5">0x1114</td>
+<td width=40% class="style4">交通参数统计报警信息(扩展)</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_TPS_ALARM_V41.html">NET_DVR_TPS_ALARM_V41</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_AID_V41</td>
+<td width=10% class="style5">0x1115</td>
+<td width=40% class="style4">交通事件报警信息扩展</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_AID_ALARM_V41.html">NET_DVR_AID_ALARM_V41</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_UPLOAD_PLATE_RESULT</td>
+<td width=10% class="style5">0x2800</td>
+<td width=40% class="style4">交通抓拍结果</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_PLATE_RESULT.html">NET_DVR_PLATE_RESULT</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ITS_PLATE_RESULT</td>
+<td width=10% class="style5">0x3050</td>
+<td width=40% class="style4">交通抓拍结果(新报警信息)</td>
+<td width=30% class="style6"><a href="../structures/NET_ITS_PLATE_RESULT.html">NET_ITS_PLATE_RESULT</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ITS_TRAFFIC_COLLECT</td>
+<td width=10% class="style5">0x3051</td>
+<td width=40% class="style4">交通统计数据上传</td>
+<td width=30% class="style6"><a href="../structures/NET_ITS_TRAFFIC_COLLECT.html">NET_ITS_TRAFFIC_COLLECT</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ITS_BLACKLIST_ALARM</td>
+<td width=10% class="style5">0x3057</td>
+<td width=40% class="style4">车辆黑名单报警上传</td>
+<td width=30% class="style6"><a href="../structures/NET_ITS_ECT_BLACKLIST.html">NET_ITS_ECT_BLACKLIST</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_VEHICLE_CONTROL_LIST_DSALARM</td>
+<td width=10% class="style5">0x3058</td>
+<td width=40% class="style4">车辆黑白名单数据需要同步报警上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_VEHICLE_CONTROL_LIST_DSALARM.html">NET_DVR_VEHICLE_CONTROL_LIST_DSALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_VEHICLE_CONTROL_ALARM </td>
+<td width=10% class="style5">0x3059</td>
+<td width=40% class="style4">黑白名单车辆报警上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_VEHICLE_CONTROL_ALARM.html">NET_DVR_VEHICLE_CONTROL_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_FIRE_ALARM</td>
+<td width=10% class="style5">0x3060</td>
+<td width=40% class="style4">消防报警上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_FIRE_ALARM.html">NET_DVR_FIRE_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_VEHICLE_RECOG_RESULT</td>
+<td width=10% class="style5">0x3062</td>
+<td width=40% class="style4">车辆二次识别结果上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_VEHICLE_RECOG_RESULT.html">NET_DVR_VEHICLE_RECOG_RESULT</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_SENSORINFO_UPLOAD</td>
+<td width=10% class="style5">0x3077</td>
+<td width=40% class="style4">传感器上传信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_SENSOR_INFO_UPLOAD.html">NET_DVR_SENSOR_INFO_UPLOAD</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_CAPTURE_UPLOAD</td>
+<td width=10% class="style5">0x3078</td>
+<td width=40% class="style4">抓拍图片上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_CAPTURE_UPLOAD.html">NET_DVR_CAPTURE_UPLOAD</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ITS_RADARINFO</td>
+<td width=10% class="style5">0x3079</td>
+<td width=40% class="style4">雷达报警上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_ALARM_RADARINFO.html">NET_DVR_ALARM_RADARINFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_SIGNAL_LAMP_ABNORMAL</td>
+<td width=10% class="style5">0x3080</td>
+<td width=40% class="style4">信号灯异常检测上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_SIGNALLAMP_DETCFG.html">NET_DVR_SIGNALLAMP_DETCFG</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_TPS_REAL_TIME</td>
+<td width=10% class="style5">0x3081</td>
+<td width=40% class="style4">TPS实时过车数据上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_TPS_REAL_TIME_INFO.html">NET_DVR_TPS_REAL_TIME_INFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_TPS_STATISTICS</td>
+<td width=10% class="style5">0x3082</td>
+<td width=40% class="style4">TPS统计过车数据上传</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_TPS_STATISTICS_INFO.html">NET_DVR_TPS_STATISTICS_INFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ITS_ROAD_EXCEPTION</td>
+<td width=10% class="style5">0x4500</td>
+<td width=40% class="style4">路口设备异常报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_ITS_ROADINFO.html">NET_ITS_ROADINFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ITS_EXTERNAL_CONTROL_ALARM</td>
+<td width=10% class="style5">0x4520</td>
+<td width=40% class="style4">指示灯外控报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_EXTERNAL_CONTROL_ALARM.html">NET_DVR_EXTERNAL_CONTROL_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ITS_GATE_FACE</td>
+<td width=10% class="style5">0x3053</td>
+<td width=40% class="style4">出入口人脸抓拍数据</td>
+<td width=30% class="style6"><a href="../structures/NET_ITS_GATE_FACE.html">NET_ITS_GATE_FACE</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ITS_GATE_ALARMINFO</td>
+<td width=10% class="style5">0x3061</td>
+<td width=40% class="style4">出入口控制机数据</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_GATE_ALARMINFO.html">NET_DVR_GATE_ALARMINFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_GATE_CHARGEINFO_UPLOAD</td>
+<td width=10% class="style5">0x3064</td>
+<td width=40% class="style4">出入口付费信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_GATE_CHARGEINFO.html">NET_DVR_GATE_CHARGEINFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_TME_VEHICLE_INDENTIFICATION</td>
+<td width=10% class="style5">0x3065</td>
+<td width=40% class="style4">出入口控制器TME车辆抓拍信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_TME_VEHICLE_RESULT.html">NET_DVR_TME_VEHICLE_RESULT</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_GATE_CARDINFO_UPLOAD</td>
+<td width=10% class="style5">0x3066</td>
+<td width=40% class="style4">出入口卡片信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_GATE_CARDINFO.html">NET_DVR_GATE_CARDINFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>报警主机</b></td>
+<td width=10%></td>
+<td width=40%></td>
+<td width=30%></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_ALARMHOST</b></td>
+<td width=10%>0x1105</td>
+<td width=40%>网络报警主机报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_ALARMHOST_ALARMINFO.html"><b>NET_DVR_ALARMHOST_ALARMINFO</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_SENSOR_VALUE_UPLOAD</b></td>
+<td width=10%>0x1120</td>
+<td width=40%>模拟量数据实时信息</td>
+<td width=30%><a href="../structures/NET_DVR_SENSOR_ALARM.html"><b>NET_DVR_SENSOR_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_SENSOR_ALARM</b></td>
+<td width=10%>0x1121</td>
+<td width=40%>模拟量报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_SENSOR_ALARM.html"><b>NET_DVR_SENSOR_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_SWITCH_ALARM</b></td>
+<td width=10%>0x1122</td>
+<td width=40%>开关量报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_SWITCH_ALARM.html"><b>NET_DVR_SWITCH_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARMHOST_EXCEPTION</b></td>
+<td width=10%>0x1123</td>
+<td width=40%>故障报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_ALARMHOST_EXCEPTION_ALARM.html"><b>NET_DVR_ALARMHOST_EXCEPTION_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARMHOST_SAFETYCABINSTATE</b></td>
+<td width=10%>0x1125</td>
+<td width=40%>防护舱状态信息</td>
+<td width=30%><a href="../structures/NET_DVR_ALARMHOST_SAFETYCABINSTATE.html"><b>NET_DVR_ALARMHOST_SAFETYCABINSTATE</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARMHOST_ALARMOUTSTATUS</b></td>
+<td width=10%>0x1126</td>
+<td width=40%>报警输出口或警号状态信息</td>
+<td width=30%><a href="../structures/NET_DVR_ALARMHOST_ALARMOUTSTATUS.html"><b>NET_DVR_ALARMHOST_ALARMOUTSTATUS</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARMHOST_CID_ALARM</b></td>
+<td width=10%>0x1127</td>
+<td width=40%>报警主机CID报告报警上传</td>
+<td width=30%><a href="../structures/NET_DVR_CID_ALARM.html"><b>NET_DVR_CID_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARMHOST_EXTERNAL_DEVICE_ALARM</b></td>
+<td width=10%>0x1128</td>
+<td width=40%>报警主机外接设备报警信息</td>
+<td width=30%><a href="../structures/NET_DVR_485_EXTERNAL_DEVICE_ALARMINFO.html"><b>NET_DVR_485_EXTERNAL_DEVICE_ALARMINFO</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARMHOST_DATA_UPLOAD</b></td>
+<td width=10%>0x1129</td>
+<td width=40%>报警数据信息</td>
+<td width=30%><a href="../structures/NET_DVR_ALARMHOST_DATA_UPLOAD.html"><b>NET_DVR_ALARMHOST_DATA_UPLOAD</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30%><b>COMM_ALARM_WIRELESS_INFO</b></td>
+<td width=10%>0x122b</td>
+<td width=40%>无线网络信息上传</td>
+<td width=30%><a href="../structures/NET_DVR_ALARMWIRELESSINFO.html"><b>NET_DVR_ALARMWIRELESSINFO</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">其他设备报警</td>
+<td width=10% style="background-color: #F3F3F3"></td>
+<td width=40% style="background-color: #F3F3F3"></td>
+<td width=30% style="background-color: #F3F3F3"></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM</td>
+<td width=10% class="style5">0x1100</td>
+<td width=40% class="style4">移动侦测、视频丢失、遮挡、IO信号量等报警信息(V3.0以下版本支持的设备)</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_ALARMINFO.html">NET_DVR_ALARMINFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_V30</td>
+<td width=10% class="style5">0x4000</td>
+<td width=40% class="style4">移动侦测、视频丢失、遮挡、IO信号量等报警信息(V3.0以上版本支持的设备)</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_ALARMINFO_V30.html">NET_DVR_ALARMINFO_V30</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_V40</td>
+<td width=10% class="style5">0x4007</td>
+<td width=40% class="style4">移动侦测、视频丢失、遮挡、IO信号量等报警信息，报警数据为可变长</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_ALARMINFO_V40.html">NET_DVR_ALARMINFO_V40</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_IPCCFG</td>
+<td width=10% class="style5">0x4001</td>
+<td width=40% class="style4">混合型DVR、NVR等在IPC接入配置改变时的报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_IPALARMINFO.html">NET_DVR_IPALARMINFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_IPCCFG_V31</td>
+<td width=10% class="style5">0x4002</td>
+<td width=40% class="style4">混合型DVR、NVR等在IPC接入配置改变时的报警信息（扩展）</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_IPALARMINFO_V31.html">NET_DVR_IPALARMINFO_V31</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_IPC_AUXALARM_RESULT</td>
+<td width=10% class="style5">0x2820</td>
+<td width=40% class="style4">PIR报警、无线报警、呼救报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_IPC_AUXALARM_RESULT.html">NET_IPC_AUXALARM_RESULT</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_DEVICE</td>
+<td width=10% class="style5">0x4004</td>
+<td width=40% class="style4">CVR设备报警信息，由于通道值大于256而扩展</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_ALARMINFO_DEV.html">NET_DVR_ALARMINFO_DEV</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_DEVICE_V40</td>
+<td width=10% class="style5">0x4009</td>
+<td width=40% class="style4">CVR设备报警信息扩展(增加报警信息子结构)</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_ALARMINFO_DEV_V40.html">NET_DVR_ALARMINFO_DEV_V40</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_CVR</td>
+<td width=10% class="style5">0x4005</td>
+<td width=40% class="style4">CVR外部报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_CVR_ALARM.html">NET_DVR_CVR_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_TRADEINFO</td>
+<td width=10% class="style5">0x1500</td>
+<td width=40% class="style4">ATM DVR交易信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_TRADEINFO.html">NET_DVR_TRADEINFO</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_HOT_SPARE</td>
+<td width=10% class="style5">0x4006</td>
+<td width=40% class="style4">热备异常报警（N+1模式异常报警）信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_ALARM_HOT_SPARE.html">NET_DVR_ALARM_HOT_SPARE</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_BUTTON_DOWN_EXCEPTION</td>
+<td width=10% class="style5">0x1152</td>
+<td width=40% class="style4">按钮按下报警信息(IP可视对讲主机)</td>
+<td width=30% class="style6"><a href="../structures/NET_BUTTON_DOWN_EXCEPTION_ALARM.html">NET_BUTTON_DOWN_EXCEPTION_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_SCREEN_ALARM</td>
+<td width=10% class="style5">0x5000</td>
+<td width=40% class="style4">多屏控制器上传的报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_SCREENALARMCFG.html">NET_DVR_SCREENALARMCFG</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_LCD</td>
+<td width=10% class="style5">0x5011</td>
+<td width=40% class="style4">LCD屏幕报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_LCD_ALARM.html">NET_DVR_LCD_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_UPLOAD_VIDEO_INTERCOM_EVENT</td>
+<td width=10% class="style5">0x1132</td>
+<td width=40% class="style4">可视对讲事件记录信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_VIDEO_INTERCOM_EVENT.html">NET_DVR_VIDEO_INTERCOM_EVENT</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_VIDEO_INTERCOM</td>
+<td width=10% class="style5">0x1133</td>
+<td width=40% class="style4">可视对讲报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_VIDEO_INTERCOM_ALARM.html">NET_DVR_VIDEO_INTERCOM_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6">COMM_ALARM_DEC_VCA</td>
+<td width=10% class="style5">0x5010</td>
+<td width=40% class="style4">解码器智能解码报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_DEC_VCA_ALARM.html">NET_DVR_DEC_VCA_ALARM</a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_GISINFO_UPLOAD</b></td>
+<td width=10% class="style5">0x4012</td>
+<td width=40% class="style4">GIS信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_GIS_UPLOADINFO.html"><b>NET_DVR_GIS_UPLOADINFO</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_VANDALPROOF_ALARM</b></td>
+<td width=10% class="style5">0x4013</td>
+<td width=40% class="style4">防破坏报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_VANDALPROOF_ALARM.html"><b>NET_DVR_VANDALPROOF_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_ALARM_STORAGE_DETECTION</b></td>
+<td width=10% class="style5">0x4015</td>
+<td width=40% class="style4">存储智能检测报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_STORAGE_DETECTION_ALARM.html"><b>NET_DVR_STORAGE_DETECTION_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_CONFERENCE_CALL_ALARM</b></td>
+<td width=10% class="style5">0x5012</td>
+<td width=40% class="style4">会议终端会议呼叫报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_CONFERENCE_CALL_ALARM.html"><b>NET_DVR_CONFERENCE_CALL_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_ALARM_ALARMGPS</b></td>
+<td width=10% class="style5">0x1202</td>
+<td width=40% class="style4">GPS报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_GPSALARMINFO.html"><b>NET_DVR_GPSALARMINFO</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_ALARM_SWITCH_CONVERT</b></td>
+<td width=10% class="style5">0x5004</td>
+<td width=40% class="style4">交换机报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_SWITCH_CONVERT_ALARM.html"><b>NET_DVR_SWITCH_CONVERT_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_INQUEST_ALARM</b></td>
+<td width=10% class="style5">0x6005</td>
+<td width=40% class="style4">审讯主机报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_INQUEST_ALARM.html"><b>NET_DVR_INQUEST_ALARM</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_PANORAMIC_LINKAGE_ALARM</b></td>
+<td width=10% class="style5">0x5213</td>
+<td width=40% class="style4">鹰眼全景联动到位事件信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_PANORAMIC_LINKAGE.html"><b>NET_DVR_PANORAMIC_LINKAGE</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_ISAPI_ALARM</b></td>
+<td width=10% class="style5">0x6009</td>
+<td width=40% class="style4">ISAPI协议报警信息</td>
+<td width=30% class="style6"><a href="../structures/NET_DVR_ALARM_ISAPI_INFO.html"><b>NET_DVR_ALARM_ISAPI_INFO</b></a></td>
+</tr>
+<tr valign=top>
+<td width=30% class="style6"><b>COMM_CLUSTER_ALARM</b></td>
+<td width=10% class="style5">0x6020</td>
+<td width=40% class="style4">集群报警信息（集群异动（扩容，缩容等）时布防CS失败异常，收到此异常，需要重新布防集群设备，否则会有CS的报警丢失。普通设备不会回调该异常，只针对集群。）</td>
+<td width=30% class="style6"><a href="../JSONs/EventNotificationAlert JSON Block.html"><b>EventNotificationAlert JSON Block </b></a></td>
+</tr>
+
+</table>
+</li>
+</ul>
+
+<h4>Example</h4>
+<DIV ID="newLanguageFilteredSection" CLASS="conditionalSection" development_language="C++">
+<P><p>以布防方式设置回调接收报警信息为例</p></P>
+<DIV class="codeSnippet"><PRE xml:space="preserve">
+#include &lt;stdio.h&gt;
+#include &lt;iostream&gt;
+#include "Windows.h"
+#include "HCNetSDK.h"
+using namespace std;
+
+int iNum=0;
+void CALLBACK MessageCallbackNo1(LONG lCommand, NET_DVR_ALARMER *pAlarmer, char *pAlarmInfo, DWORD dwBufLen, void* pUser)
+{
+    int i=0;
+    char filename[100];
+    FILE *fSnapPic=NULL;
+    FILE *fSnapPicPlate=NULL;
+
+    //以下代码仅供参考，实际应用中不建议在该回调函数中直接处理数据保存文件
+    //例如可以使用消息的方式(PostMessage)在消息响应函数里进行处理
+
+    switch(lCommand) 
+    {       
+        case COMM_ALARM:
+        {
+            NET_DVR_ALARMINFO struAlarmInfo;
+            memcpy(&struAlarmInfo, pAlarmInfo, sizeof(NET_DVR_ALARMINFO));
+            switch (struAlarmInfo.dwAlarmType)
+            {
+                case 3: //移动侦测报警
+                    for (i=0; i<16; i++)   //#define MAX_CHANNUM   16  //最大通道数
+                    {
+                        if (struAlarmInfo.dwChannel[i] == 1)
+                        {
+                            printf("发生移动侦测报警的通道号 %d\n", i+1);
+                        }
+                    }       
+                    break;
+                default:
+                    break;
+            }
+            break;
+        }
+        case COMM_UPLOAD_PLATE_RESULT:
+        {
+            NET_DVR_PLATE_RESULT struPlateResult={0};
+            memcpy(&struPlateResult, pAlarmInfo, sizeof(struPlateResult));
+            printf("车牌号: %s\n", struPlateResult.struPlateInfo.sLicense);//车牌号
+
+            switch(struPlateResult.struPlateInfo.byColor)//车牌颜色
+            {
+            case VCA_BLUE_PLATE:
+                printf("车辆颜色: 蓝色\n");
+                break;
+            case VCA_YELLOW_PLATE:
+                printf("车辆颜色: 黄色\n");
+                break;
+            case VCA_WHITE_PLATE:
+                printf("车辆颜色: 白色\n");
+                break;
+            case VCA_BLACK_PLATE:
+                printf("车辆颜色: 黑色\n");
+                break;	
+            default:
+                break;
+            } 
+            //场景图
+            if (struPlateResult.dwPicLen != 0 && struPlateResult.byResultType == 1 ) 
+            {
+                sprintf(filename,"testpic_%d.jpg",iNum);
+                fSnapPic=fopen(filename,"wb");
+                fwrite(struPlateResult.pBuffer1,struPlateResult.dwPicLen,1,fSnapPic);
+                iNum++;
+                fclose(fSnapPic);
+            }
+            //车牌图
+            if (struPlateResult.dwPicPlateLen != 0 && struPlateResult.byResultType == 1) 
+            {
+                sprintf(filename,"testPicPlate_%d.jpg",iNum);
+                fSnapPicPlate=fopen(filename,"wb");
+                fwrite(struPlateResult.pBuffer1,struPlateResult.dwPicLen,1,fSnapPicPlate);
+                iNum++;
+                fclose(fSnapPicPlate);
+            }	
+            //其他信息处理......
+            break;
+        }
+        case COMM_ITS_PLATE_RESULT:
+        {
+            NET_ITS_PLATE_RESULT struITSPlateResult={0};
+            memcpy(&struITSPlateResult, pAlarmInfo, sizeof(struITSPlateResult));
+
+            for (i=0;i&lt;struITSPlateResult.dwPicNum;i++)
+            {
+                printf("车牌号: %s\n", struITSPlateResult.struPlateInfo.sLicense);//车牌号
+                switch(struITSPlateResult.struPlateInfo.byColor)//车牌颜色
+                {
+                case VCA_BLUE_PLATE:
+                    printf("车辆颜色: 蓝色\n");
+                    break;
+                case VCA_YELLOW_PLATE:
+                    printf("车辆颜色: 黄色\n");
+                    break;
+                case VCA_WHITE_PLATE:
+                    printf("车辆颜色: 白色\n");
+                    break;
+                case VCA_BLACK_PLATE:
+                    printf("车辆颜色: 黑色\n");
+                    break;
+                default:
+                    break;
+                }
+                //保存场景图
+                if ((struITSPlateResult.struPicInfo[i].dwDataLen != 0)&&(struITSPlateResult.struPicInfo[i].byType== 1)||(struITSPlateResult.struPicInfo[i].byType == 2))
+                {
+                    sprintf(filename,"testITSpic%d_%d.jpg",iNum,i);
+                    fSnapPic=fopen(filename,"wb");
+                    fwrite(struITSPlateResult.struPicInfo[i].pBuffer, struITSPlateResult.struPicInfo[i].dwDataLen,1,fSnapPic);
+                    iNum++;
+                    fclose(fSnapPic);
+                }
+                //车牌小图片
+                if ((struITSPlateResult.struPicInfo[i].dwDataLen != 0)&&(struITSPlateResult.struPicInfo[i].byType == 0))
+                {
+                    sprintf(filename,"testPicPlate%d_%d.jpg",iNum,i);
+                    fSnapPicPlate=fopen(filename,"wb");
+                    fwrite(struITSPlateResult.struPicInfo[i].pBuffer, struITSPlateResult.struPicInfo[i].dwDataLen, 1, \ fSnapPicPlate);
+                    iNum++;
+                    fclose(fSnapPicPlate);
+                }
+                //其他信息处理......
+            }
+            break;
+        }
+    default:
+        break;
+    }
+}
+
+void CALLBACK MessageCallbackNo2(LONG lCommand, NET_DVR_ALARMER *pAlarmer, char *pAlarmInfo, DWORD dwBufLen, void* pUser)
+{
+    int i=0;
+    char filename[100];
+    FILE *fSnapPic=NULL;
+    FILE *fSnapPicPlate=NULL;
+
+    //以下代码仅供参考，实际应用中不建议在该回调函数中直接处理数据保存文件
+    //例如可以使用消息的方式(PostMessage)在消息响应函数里进行处理
+
+    switch(lCommand) 
+    {       
+        case COMM_ALARM:
+        {
+            NET_DVR_ALARMINFO struAlarmInfo;
+            memcpy(&struAlarmInfo, pAlarmInfo, sizeof(NET_DVR_ALARMINFO));
+            switch (struAlarmInfo.dwAlarmType)
+            {
+                case 3: //移动侦测报警
+                    for (i=0; i<16; i++)   //#define MAX_CHANNUM   16  //最大通道数
+                    {
+                        if (struAlarmInfo.dwChannel[i] == 1)
+                        {
+                            printf("发生移动侦测报警的通道号 %d\n", i+1);
+                        }
+                    }       
+                    break;
+                default:
+                    break;
+            }
+            break;
+        }
+        case COMM_UPLOAD_PLATE_RESULT:
+        {
+            NET_DVR_PLATE_RESULT struPlateResult={0};
+            memcpy(&struPlateResult, pAlarmInfo, sizeof(struPlateResult));
+            printf("车牌号: %s\n", struPlateResult.struPlateInfo.sLicense);//车牌号
+
+            switch(struPlateResult.struPlateInfo.byColor)//车牌颜色
+            {
+            case VCA_BLUE_PLATE:
+                printf("车辆颜色: 蓝色\n");
+                break;
+            case VCA_YELLOW_PLATE:
+                printf("车辆颜色: 黄色\n");
+                break;
+            case VCA_WHITE_PLATE:
+                printf("车辆颜色: 白色\n");
+                break;
+            case VCA_BLACK_PLATE:
+                printf("车辆颜色: 黑色\n");
+                break;	
+            default:
+                break;
+            } 
+            //场景图
+            if (struPlateResult.dwPicLen != 0 && struPlateResult.byResultType == 1 ) 
+            {
+                sprintf(filename,"testpic_%d.jpg",iNum);
+                fSnapPic=fopen(filename,"wb");
+                fwrite(struPlateResult.pBuffer1,struPlateResult.dwPicLen,1,fSnapPic);
+                iNum++;
+                fclose(fSnapPic);
+            }
+            //车牌图
+            if (struPlateResult.dwPicPlateLen != 0 && struPlateResult.byResultType == 1) 
+            {
+                sprintf(filename,"testPicPlate_%d.jpg",iNum);
+                fSnapPicPlate=fopen(filename,"wb");
+                fwrite(struPlateResult.pBuffer1,struPlateResult.dwPicLen,1,fSnapPicPlate);
+                iNum++;
+                fclose(fSnapPicPlate);
+            }	
+            //其他信息处理......
+            break;
+        }
+        case COMM_ITS_PLATE_RESULT:
+        {
+            NET_ITS_PLATE_RESULT struITSPlateResult={0};
+            memcpy(&struITSPlateResult, pAlarmInfo, sizeof(struITSPlateResult));
+
+            for (i=0;i&lt;struITSPlateResult.dwPicNum;i++)
+            {
+                printf("车牌号: %s\n", struITSPlateResult.struPlateInfo.sLicense);//车牌号
+                switch(struITSPlateResult.struPlateInfo.byColor)//车牌颜色
+                {
+                case VCA_BLUE_PLATE:
+                    printf("车辆颜色: 蓝色\n");
+                    break;
+                case VCA_YELLOW_PLATE:
+                    printf("车辆颜色: 黄色\n");
+                    break;
+                case VCA_WHITE_PLATE:
+                    printf("车辆颜色: 白色\n");
+                    break;
+                case VCA_BLACK_PLATE:
+                    printf("车辆颜色: 黑色\n");
+                    break;
+                default:
+                    break;
+                }
+                //保存场景图
+                if ((struITSPlateResult.struPicInfo[i].dwDataLen != 0)&&(struITSPlateResult.struPicInfo[i].byType== 1)||(struITSPlateResult.struPicInfo[i].byType == 2))
+                {
+                    sprintf(filename,"testITSpic%d_%d.jpg",iNum,i);
+                    fSnapPic=fopen(filename,"wb");
+                    fwrite(struITSPlateResult.struPicInfo[i].pBuffer, struITSPlateResult.struPicInfo[i].dwDataLen,1,fSnapPic);
+                    iNum++;
+                    fclose(fSnapPic);
+                }
+                //车牌小图片
+                if ((struITSPlateResult.struPicInfo[i].dwDataLen != 0)&&(struITSPlateResult.struPicInfo[i].byType == 0))
+                {
+                    sprintf(filename,"testPicPlate%d_%d.jpg",iNum,i);
+                    fSnapPicPlate=fopen(filename,"wb");
+                    fwrite(struITSPlateResult.struPicInfo[i].pBuffer, struITSPlateResult.struPicInfo[i].dwDataLen, 1, \ fSnapPicPlate);
+                    iNum++;
+                    fclose(fSnapPicPlate);
+                }
+                //其他信息处理......
+            }
+            break;
+        }
+    default:
+        break;
+    }
+}
+
+void main() {
+
+  //---------------------------------------
+  // 初始化
+  NET_DVR_Init();
+  //设置连接时间与重连时间
+  NET_DVR_SetConnectTime(2000, 1);
+  NET_DVR_SetReconnect(10000, true);
+
+  //---------------------------------------
+  // 注册设备
+  LONG lUserID;
+  NET_DVR_DEVICEINFO_V30 struDeviceInfo;
+  lUserID = NET_DVR_Login_V30("172.0.0.100", 8000, "admin", "12345", &struDeviceInfo);
+  if (lUserID < 0)
+  {
+       printf("Login error, %d\n", NET_DVR_GetLastError());
+       NET_DVR_Cleanup(); 
+       return;
+  }
+  
+  //设置报警回调函数
+  NET_DVR_SetDVRMessageCallBack_V50(0, MessageCallbackNo1, NULL);
+  NET_DVR_SetDVRMessageCallBack_V50(1, MessageCallbackNo2, NULL);
+  
+  //启用布防
+  NET_DVR_SETUPALARM_PARAM struSetupParam={0};
+  struSetupParam.dwSize=sizeof(NET_DVR_SETUPALARM_PARAM);
+
+  //上传报警信息类型: 0- 老报警信息(NET_DVR_PLATE_RESULT), 1- 新报警信息(NET_ITS_PLATE_RESULT)
+  struSetupParam.byAlarmInfoType=1;
+  //布防等级:二级布防，针对智能交通设备
+  struSetupParam.byLevel=1;
+
+  LONG lHandle = NET_DVR_SetupAlarmChan_V41(lUserID,&struSetupParam);
+  if (lHandle < 0)
+  {
+      printf("NET_DVR_SetupAlarmChan_V41 error, %d\n", NET_DVR_GetLastError());
+      NET_DVR_Logout(lUserID);
+      NET_DVR_Cleanup(); 
+      return;
+  }
+  
+  Sleep(20000);
+  //撤销布防上传通道
+  if (!NET_DVR_CloseAlarmChan_V30(lHandle))
+  {
+      printf("NET_DVR_CloseAlarmChan_V30 error, %d\n", NET_DVR_GetLastError());
+      NET_DVR_Logout(lUserID);
+      NET_DVR_Cleanup(); 
+      return;
+  }
+  
+  //注销用户
+  NET_DVR_Logout(lUserID);
+  //释放SDK资源
+  NET_DVR_Cleanup();
+  return;
+}
+
+</PRE></DIV></DIV>
+
+<h4>See Also</h4>
+<p><b><a href="NET_DVR_SetupAlarmChan_V41.html">NET_DVR_SetupAlarmChan_V41</a></b></p>
+<p><b><a href="../definitions/NET_DVR_StartListen_V30.html">NET_DVR_StartListen_V30</a></b></p>
+
+<h4>Reference Interface</h4>
+<p>该接口扩展源于</p>
+<p><b><a href="NET_DVR_SetDVRMessageCallBack_V30.html">NET_DVR_SetDVRMessageCallBack_V30</a></b></p>
+
+<hr color="#999999"><br>
+
+</body>
+
+</html>
+
+

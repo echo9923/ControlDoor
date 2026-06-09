@@ -1,0 +1,135 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_RealPlay_V40</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_RealPlay_V40</h1>
+<p>实时预览（支持多码流）。</p>
+
+<PRE class=syntax><b>LONG NET_DVR_RealPlay_V40(</b>
+<b>  LONG</b><i>                     lUserID</i><b>,</b>
+<b>  <a href="../structures/NET_DVR_PREVIEWINFO.html">LPNET_DVR_PREVIEWINFO</a></b><i>    lpPreviewInfo</i><b>,</b>
+<b>  REALDATACALLBACK</b><i>         fRealDataCallBack_V30</i><b>,</b>
+<b>  void</b><i>                     *pUser</i><b></b>
+<b>);</b></PRE>
+
+<h4>Parameters</h4>
+<dl>
+<dt><i>lUserID</i></dt>
+<dd>[in] NET_DVR_Login_V40等登录接口的返回值</dd>
+
+<dt><i>lpPreviewInfo</i></dt>
+<dd>[in] 预览参数</dd>
+
+<dt><i>fRealDataCallBack_V30</i></dt>
+<dd>[in] 码流数据回调函数</dd>
+
+<dt><i>pUser</i></dt>
+<dd>[in] 用户数据</dd>
+</dl>
+
+<h4>Callback Function</h4>
+<PRE class=syntax><b>typedef void(CALLBACK *REALDATACALLBACK)(</b>
+<b>  LONG</b><i>      lRealHandle</i><b>,</b>
+<b>  DWORD</b><i>     dwDataType</i><b>,</b>
+<b>  BYTE</b><i>      *pBuffer</i><b>,</b>
+<b>  DWORD</b><i>     dwBufSize</i><b>,</b>
+<b>  void</b><i>      *pUser</i><b></b>
+<b>);</b></PRE>
+
+<h4>Callback Function Parameters</h4>
+<dl>
+<dt><i>lRealHandle</i></dt>
+<dd>[out] 当前的预览句柄，NET_DVR_RealPlay_V40的返回值</dd>
+
+<dt><i>dwDataType</i></dt>
+<dd>[out] 数据类型
+<table>
+<tr valign=top>
+<th align=left width=40%><b>宏定义</b></th>
+<th align=left width=10%>宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_SYSHEAD</b></td>
+<td width=10%>1</td>
+<td width=50%>系统头数据</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_STREAMDATA</b></td>
+<td width=10%>2</td>
+<td width=50%>流数据（包括复合流或音视频分开的视频流数据）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_AUDIOSTREAMDATA</b></td>
+<td width=10%>3</td>
+<td width=50%>音频数据</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_PRIVATE_DATA</b></td>
+<td width=10%>112</td>
+<td width=50%>私有数据,包括智能信息</td>
+</tr>
+</table>
+</dd>
+<dt><i>pBuffer</i></dt>
+<dd>[out] 存放数据的缓冲区指针</dd>
+
+<dt><i>dwBufSize</i></dt>
+<dd>[out] 缓冲区大小</dd>
+
+<dt><i>pUser</i></dt>
+<dd>[out] 用户数据</dd>
+</dl>
+
+<h4>Return Values</h4>
+<p>-1表示失败，其他值作为NET_DVR_StopRealPlay等函数的句柄参数。接口返回失败请调用<b><a href="../definitions/NET_DVR_GetLastError.html">NET_DVR_GetLastError</a></b>获取错误码，通过错误码判断出错原因。</p>
+
+<h4>Remarks</h4>
+<ul>
+<LI>fRealDataCallBack_V30回调函数中不能执行可能会占用时间较长的接口或操作，不建议调用该SDK（HCNetSDK.dll）本身的接口。</LI>
+<LI>该接口中的回调函数可以置为空，这样该函数将不回调码流数据给用户，不过用户仍可以通过接口NET_DVR_SetRealDataCallBack或NET_DVR_SetStandardDataCallBack注册捕获码流数据的回调函数以捕获码流数据。</LI>
+<LI>客户端异常离线时，设备端对取流连接的保持时间为10秒。</LI>
+<LI>Linux版本SDK开发，预览接口直接传入有效窗口句柄，在预览过程中，改变窗口大小时，需要调用<b><a href="../definitions/NET_DVR_ChangeWndResolution.html">NET_DVR_ChangeWndResolution</a></b>通知底层播放库去获取窗口大小。Windows系统下开发不需要调用相关接口，可以自适应。</LI>
+</ul>
+
+<h4>See Also</h4>
+<p><b><a href="NET_DVR_StopRealPlay.html">NET_DVR_StopRealPlay</a>&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_GetRealPlayerIndex.html">NET_DVR_GetRealPlayerIndex</a>&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_ClientSetVideoEffect.html">NET_DVR_ClientSetVideoEffect</a><br>
+<a href="../definitions/NET_DVR_ClientGetVideoEffect.html">NET_DVR_ClientGetVideoEffect</a>&nbsp;&nbsp;&nbsp;
+<a href="../definitions/NET_DVR_RigisterDrawFun.html">NET_DVR_RigisterDrawFun</a>&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_OpenSound.html">NET_DVR_OpenSound</a>&nbsp;&nbsp;&nbsp;
+<a href="../definitions/NET_DVR_OpenSoundShare.html">NET_DVR_OpenSoundShare</a><br>
+<a href="../definitions/NET_DVR_CloseSoundShare.html">NET_DVR_CloseSoundShare</a>
+&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_Volume.html">NET_DVR_Volume</a>
+&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_SetRealDataCallBack.html">NET_DVR_SetRealDataCallBack</a><br>
+<a href="../definitions/NET_DVR_SetStandardDataCallBack.html">NET_DVR_SetStandardDataCallBack</a>&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_SaveRealData.html">NET_DVR_SaveRealData</a>&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_StopSaveRealData.html">NET_DVR_StopSaveRealData</a>
+</b></p>
+
+<h4>Reference Interface</h4>
+<p>该接口扩展源于<br>
+<b><a href="NET_DVR_RealPlay_V30.html">NET_DVR_RealPlay_V30</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+
+</html>
+
+

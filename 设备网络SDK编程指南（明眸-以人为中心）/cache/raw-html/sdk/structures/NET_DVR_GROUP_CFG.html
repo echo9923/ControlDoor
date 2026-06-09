@@ -1,0 +1,62 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_GROUP_CFG</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_GROUP_CFG</h1>
+<p>群组参数配置结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>                       dwSize</i><b>;</b>
+<b>  BYTE</b><i>                        byEnable</i><b>;</b>
+<b>  BYTE</b><i>                        byRes1[3]</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_VALID_PERIOD_CFG.html">NET_DVR_VALID_PERIOD_CFG</a></b><i>    struValidPeriodCfg</i><b>;</b>
+<b>  BYTE</b><i>                        byGroupName[<span title="#define GROUP_NAME_LEN 32"><em id="mycolor">GROUP_NAME_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>                        byRes2[32]</i><b>;</b>
+<b>}NET_DVR_GROUP_CFG,*LPNET_DVR_GROUP_CFG;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>byEnable</i></dt>
+<dd> 是否启用该群组：0- 不启用，1- 启用</dd>
+
+<dt><i>byRes1</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>struValidPeriodCfg</i></dt>
+<dd> 群组有效期参数</dd>
+
+<dt><i>byGroupName</i></dt>
+<dd> 群组名称</dd>
+
+<dt><i>byRes2</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_GetDVRConfig_ACS.html">NET_DVR_GetDVRConfig</a>&nbsp;&nbsp; <a href="../definitions/NET_DVR_SetDVRConfig_ACS.html">NET_DVR_SetDVRConfig</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

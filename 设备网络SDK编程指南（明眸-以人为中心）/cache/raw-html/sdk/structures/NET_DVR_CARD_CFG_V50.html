@@ -1,0 +1,271 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_CARD_CFG_V50</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_CARD_CFG_V50</h1>
+<p>卡参数配置结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>                       dwSize</i><b>;</b>
+<b>  DWORD</b><i>                       dwModifyParamType</i><b>;</b>
+<b>  BYTE</b><i>                        byCardNo[<span title="#define ACS_CARD_NO_LEN 32"><em id="mycolor">ACS_CARD_NO_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>                        byCardValid</i><b>;</b>
+<b>  BYTE</b><i>                        byCardType</i><b>;</b>
+<b>  BYTE</b><i>                        byLeaderCard</i><b>;</b>
+<b>  BYTE</b><i>                        byUserType;</i><b>;</b>
+<b>  BYTE</b><i>                        byDoorRight[<span title="#define MAX_DOOR_NUM_256 256"><em id="mycolor">MAX_DOOR_NUM</em></span>]</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_VALID_PERIOD_CFG.html">NET_DVR_VALID_PERIOD_CFG</a></b><i>    struValid</i><b>;</b>
+<b>  BYTE</b><i>                        byBelongGroup[<span title="#define MAX_GROUP_NUM_128 128"><em id="mycolor">MAX_GROUP_NUM</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>                        byCardPassword[<span title="#define CARD_PASSWORD_LEN 8"><em id="mycolor">CARD_PASSWORD_LEN</em></span>]</i><b>;</b>
+<b>  WORD</b><i>                        wCardRightPlan[<span title="#define MAX_DOOR_NUM_256 256"><em id="mycolor">MAX_DOOR_NUM</em></span>][<span title="#define MAX_CARD_RIGHT_PLAN_NUM 4"><em id="mycolor">MAX_CARD_RIGHT_PLAN_NUM</em></span>]</i><b>;</b>
+<b>  DWORD</b><i>                       dwMaxSwipeTime</i><b>;</b>
+<b>  DWORD</b><i>                       dwSwipeTime</i><b>;</b>
+<b>  WORD</b><i>                        wRoomNumber</i><b>;</b>
+<b>  SHORT</b><i>                       wFloorNumber</i><b>;</b>
+<b>  DWORD</b><i>                       dwEmployeeNo</i><b>;</b>
+<b>  BYTE</b><i>                        byName[<span title="#define NAME_LEN 32"><em id="mycolor">NAME_LEN</em></span>]</i><b>;</b>
+<b>  WORD</b><i>                        wDepartmentNo</i><b>;</b>
+<b>  WORD</b><i>                        wSchedulePlanNo</i><b>;</b>
+<b>  BYTE</b><i>                        bySchedulePlanType</i><b>;</b>
+<b>  BYTE</b><i>                        byRes2[3]</i><b>;</b>
+<b>  DWORD</b><i>                       dwLockID</i><b>;</b>
+<b>  BYTE</b><i>                        byLockCode[<span title="#define MAX_LOCK_CODE_LEN 8"><em id="mycolor">MAX_LOCK_CODE_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>                        byRoomCode[<span title="#define MAX_DOOR_CODE_LEN 8"><em id="mycolor">MAX_DOOR_CODE_LEN</em></span>]</i><b>;</b>
+<b>  DWORD</b><i>                       dwCardRight</i><b>;</b>
+<b>  DWORD</b><i>                       dwPlanTemplate</i><b>;</b>
+<b>  DWORD</b><i>                       dwCardUserId</i><b>;</b>
+<b>  BYTE</b><i>                        byCardModelType</i><b>;</b>
+<b>  BYTE</b><i>                        byRes3[83]</i><b>;</b>
+<b>}NET_DVR_CARD_CFG_V50,*LPNET_DVR_CARD_CFG_V50;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>dwModifyParamType</i></dt>
+<dd> 需要修改的卡参数（设置卡参数时有效），按位表示，每位代表一种参数，值：0- 不修改，1- 需要修改<BR>
+<table>
+<tr valign=top>
+<th align=left><b>宏定义</b></th>
+<th align=left>宏定义值</th>
+<th align=left>含义</th>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_CARD_VALID</b></td>
+<td>0x00000001</td>
+<td>卡是否有效参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_VALID</b></td>
+<td>0x00000002</td>
+<td>有效期参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_CARD_TYPE</b></td>
+<td>0x00000004</td>
+<td>卡类型参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_DOOR_RIGHT</b></td>
+<td>0x00000008</td>
+<td>门权限参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_LEADER_CARD</b></td>
+<td>0x00000010</td>
+<td>首卡参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_SWIPE_NUM</b></td>
+<td>0x00000020</td>
+<td>最大刷卡次数参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_GROUP</b></td>
+<td>0x00000040</td>
+<td>所属群组参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_PASSWORD</b></td>
+<td>0x00000080</td>
+<td>卡密码参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_RIGHT_PLAN</b></td>
+<td>0x00000100</td>
+<td>卡权限计划参数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_SWIPED_NUM</b></td>
+<td>0x00000200</td>
+<td>已刷卡次数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_SWIPED_NUM</b></td>
+<td>0x00000200</td>
+<td>已刷卡次数</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_EMPLOYEE_NO</b></td>
+<td>0x00000400</td>
+<td>工号</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_NAME</b></td>
+<td>0x00000800</td>
+<td>姓名</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_PARAM_DEPARTMENT_NO</b></td>
+<td>0x00001000</td>
+<td>部门编号</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_SCHEDULE_PLAN_NO</b></td>
+<td>0x00002000</td>
+<td>排班计划编号</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_SCHEDULE_PLAN_TYPE</b></td>
+<td>0x00004000</td>
+<td>排班计划类型</td>
+</tr>
+<tr valign=top>
+<td><b>CARD_USER_TYPE</b></td>
+<td>0x00040000</td>
+<td>用户类型</td>
+</tr>
+</table>
+</dd>
+
+<dt><i>byCardNo</i></dt>
+<dd> 卡号，特殊卡号定义如下：<BR />
+0xFFFFFFFFFFFFFFFF：非法卡号<BR />
+0xFFFFFFFFFFFFFFFE：胁迫码<BR />
+0xFFFFFFFFFFFFFFFD：超级码<BR />
+0xFFFFFFFFFFFFFFFC~0xFFFFFFFFFFFFFFF1：预留的特殊卡<BR />
+0xFFFFFFFFFFFFFFF0：最大合法卡号
+</dd>
+
+<dt><i>byCardValid</i></dt>
+<dd> 卡是否有效：0- 无效，1- 有效（用于删除卡，设置时置为0进行删除，获取时此字段始终为1）</dd>
+
+<dt><i>byCardType</i></dt>
+<dd> 卡类型：1- 普通卡（默认），2- 残疾人卡，3- 黑名单卡，4- 巡更卡，5- 胁迫卡，6- 超级卡，7- 来宾卡，8- 解除卡，9- 员工卡，10- 应急卡，11- 应急管理卡（用于授权临时卡权限，本身不能开门），默认普通卡</dd>
+    
+<dt><i>byLeaderCard</i></dt>
+<dd> 是否为首卡：1- 是，0- 否</dd>
+
+<dt><i>byUserType</i></dt>
+<dd> 用户类型：0 – 普通用户1- 管理员用户</dd>
+
+<dt><i>byDoorRight</i></dt>
+<dd> 门权限（梯控的楼层权限、锁权限），按字节表示，1-为有权限，0-为无权限，从低位到高位依次表示对门（或者梯控楼层、锁）1-N是否有权限</dd>
+
+<dt><i>struValid</i></dt>
+<dd> 有效期参数（有效时间跨度为1970年1月1日0点0分0秒~2037年12月31日23点59分59秒）</dd>
+
+<dt><i>byBelongGroup</i></dt>
+<dd> 所属群组，按字节表示，1-属于，0-不属于，从低位到高位表示是否从属群组1~N</dd>
+
+<dt><i>byCardPassword</i></dt>
+<dd> 卡密码</dd>
+
+<dt><i>wCardRightPlan</i></dt>
+<dd> 卡权限计划，取值为计划模板编号，同个门（锁）不同计划模板采用权限或的方式处理</dd>
+
+<dt><i>dwMaxSwipeTime</i></dt>
+<dd> 最大刷卡次数，0为无次数限制</dd>
+
+<dt><i>dwSwipeTime</i></dt>
+<dd> 已刷卡次数</dd>
+
+<dt><i>wRoomNumber</i></dt>
+<dd> 房间号</dd>
+
+<dt><i>wFloorNumber</i></dt>
+<dd> 层号</dd>
+
+<dt><i>dwEmployeeNo</i></dt>
+<dd> 工号（用户ID）</dd>
+
+<dt><i>byName</i></dt>
+<dd> 姓名</dd>
+
+<dt><i>wDepartmentNo</i></dt>
+<dd> 部门编号</dd>
+
+<dt><i>wSchedulePlanNo</i></dt>
+<dd> 排班计划编号</dd>
+
+<dt><i>bySchedulePlanType</i></dt>
+<dd> 排班计划类型：0- 无意义，1- 个人，2- 部门</dd>
+
+<dt><i>byRes2</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>dwLockID</i></dt>
+<dd> 锁ID</dd>
+
+<dt><i>byLockCode</i></dt>
+<dd> 锁代码</dd>
+
+<dt><i>byRoomCode</i></dt>
+<dd> 房间代码<BR />
+按位表示，0-无权限，1-有权限<BR />
+第0位表示：弱电报警<BR />
+第1位表示：开门提示音<BR />
+第2位表示：限制客卡<BR />
+第3位表示：通道<BR />
+第4位表示：反锁开门<BR />
+第5位表示：巡更功能
+</dd>
+
+<dt><i>dwCardRight</i></dt>
+<dd> 卡权限</dd>
+
+<dt><i>dwPlanTemplate</i></dt>
+<dd> 计划模板(每天)各时间段是否启用，按位表示，0--不启用，1-启用</dd>
+
+<dt><i>dwCardUserId</i></dt>
+<dd> 持卡人ID</dd>
+
+<dt><i>byCardModelType</i></dt>
+<dd> 0-空，1- MIFARE S50，2- MIFARE S70，3- FM1208 CPU卡，4- FM1216 CPU卡，5-国密CPU卡，6-身份证，7- NFC</dd>
+
+<dt><i>byRes2</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<p>结构体里面的工号、姓名、部门编号、排班计划编号、排班计划类型，对于考勤一体机（DS-K1T803F、DS-K1A801F）为必填项，对于其他门禁设备不是必须项。</p>
+<p>卡参数能力，对应门禁主机能力集（接口：<b><a href="../definitions/NET_DVR_GetDeviceAbility_ACS.html">NET_DVR_GetDeviceAbility</a></b>，能力集类型：ACS_ABILITY）中节点&lt;Card&gt;。</p>
+
+
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_StartRemoteConfig_ACS.html">NET_DVR_StartRemoteConfig</a>&nbsp;&nbsp; <a href="../definitions/NET_DVR_SendRemoteConfig_ACS.html">NET_DVR_SendRemoteConfig</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

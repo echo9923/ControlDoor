@@ -1,0 +1,91 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_ACS_EVENT_COND</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_ACS_EVENT_COND</h1>
+<p>门禁主机报警事件信息结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>                     dwSize</i><b>;</b>
+<b>  DWORD</b><i>                     dwMajor</i><b>;</b>
+<b>  DWORD</b><i>                     dwMinor</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_TIME.html">NET_DVR_TIME</a></b><i>              struStartTime</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_TIME.html">NET_DVR_TIME</a></b><i>              struEndTime</i><b>;</b>
+<b>  BYTE</b><i>                      byCardNo[<span title="#define ACS_CARD_NO_LEN 32"><em id="Em1">ACS_CARD_NO_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>                      byName[<span title="#define NAME_LEN 32"><em id="Em2">NAME_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>                      byPicEnable</i><b>;</b>
+<b>  BYTE</b><i>                      byRes2[3]</i><b>;</b>
+<b>  DWORD</b><i>                     dwBeginSerialNo</i><b>;</b>
+<b>  DWORD</b><i>                     dwEndSerialNo</i><b>;</b>
+<b>  BYTE</b><i>                      byRes[244]</i><b>;</b>
+<b>}NET_DVR_ACS_EVENT_COND,*LPNET_DVR_ACS_EVENT_COND;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>dwMajor</i></dt>
+<dd> 报警主类型，参考事件上传宏定义，0-全部</dd>
+
+<dt><i>dwMinor</i></dt>
+<dd> 报警次类型，参考事件上传宏定义，0-全部</dd>
+
+<dt><i>struStartTime</i></dt>
+<dd> 开始时间</dd>
+
+<dt><i>struEndTime</i></dt>
+<dd> 结束时间</dd>
+
+<dt><i>byCardNo</i></dt>
+<dd> 卡号（为空时默认全部）</dd>
+
+<dt><i>byName</i></dt>
+<dd> 持卡人姓名（为空时默认全部）</dd>
+
+<dt><i>byPicEnable</i></dt>
+<dd>是否带图片，0-不带图片，1-带图片</dd>
+
+<dt><i>byRes2</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>dwBeginSerialNo</i></dt>
+<dd>起始流水号（起始流水号与结束流水号都为0默认全部）</dd>
+
+<dt><i>dwEndSerialNo</i></dt>
+<dd>结束流水号（起始流水号与结束流水号都为0默认全部）</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<p>门禁主机报警信息获取只能通过<b><a href="../definitions/NET_DVR_SetDVRMessageCallBack_V31.html">NET_DVR_SetDVRMessageCallBack_V31</a></b>设置报警回调函数，回调函数有返回值，需要返回TRUE告知设备已经接收数据，设备才会上传下一条信息。</p>
+
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_StartRemoteConfig_ACS_Event.html">NET_DVR_StartRemoteConfig</a>&nbsp;&nbsp; <a href="../definitions/NET_DVR_StopRemoteConfig_ACS_Event.html">NET_DVR_StopRemoteConfig</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

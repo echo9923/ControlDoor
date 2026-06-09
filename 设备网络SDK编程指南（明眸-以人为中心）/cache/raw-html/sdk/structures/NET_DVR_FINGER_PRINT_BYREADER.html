@@ -1,0 +1,57 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_FINGER_PRINT_BYREADER</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_FINGER_PRINT_BYREADER</h1>
+<p>按按读卡器方式删除指纹的处理方式结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>    dwCardReaderNo</i><b>;</b>
+<b>  BYTE</b><i>     byClearAllCard</i><b>;</b>
+<b>  BYTE</b><i>     byRes1[3]</i><b>;</b>
+<b>  BYTE</b><i>     byCardNo[<span title="#define ACS_CARD_NO_LEN 32"><em id="mycolor">ACS_CARD_NO_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>     byRes[100]</i><b>;</b>
+<b>}NET_DVR_FINGER_PRINT_BYREADER, *LPNET_DVR_FINGER_PRINT_BYREADER;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>dwCardReaderNo</i></dt>
+<dd> 读卡器编号</dd>
+
+<dt><i>byClearAllCard</i></dt>
+<dd> 是否删除所有卡的指纹信息：0- 按卡号删除指纹信息，1- 删除所有卡的指纹信息</dd> 
+
+<dt><i>byRes1</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>byCardNo</i></dt>
+<dd> 指纹关联的卡号，byClearAllCard为0时有效</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>See Also</h4>
+<p><b><a href="../structures/NET_DVR_DEL_FINGER_PRINT_MODE.html">NET_DVR_DEL_FINGER_PRINT_MODE</a></b></p>
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

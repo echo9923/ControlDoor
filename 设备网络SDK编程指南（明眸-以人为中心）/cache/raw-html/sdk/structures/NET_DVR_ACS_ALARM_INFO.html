@@ -1,0 +1,2810 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_ACS_ALARM_INFO</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_ACS_ALARM_INFO</h1>
+<p>门禁主机报警信息结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>                     dwSize</i><b>;</b>
+<b>  DWORD</b><i>                     dwMajor</i><b>;</b>
+<b>  DWORD</b><i>                     dwMinor</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_TIME.html">NET_DVR_TIME</a></b><i>              struTime</i><b>;</b>
+<b>  BYTE</b><i>                      sNetUser[<span title="#define MAX_NAMELEN 16"><em id="mycolor">MAX_NAMELEN</em></span>]</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>            struRemoteHostAddr </i><b>;</b>
+<b>  <a href="../structures/NET_DVR_ACS_EVENT_INFO.html">NET_DVR_ACS_EVENT_INFO</a></b><i>    struAcsEventInfo</i><b>;</b>
+<b>  DWORD</b><i>                     dwPicDataLen</i><b>;</b>
+<b>  char</b><i>                      *pPicData</i><b>;</b>
+<b>  BYTE</b><i>                      byRes[24]</i><b>;</b>
+<b>}NET_DVR_ACS_ALARM_INFO,*LPNET_DVR_ACS_ALARM_INFO;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>dwMajor</i></dt>
+<dd> 报警主类型，具体定义见“Remarks”说明</dd>
+
+<dt><i>dwMinor</i></dt>
+<dd> 报警次类型，次类型含义根据主类型不同而不同，具体定义见“Remarks”说明</dd>
+
+<dt><i>struTime</i></dt>
+<dd> 报警时间</dd>
+
+<dt><i>sNetUser</i></dt>
+<dd> 网络操作的用户名</dd>
+
+<dt><i>struRemoteHostAddr</i></dt>
+<dd> 远程主机地址</dd>
+
+<dt><i>struAcsEventInfo</i></dt>
+<dd> 报警信息详细参数</dd>
+
+<dt><i>dwPicDataLen</i></dt>
+<dd> 图片数据大小，不为0是表示后面带数据</dd>
+
+<dt><i>pPicData</i></dt>
+<dd> 图片数据缓冲区</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<p>门禁主机报警信息获取只能通过<b><a href="../definitions/NET_DVR_SetDVRMessageCallBack_V31.html">NET_DVR_SetDVRMessageCallBack_V31</a></b>设置报警回调函数，回调函数有返回值，需要返回TRUE告知设备已经接收数据，设备才会上传下一条信息。</p>
+<p>报警主类型定义如下所示：</p>
+<table>
+<tr valign=top>
+<th align=left width=40%><b>宏定义</b></th>
+<th align=left width=10%>宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MAJOR_ALARM</b></td>
+<td width=10%>0x1</td>
+<td width=50%>报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MAJOR_EXCEPTION</b></td>
+<td width=10%>0x2</td>
+<td width=50%>异常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MAJOR_OPERATION</b></td>
+<td width=10%>0x3</td>
+<td width=50%>操作</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MAJOR_EVENT</b></td>
+<td width=10%>0x5</td>
+<td width=50%>事件</td>
+</tr>
+</table>
+<p>根据不同的主类型的次类型定义如下所示：</p>
+<table>
+<tr valign=top>
+<th align=left width=40%><b>主类型的宏定义</b></th>
+<th align=left width=10%>主类型的宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MAJOR_ALARM</b></td>
+<td width=10%>0x1</td>
+<td width=50%>报警</td>
+</tr>
+<tr valign=top>
+<th align=left width=40%><b>次类型的宏定义</b></th>
+<th align=left width=10%>次类型的宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARMIN_SHORT_CIRCUIT</b></td>
+<td width=10%>0x400</td>
+<td width=50%>防区短路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARMIN_BROKEN_CIRCUIT</b></td>
+<td width=10%>0x401</td>
+<td width=50%>防区断路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARMIN_EXCEPTION</b></td>
+<td width=10%>0x402</td>
+<td width=50%>防区异常报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARMIN_RESUME</b></td>
+<td width=10%>0x403</td>
+<td width=50%>防区报警恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_HOST_DESMANTLE_ALARM</b></td>
+<td width=10%>0x404</td>
+<td width=50%>设备防拆报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_HOST_DESMANTLE_RESUME</b></td>
+<td width=10%>0x405</td>
+<td width=50%>设备防拆恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_READER_DESMANTLE_ALARM</b></td>
+<td width=10%>0x406</td>
+<td width=50%>读卡器防拆报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_READER_DESMANTLE_RESUME</b></td>
+<td width=10%>0x407</td>
+<td width=50%>读卡器防拆恢复
+<tr valign=top>
+<td width=40%><b>MINOR_CASE_SENSOR_ALARM</b></td>
+<td width=10%>0x408</td>
+<td width=50%>事件输入报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CASE_SENSOR_RESUME</b></td>
+<td width=10%>0x409</td>
+<td width=50%>事件输入恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_STRESS_ALARM</b></td>
+<td width=10%>0x40a</td>
+<td width=50%>胁迫报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OFFLINE_ECENT_NEARLY_FULL</b></td>
+<td width=10%>0x40b</td>
+<td width=50%>离线事件满90%报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_MAX_AUTHENTICATE_FAIL</b></td>
+<td width=10%>0x40c</td>
+<td width=50%>卡号认证失败超次报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_SD_CARD_FULL</b></td>
+<td width=10%>0x40d</td>
+<td width=50%>SD卡存储满报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LINKAGE_CAPTURE_PIC</b></td>
+<td width=10%>0x40e</td>
+<td width=50%>联动抓拍事件报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_SECURITY_MODULE_DESMANTLE_ALARM</b></td>
+<td width=10%>0x40f</td>
+<td width=50%>门控安全模块防拆报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_SECURITY_MODULE_DESMANTLE_RESUME</b></td>
+<td width=10%>0x410</td>
+<td width=50%>门控安全模块防拆恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_POS_START_ALARM</b></td>
+<td width=10%>0x411</td>
+<td width=50%>POS开启</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_POS_END_ALARM</b></td>
+<td width=10%>0x412</td>
+<td width=50%>POS结束</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_IMAGE_QUALITY_LOW</b></td>
+<td width=10%>0x413</td>
+<td width=50%>人脸图像画质低</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGE_RPRINT_QUALITY_LOW</b></td>
+<td width=10%>0x414</td>
+<td width=50%>指纹图像画质低</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRE_IMPORT_SHORT_CIRCUIT</b></td>
+<td width=10%>0x415</td>
+<td width=50%>消防输入短路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRE_IMPORT_BROKEN_CIRCUIT</b></td>
+<td width=10%>0x416</td>
+<td width=50%>消防输入断路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRE_IMPORT_RESUME</b></td>
+<td width=10%>0x417</td>
+<td width=50%>消防输入恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRE_BUTTON_TRIGGER</b></td>
+<td width=10%>0x418</td>
+<td width=50%>消防按钮触发</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRE_BUTTON_RESUME</b></td>
+<td width=10%>0x419</td>
+<td width=50%>消防按钮恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MAINTENANCE_BUTTON_TRIGGER</b></td>
+<td width=10%>0x41a</td>
+<td width=50%>维护按钮触发</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MAINTENANCE_BUTTON_RESUME</b></td>
+<td width=10%>0x41b</td>
+<td width=50%>维护按钮恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMERGENCY_BUTTON_TRIGGER</b></td>
+<td width=10%>0x41c</td>
+<td width=50%>紧急按钮触发</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMERGENCY_BUTTON_RESUME</b></td>
+<td width=10%>0x41d</td>
+<td width=50%>紧急按钮恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DISTRACT_CONTROLLER_ALARM</b></td>
+<td width=10%>0x41e</td>
+<td width=50%>分控器防拆报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DISTRACT_CONTROLLER_RESUME</b></td>
+<td width=10%>0x41f</td>
+<td width=50%>分控器防拆报警恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CHANNEL_CONTROLLER_DESMANTLE_ALARM</b></td>
+<td width=10%>0x422</td>
+<td width=50%>通道控制器防拆报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CHANNEL_CONTROLLER_DESMANTLE_RESUME</b></td>
+<td width=10%>0x423</td>
+<td width=50%>通道控制器防拆报警恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CHANNEL_CONTROLLER_FIRE_IMPORT_ALARM</b></td>
+<td width=10%>0x424</td>
+<td width=50%>通道控制器消防输入报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CHANNEL_CONTROLLER_FIRE_IMPORT_RESUME</b></td>
+<td width=10%>0x425</td>
+<td width=50%>通道控制器消防输入报警恢复</td>
+</tr>
+
+
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM1</b></td>
+<td width=10%>0x900  </td>
+<td width=50%>门禁自定义报警1</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM2</b></td>
+<td width=10%>0x901  </td>
+<td width=50%>门禁自定义报警2</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM3</b></td>
+<td width=10%>0x902  </td>
+<td width=50%>门禁自定义报警3</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM4</b></td>
+<td width=10%>0x903  </td>
+<td width=50%>门禁自定义报警4</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM5</b></td>
+<td width=10%>0x904 </td>
+<td width=50%>门禁自定义报警5</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM6</b></td>
+<td width=10%>0x905  </td>
+<td width=50%>门禁自定义报警6</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM7</b></td>
+<td width=10%>0x906  </td>
+<td width=50%>门禁自定义报警7</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM8</b></td>
+<td width=10%>0x907 </td>
+<td width=50%>门禁自定义报警8</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM9</b></td>
+<td width=10%>0x908  </td>
+<td width=50%>门禁自定义报警9</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM10</b></td>
+<td width=10%>0x909  </td>
+<td width=50%>门禁自定义报警10</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM11</b></td>
+<td width=10%>0x90a  </td>
+<td width=50%>门禁自定义报警11</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM12</b></td>
+<td width=10%>0x90b  </td>
+<td width=50%>门禁自定义报警12</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM13</b></td>
+<td width=10%>0x90c </td>
+<td width=50%>门禁自定义报警13</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM14</b></td>
+<td width=10%>0x90d  </td>
+<td width=50%>门禁自定义报警14</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM15</b></td>
+<td width=10%>0x90e  </td>
+<td width=50%>门禁自定义报警15</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM16</b></td>
+<td width=10%>0x90f </td>
+<td width=50%>门禁自定义报警16</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM17</b></td>
+<td width=10%>0x910  </td>
+<td width=50%>门禁自定义报警17</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM18</b></td>
+<td width=10%>0x911  </td>
+<td width=50%>门禁自定义报警18</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM19</b></td>
+<td width=10%>0x912  </td>
+<td width=50%>门禁自定义报警19</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM20</b></td>
+<td width=10%>0x913  </td>
+<td width=50%>门禁自定义报警20</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM21</b></td>
+<td width=10%>0x914 </td>
+<td width=50%>门禁自定义报警21</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM22</b></td>
+<td width=10%>0x915  </td>
+<td width=50%>门禁自定义报警22</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM23</b></td>
+<td width=10%>0x916  </td>
+<td width=50%>门禁自定义报警23</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM24</b></td>
+<td width=10%>0x917 </td>
+<td width=50%>门禁自定义报警24</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM25</b></td>
+<td width=10%>0x918  </td>
+<td width=50%>门禁自定义报警25</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM26</b></td>
+<td width=10%>0x919  </td>
+<td width=50%>门禁自定义报警26</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM27</b></td>
+<td width=10%>0x91a  </td>
+<td width=50%>门禁自定义报警27</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM28</b></td>
+<td width=10%>0x91b  </td>
+<td width=50%>门禁自定义报警28</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM29</b></td>
+<td width=10%>0x91c </td>
+<td width=50%>门禁自定义报警29</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM30</b></td>
+<td width=10%>0x91d  </td>
+<td width=50%>门禁自定义报警30</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM31</b></td>
+<td width=10%>0x91e  </td>
+<td width=50%>门禁自定义报警31</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM32</b></td>
+<td width=10%>0x91f </td>
+<td width=50%>门禁自定义报警32</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM33</b></td>
+<td width=10%>0x920 </td>
+<td width=50%>门禁自定义报警33</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM34</b></td>
+<td width=10%>0x921  </td>
+<td width=50%>门禁自定义报警34</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM35</b></td>
+<td width=10%>0x922  </td>
+<td width=50%>门禁自定义报警35</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM36</b></td>
+<td width=10%>0x923  </td>
+<td width=50%>门禁自定义报警36</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM37</b></td>
+<td width=10%>0x924  </td>
+<td width=50%>门禁自定义报警37</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM38</b></td>
+<td width=10%>0x925 </td>
+<td width=50%>门禁自定义报警38</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM39</b></td>
+<td width=10%>0x926  </td>
+<td width=50%>门禁自定义报警39</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM40</b></td>
+<td width=10%>0x927  </td>
+<td width=50%>门禁自定义报警40</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM41</b></td>
+<td width=10%>0x928 </td>
+<td width=50%>门禁自定义报警41</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM42</b></td>
+<td width=10%>0x929  </td>
+<td width=50%>门禁自定义报警42</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM43</b></td>
+<td width=10%>0x92a  </td>
+<td width=50%>门禁自定义报警43</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM44</b></td>
+<td width=10%>0x92b  </td>
+<td width=50%>门禁自定义报警44</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM45</b></td>
+<td width=10%>0x92c  </td>
+<td width=50%>门禁自定义报警45</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM46</b></td>
+<td width=10%>0x92d </td>
+<td width=50%>门禁自定义报警46</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM47</b></td>
+<td width=10%>0x92e  </td>
+<td width=50%>门禁自定义报警47</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM48</b></td>
+<td width=10%>0x92f  </td>
+<td width=50%>门禁自定义报警48</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM49</b></td>
+<td width=10%>0x930 </td>
+<td width=50%>门禁自定义报警49</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM50</b></td>
+<td width=10%>0x931  </td>
+<td width=50%>门禁自定义报警50</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM51</b></td>
+<td width=10%>0x932  </td>
+<td width=50%>门禁自定义报警51</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM52</b></td>
+<td width=10%>0x933  </td>
+<td width=50%>门禁自定义报警52</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM53</b></td>
+<td width=10%>0x934  </td>
+<td width=50%>门禁自定义报警53</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM54</b></td>
+<td width=10%>0x935</td>
+<td width=50%>门禁自定义报警54</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM55</b></td>
+<td width=10%>0x936  </td>
+<td width=50%>门禁自定义报警55</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM56</b></td>
+<td width=10%>0x937  </td>
+<td width=50%>门禁自定义报警56</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM57</b></td>
+<td width=10%>0x938 </td>
+<td width=50%>门禁自定义报警57</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM58</b></td>
+<td width=10%>0x939 </td>
+<td width=50%>门禁自定义报警58</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM59</b></td>
+<td width=10%>0x93a  </td>
+<td width=50%>门禁自定义报警59</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM60</b></td>
+<td width=10%>0x93b  </td>
+<td width=50%>门禁自定义报警60</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM61</b></td>
+<td width=10%>0x93c  </td>
+<td width=50%>门禁自定义报警61</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM62</b></td>
+<td width=10%>0x93d </td>
+<td width=50%>门禁自定义报警62</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM63</b></td>
+<td width=10%>0x93e </td>
+<td width=50%>门禁自定义报警63</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARM_CUSTOM64</b></td>
+<td width=10%>0x93f  </td>
+<td width=50%>门禁自定义报警64</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCK_HIJIACK_ALARM</b></td>
+<td width=10%>0x95d  </td>
+<td width=50%>智能锁防劫持报警</td>
+</tr>
+
+
+</table>
+<br>
+<table>
+<tr valign=top>
+<th align=left width=40%><b>主类型的宏定义</b></th>
+<th align=left width=10%>主类型的宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MAJOR_EXCEPTION</b></td>
+<td width=10%>0x2</td>
+<td width=50%>异常</td>
+</tr>
+<tr valign=top>
+<th align=left width=40%><b>次类型的宏定义</b></th>
+<th align=left width=10%>次类型的宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_NET_BROKEN</b></td>
+<td width=10%>0x27</td>
+<td width=50%>网络断开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_RS485_DEVICE_ABNORMAL</b></td>
+<td width=10%>0x3a</td>
+<td width=50%>RS485连接状态异常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_RS485_DEVICE_REVERT</b></td>
+<td width=10%>0x3b</td>
+<td width=50%>RS485连接状态异常恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DEV_POWER_ON</b></td>
+<td width=10%>0x400</td>
+<td width=50%>设备上电启动</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DEV_POWER_OFF</b></td>
+<td width=10%>0x401</td>
+<td width=50%>设备掉电关闭</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_WATCH_DOG_RESET</b></td>
+<td width=10%>0x402</td>
+<td width=50%>看门狗复位</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOW_BATTERY</b></td>
+<td width=10%>0x403</td>
+<td width=50%>蓄电池电压低</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_BATTERY_RESUME</b></td>
+<td width=10%>0x404</td>
+<td width=50%>蓄电池电压恢复正常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_AC_OFF</b></td>
+<td width=10%>0x405</td>
+<td width=50%>交流电断电</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_AC_RESUME</b></td>
+<td width=10%>0x406</td>
+<td width=50%>交流电恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_NET_RESUME</b></td>
+<td width=10%>0x407</td>
+<td width=50%>网络恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FLASH_ABNORMAL</b></td>
+<td width=10%>0x408</td>
+<td width=50%>FLASH读写异常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_READER_OFFLINE</b></td>
+<td width=10%>0x409</td>
+<td width=50%>读卡器掉线</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_READER_RESUME</b></td>
+<td width=10%>0x40a</td>
+<td width=50%>读卡器掉线恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_INDICATOR_LIGHT_OFF</b></td>
+<td width=10%>0x40b</td>
+<td width=50%>指示灯关闭</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_INDICATOR_LIGHT_RESUME</b></td>
+<td width=10%>0x40c</td>
+<td width=50%>指示灯恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CHANNEL_CONTROLLER_OFF</b></td>
+<td width=10%>0x40d</td>
+<td width=50%>通道控制器掉线</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CHANNEL_CONTROLLER_RESUME</b></td>
+<td width=10%>0x40e</td>
+<td width=50%>通道控制器恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_SECURITY_MODULE_OFF</b></td>
+<td width=10%>0x40f</td>
+<td width=50%>门控安全模块掉线</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_SECURITY_MODULE_RESUME</b></td>
+<td width=10%>0x410</td>
+<td width=50%>门控安全模块掉线恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_CONTROL_NET_BROKEN</b></td>
+<td width=10%>0x413</td>
+<td width=50%>就地控制器网络断开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_CONTROL_NET_RSUME</b></td>
+<td width=10%>0x414</td>
+<td width=50%>就地控制器网络恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MASTER_RS485_LOOPNODE_BROKEN</b></td>
+<td width=10%>0x415</td>
+<td width=50%>主控RS485环路节点断开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MASTER_RS485_LOOPNODE_RESUME</b></td>
+<td width=10%>0x416</td>
+<td width=50%>主控RS485环路节点恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_CONTROL_OFFLINE</b></td>
+<td width=10%>0x417</td>
+<td width=50%>就地控制器掉线</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_CONTROL_RESUME</b></td>
+<td width=10%>0x418</td>
+<td width=50%>就地控制器掉线恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_DOWNSIDE_RS485_LOOPNODE_BROKEN</b></td>
+<td width=10%>0x419</td>
+<td width=50%>就地下行RS485环路断开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_DOWNSIDE_RS485_LOOPNODE_RESUME</b></td>
+<td width=10%>0x41a</td>
+<td width=50%>就地下行RS485环路恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DISTRACT_CONTROLLER_ONLINE</b></td>
+<td width=10%>0x41b</td>
+<td width=50%>分控器在线</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DISTRACT_CONTROLLER_OFFLINE</b></td>
+<td width=10%>0x41c</td>
+<td width=50%>分控器离线</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ID_CARD_READER_NOT_CONNECT</b></td>
+<td width=10%>0x41d</td>
+<td width=50%>身份证阅读器未连接（智能专用）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ID_CARD_READER_RESUME</b></td>
+<td width=10%>0x41e</td>
+<td width=50%>身份证阅读器连接恢复（智能专用）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGER_PRINT_MODULE_NOT_CONNECT</b></td>
+<td width=10%>0x41f</td>
+<td width=50%>指纹模组未连接（智能专用）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGER_PRINT_MODULE_RESUME</b></td>
+<td width=10%>0x420</td>
+<td width=50%>指纹模组连接恢复（智能专用）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CAMERA_NOT_CONNECT</b></td>
+<td width=10%>0x421</td>
+<td width=50%>摄像头未连接</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CAMERA_RESUME</b></td>
+<td width=10%>0x422</td>
+<td width=50%>摄像头连接恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_COM_NOT_CONNECT</b></td>
+<td width=10%>0x423</td>
+<td width=50%>COM口未连接</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_COM_RESUME</b></td>
+<td width=10%>0x424</td>
+<td width=50%>COM口连接恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DEVICE_NOT_AUTHORIZE</b></td>
+<td width=10%>0x425</td>
+<td width=50%>设备未授权</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_PEOPLE_AND_ID_CARD_DEVICE_ONLINE</b></td>
+<td width=10%>0x426</td>
+<td width=50%>人证设备在线</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_PEOPLE_AND_ID_CARD_DEVICE_OFFLINE</b></td>
+<td width=10%>0x427</td>
+<td width=50%>人证设备离线</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_LOGIN_LOCK</b></td>
+<td width=10%>0x428</td>
+<td width=50%>本地登录锁定</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_LOGIN_UNLOCK</b></td>
+<td width=10%>0x428</td>
+<td width=50%>本地登录解锁</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_BATTERY_ELECTRIC_LOW</b></td>
+<td width=10%>0x411</td>
+<td width=50%>电池电压低（仅人脸设备使用）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_BATTERY_ELECTRIC_RESUME</b></td>
+<td width=10%>0x412</td>
+<td width=50%>电池电压恢复正常（仅人脸设备使用）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_LOGIN_LOCK</b></td>
+<td width=10%>0x428</td>
+<td width=50%>本地登录锁定</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_LOGIN_UNLOCK</b></td>
+<td width=10%>0x429</td>
+<td width=50%>本地登录解锁</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_SUBMARINEBACK_COMM_BREAK</b></td>
+<td width=10%>0x42a  </td>
+<td width=50%>与反潜回服务器通信断开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_SUBMARINEBACK_COMM_RESUME</b></td>
+<td width=10%>0x42b  </td>
+<td width=50%>与反潜回服务器通信恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MOTOR_SENSOR_EXCEPTION</b></td>
+<td width=10%>0x42c  </td>
+<td width=50%>电机或传感器异常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CAN_BUS_EXCEPTION</b></td>
+<td width=10%>0x42d  </td>
+<td width=50%>CAN总线异常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CAN_BUS_RESUME</b></td>
+<td width=10%>0x42e  </td>
+<td width=50%>CAN总线恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_GATE_TEMPERATURE_OVERRUN</b></td>
+<td width=10%>0x42f  </td>
+<td width=50%>闸机腔体温度超限</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_IR_EMITTER_EXCEPTION</b></td>
+<td width=10%>0x430  </td>
+<td width=50%>红外对射异常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_IR_EMITTER_RESUME</b></td>
+<td width=10%>0x431  </td>
+<td width=50%>红外对射恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LAMP_BOARD_COMM_EXCEPTION</b></td>
+<td width=10%>0x432  </td>
+<td width=50%>灯板通信异常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LAMP_BOARD_COMM_RESUME</b></td>
+<td width=10%>0x433  </td>
+<td width=50%>灯板通信恢复</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_IR_ADAPTOR_COMM_EXCEPTION</b></td>
+<td width=10%>0x434  </td>
+<td width=50%>红外转接板通信异常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_IR_ADAPTOR_COMM_RESUME</b></td>
+<td width=10%>0x435  </td>
+<td width=50%>红外转接板通信恢复</td>
+</tr>
+
+
+
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM1</b></td>
+<td width=10%>0x900  </td>
+<td width=50%>门禁自定义异常1</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM2</b></td>
+<td width=10%>0x901  </td>
+<td width=50%>门禁自定义异常2</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM3</b></td>
+<td width=10%>0x902  </td>
+<td width=50%>门禁自定义异常3</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM4</b></td>
+<td width=10%>0x903  </td>
+<td width=50%>门禁自定义异常4</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM5</b></td>
+<td width=10%>0x904 </td>
+<td width=50%>门禁自定义异常5</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM6</b></td>
+<td width=10%>0x905  </td>
+<td width=50%>门禁自定义异常6</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM7</b></td>
+<td width=10%>0x906  </td>
+<td width=50%>门禁自定义异常7</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM8</b></td>
+<td width=10%>0x907 </td>
+<td width=50%>门禁自定义异常8</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM9</b></td>
+<td width=10%>0x908  </td>
+<td width=50%>门禁自定义异常9</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM10</b></td>
+<td width=10%>0x909  </td>
+<td width=50%>门禁自定义异常10</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM11</b></td>
+<td width=10%>0x90a  </td>
+<td width=50%>门禁自定义异常11</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM12</b></td>
+<td width=10%>0x90b  </td>
+<td width=50%>门禁自定义异常12</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM13</b></td>
+<td width=10%>0x90c </td>
+<td width=50%>门禁自定义异常13</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM14</b></td>
+<td width=10%>0x90d  </td>
+<td width=50%>门禁自定义异常14</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM15</b></td>
+<td width=10%>0x90e  </td>
+<td width=50%>门禁自定义异常15</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM16</b></td>
+<td width=10%>0x90f </td>
+<td width=50%>门禁自定义异常16</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM17</b></td>
+<td width=10%>0x910  </td>
+<td width=50%>门禁自定义异常17</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM18</b></td>
+<td width=10%>0x911  </td>
+<td width=50%>门禁自定义异常18</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM19</b></td>
+<td width=10%>0x912  </td>
+<td width=50%>门禁自定义异常19</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM20</b></td>
+<td width=10%>0x913  </td>
+<td width=50%>门禁自定义异常20</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM21</b></td>
+<td width=10%>0x914 </td>
+<td width=50%>门禁自定义异常21</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM22</b></td>
+<td width=10%>0x915  </td>
+<td width=50%>门禁自定义异常22</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM23</b></td>
+<td width=10%>0x916  </td>
+<td width=50%>门禁自定义异常23</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM24</b></td>
+<td width=10%>0x917 </td>
+<td width=50%>门禁自定义异常24</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM25</b></td>
+<td width=10%>0x918  </td>
+<td width=50%>门禁自定义异常25</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM26</b></td>
+<td width=10%>0x919  </td>
+<td width=50%>门禁自定义异常26</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM27</b></td>
+<td width=10%>0x91a  </td>
+<td width=50%>门禁自定义异常27</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM28</b></td>
+<td width=10%>0x91b  </td>
+<td width=50%>门禁自定义异常28</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM29</b></td>
+<td width=10%>0x91c </td>
+<td width=50%>门禁自定义异常29</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM30</b></td>
+<td width=10%>0x91d  </td>
+<td width=50%>门禁自定义异常30</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM31</b></td>
+<td width=10%>0x91e  </td>
+<td width=50%>门禁自定义异常31</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM32</b></td>
+<td width=10%>0x91f </td>
+<td width=50%>门禁自定义异常32</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM33</b></td>
+<td width=10%>0x920 </td>
+<td width=50%>门禁自定义异常33</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM34</b></td>
+<td width=10%>0x921  </td>
+<td width=50%>门禁自定义异常34</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM35</b></td>
+<td width=10%>0x922  </td>
+<td width=50%>门禁自定义异常35</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM36</b></td>
+<td width=10%>0x923  </td>
+<td width=50%>门禁自定义异常36</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM37</b></td>
+<td width=10%>0x924  </td>
+<td width=50%>门禁自定义异常37</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM38</b></td>
+<td width=10%>0x925 </td>
+<td width=50%>门禁自定义异常38</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM39</b></td>
+<td width=10%>0x926  </td>
+<td width=50%>门禁自定义异常39</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM40</b></td>
+<td width=10%>0x927  </td>
+<td width=50%>门禁自定义异常40</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM41</b></td>
+<td width=10%>0x928 </td>
+<td width=50%>门禁自定义异常41</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM42</b></td>
+<td width=10%>0x929  </td>
+<td width=50%>门禁自定义异常42</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM43</b></td>
+<td width=10%>0x92a  </td>
+<td width=50%>门禁自定义异常43</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM44</b></td>
+<td width=10%>0x92b  </td>
+<td width=50%>门禁自定义异常44</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM45</b></td>
+<td width=10%>0x92c  </td>
+<td width=50%>门禁自定义异常45</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM46</b></td>
+<td width=10%>0x92d </td>
+<td width=50%>门禁自定义异常46</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM47</b></td>
+<td width=10%>0x92e  </td>
+<td width=50%>门禁自定义异常47</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM48</b></td>
+<td width=10%>0x92f  </td>
+<td width=50%>门禁自定义异常48</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM49</b></td>
+<td width=10%>0x930 </td>
+<td width=50%>门禁自定义异常49</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM50</b></td>
+<td width=10%>0x931  </td>
+<td width=50%>门禁自定义异常50</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM51</b></td>
+<td width=10%>0x932  </td>
+<td width=50%>门禁自定义异常51</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM52</b></td>
+<td width=10%>0x933  </td>
+<td width=50%>门禁自定义异常52</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM53</b></td>
+<td width=10%>0x934  </td>
+<td width=50%>门禁自定义异常53</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM54</b></td>
+<td width=10%>0x935</td>
+<td width=50%>门禁自定义异常54</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM55</b></td>
+<td width=10%>0x936  </td>
+<td width=50%>门禁自定义异常55</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM56</b></td>
+<td width=10%>0x937  </td>
+<td width=50%>门禁自定义异常56</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM57</b></td>
+<td width=10%>0x938 </td>
+<td width=50%>门禁自定义异常57</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM58</b></td>
+<td width=10%>0x939 </td>
+<td width=50%>门禁自定义异常58</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM59</b></td>
+<td width=10%>0x93a  </td>
+<td width=50%>门禁自定义异常59</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM60</b></td>
+<td width=10%>0x93b  </td>
+<td width=50%>门禁自定义异常60</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM61</b></td>
+<td width=10%>0x93c  </td>
+<td width=50%>门禁自定义异常61</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM62</b></td>
+<td width=10%>0x93d </td>
+<td width=50%>门禁自定义异常62</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM63</b></td>
+<td width=10%>0x93e </td>
+<td width=50%>门禁自定义异常63</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EXCEPTION_CUSTOM64</b></td>
+<td width=10%>0x93f  </td>
+<td width=50%>门禁自定义异常64</td>
+</tr>
+</table>
+<br>
+<table>
+<tr valign=top>
+<th align=left width=40%><b>主类型的宏定义</b></th>
+<th align=left width=10%>主类型的宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MAJOR_OPERATION</b></td>
+<td width=10%>0x3</td>
+<td width=50%>操作</td>
+</tr>
+<tr valign=top>
+<th align=left width=40%><b>次类型的宏定义</b></th>
+<th align=left width=10%>次类型的宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_LOGIN</b></td>
+<td width=10%>0x50</td>
+<td width=50%>本地登陆</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_UPGRADE</b></td>
+<td width=10%>0x5a</td>
+<td width=50%>本地升级</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_LOGIN</b></td>
+<td width=10%>0x70</td>
+<td width=50%>远程登录</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_LOGOUT</b></td>
+<td width=10%>0x71</td>
+<td width=50%>远程注销登陆</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_ARM</b></td>
+<td width=10%>0x79</td>
+<td width=50%>远程布防</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_DISARM</b></td>
+<td width=10%>0x7a</td>
+<td width=50%>远程撤防</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_REBOOT</b></td>
+<td width=10%>0x7b</td>
+<td width=50%>远程重启</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_UPGRADE</b></td>
+<td width=10%>0x7e</td>
+<td width=50%>远程升级</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CFGFILE_OUTPUT</b></td>
+<td width=10%>0x86</td>
+<td width=50%>远程导出配置文件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CFGFILE_INTPUT</b></td>
+<td width=10%>0x87</td>
+<td width=50%>远程导入配置文件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_ALARMOUT_OPEN_MAN</b></td>
+<td width=10%>0xd6</td>
+<td width=50%>远程手动开启报警输出</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_ALARMOUT_CLOSE_MAN</b></td>
+<td width=10%>0xd7</td>
+<td width=50%>远程手动关闭报警输出</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_OPEN_DOOR</b></td>
+<td width=10%>0x400</td>
+<td width=50%>远程开门</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CLOSE_DOOR</b></td>
+<td width=10%>0x401</td>
+<td width=50%>远程关门（对于梯控，表示受控）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_ALWAYS_OPEN</b></td>
+<td width=10%>0x402</td>
+<td width=50%>远程常开（对于梯控，表示自由）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_ALWAYS_CLOSE</b></td>
+<td width=10%>0x403</td>
+<td width=50%>远程常关（对于梯控，表示禁用）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CHECK_TIME</b></td>
+<td width=10%>0x404</td>
+<td width=50%>远程手动校时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_NTP_CHECK_TIME</b></td>
+<td width=10%>0x405</td>
+<td width=50%>NTP自动校时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CLEAR_CARD</b></td>
+<td width=10%>0x406</td>
+<td width=50%>远程清空卡号</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_RESTORE_CFG</b></td>
+<td width=10%>0x407</td>
+<td width=50%>远程恢复默认参数</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARMIN_ARM</b></td>
+<td width=10%>0x408</td>
+<td width=50%>防区布防</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARMIN_DISARM</b></td>
+<td width=10%>0x409</td>
+<td width=50%>防区撤防</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_RESTORE_CFG</b></td>
+<td width=10%>0x40a</td>
+<td width=50%>本地恢复默认参数</td>
+</tr> 
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CAPTURE_PIC</b></td>
+<td width=10%>0x40b</td>
+<td width=50%>远程抓拍</td>
+</tr> 
+<tr valign=top>
+<td width=40%><b>MINOR_MOD_NET_REPORT_CFG</b></td>
+<td width=10%>0x40c</td>
+<td width=50%>修改网络中心参数配置</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MOD_GPRS_REPORT_PARAM</b></td>
+<td width=10%>0x40d</td>
+<td width=50%>修改GPRS中心参数配置</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MOD_REPORT_GROUP_PARAM</b></td>
+<td width=10%>0x40e</td>
+<td width=50%>修改中心组参数配置</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_UNLOCK_PASSWORD_OPEN_DOOR</b></td>
+<td width=10%>0x40f</td>
+<td width=50%>解除码输入</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>MINOR_AUTO_RENUMBER</b></td>
+<td width=10%>0x410</td>
+<td width=50%>自动重新编号</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_AUTO_COMPLEMENT_NUMBER</b></td>
+<td width=10%>0x411</td>
+<td width=50%>自动补充编号</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_NORMAL_CFGFILE_INPUT</b></td>
+<td width=10%>0x412</td>
+<td width=50%>导入普通配置文件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_NORMAL_CFGFILE_OUTTPUT</b></td>
+<td width=10%>0x413</td>
+<td width=50%>导出普通配置文件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_RIGHT_INPUT </b></td>
+<td width=10%>0x414</td>
+<td width=50%>导入卡权限参数</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_RIGHT_OUTTPUT</b></td>
+<td width=10%>0x415</td>
+<td width=50%>导出卡权限参数</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_USB_UPGRADE</b></td>
+<td width=10%>0x416</td>
+<td width=50%>本地U盘升级</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_VISITOR_CALL_LADDER </b></td>
+<td width=10%>0x417</td>
+<td width=50%>访客呼梯</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_HOUSEHOLD_CALL_LADDER</b></td>
+<td width=10%>0x418</td>
+<td width=50%>住户呼梯</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_ACTUAL_GUARD</b></td>
+<td width=10%>0x419</td>
+<td width=50%>远程实时布防</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_ACTUAL_UNGUARD</b></td>
+<td width=10%>0x41a</td>
+<td width=50%>远程实时撤防</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CONTROL_NOT_CODE_OPER_FAILED</b></td>
+<td width=10%>0x41b</td>
+<td width=50%>遥控器未对码操作失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CONTROL_CLOSE_DOOR</b></td>
+<td width=10%>0x41c</td>
+<td width=50%>遥控器关门</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CONTROL_OPEN_DOOR</b></td>
+<td width=10%>0x41d</td>
+<td width=50%>遥控器开门</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REMOTE_CONTROL_ALWAYS_OPEN_DOOR</b></td>
+<td width=10%>0x41e</td>
+<td width=50%>遥控器常开门</td>
+</tr>
+
+
+
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM1</b></td>
+<td width=10%>0x900  </td>
+<td width=50%>门禁自定义操作1</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM2</b></td>
+<td width=10%>0x901  </td>
+<td width=50%>门禁自定义操作2</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM3</b></td>
+<td width=10%>0x902  </td>
+<td width=50%>门禁自定义操作3</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM4</b></td>
+<td width=10%>0x903  </td>
+<td width=50%>门禁自定义操作4</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM5</b></td>
+<td width=10%>0x904 </td>
+<td width=50%>门禁自定义操作5</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM6</b></td>
+<td width=10%>0x905  </td>
+<td width=50%>门禁自定义操作6</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM7</b></td>
+<td width=10%>0x906  </td>
+<td width=50%>门禁自定义操作7</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM8</b></td>
+<td width=10%>0x907 </td>
+<td width=50%>门禁自定义操作8</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM9</b></td>
+<td width=10%>0x908  </td>
+<td width=50%>门禁自定义操作9</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM10</b></td>
+<td width=10%>0x909  </td>
+<td width=50%>门禁自定义操作10</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM11</b></td>
+<td width=10%>0x90a  </td>
+<td width=50%>门禁自定义操作11</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM12</b></td>
+<td width=10%>0x90b  </td>
+<td width=50%>门禁自定义异常12</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM13</b></td>
+<td width=10%>0x90c </td>
+<td width=50%>门禁自定义操作13</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM14</b></td>
+<td width=10%>0x90d  </td>
+<td width=50%>门禁自定义操作14</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM15</b></td>
+<td width=10%>0x90e  </td>
+<td width=50%>门禁自定义操作15</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM16</b></td>
+<td width=10%>0x90f </td>
+<td width=50%>门禁自定义操作16</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM17</b></td>
+<td width=10%>0x910  </td>
+<td width=50%>门禁自定义操作17</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM18</b></td>
+<td width=10%>0x911  </td>
+<td width=50%>门禁自定义操作18</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM19</b></td>
+<td width=10%>0x912  </td>
+<td width=50%>门禁自定义操作19</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM20</b></td>
+<td width=10%>0x913  </td>
+<td width=50%>门禁自定义操作20</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM21</b></td>
+<td width=10%>0x914 </td>
+<td width=50%>门禁自定义异常21</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM22</b></td>
+<td width=10%>0x915  </td>
+<td width=50%>门禁自定义操作22</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM23</b></td>
+<td width=10%>0x916  </td>
+<td width=50%>门禁自定义操作23</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM24</b></td>
+<td width=10%>0x917 </td>
+<td width=50%>门禁自定义操作24</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM25</b></td>
+<td width=10%>0x918  </td>
+<td width=50%>门禁自定义操作25</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM26</b></td>
+<td width=10%>0x919  </td>
+<td width=50%>门禁自定义操作26</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM27</b></td>
+<td width=10%>0x91a  </td>
+<td width=50%>门禁自定义操作27</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM28</b></td>
+<td width=10%>0x91b  </td>
+<td width=50%>门禁自定义操作28</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM29</b></td>
+<td width=10%>0x91c </td>
+<td width=50%>门禁自定义操作29</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM30</b></td>
+<td width=10%>0x91d  </td>
+<td width=50%>门禁自定义操作30</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM31</b></td>
+<td width=10%>0x91e  </td>
+<td width=50%>门禁自定义操作31</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM32</b></td>
+<td width=10%>0x91f </td>
+<td width=50%>门禁自定义操作32</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM33</b></td>
+<td width=10%>0x920 </td>
+<td width=50%>门禁自定义操作33</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM34</b></td>
+<td width=10%>0x921  </td>
+<td width=50%>门禁自定义操作34</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM35</b></td>
+<td width=10%>0x922  </td>
+<td width=50%>门禁自定义操作35</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM36</b></td>
+<td width=10%>0x923  </td>
+<td width=50%>门禁自定义操作36</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM37</b></td>
+<td width=10%>0x924  </td>
+<td width=50%>门禁自定义操作37</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM38</b></td>
+<td width=10%>0x925 </td>
+<td width=50%>门禁自定义操作38</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM39</b></td>
+<td width=10%>0x926  </td>
+<td width=50%>门禁自定义操作39</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM40</b></td>
+<td width=10%>0x927  </td>
+<td width=50%>门禁自定义操作40</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM41</b></td>
+<td width=10%>0x928 </td>
+<td width=50%>门禁自定义操作41</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM42</b></td>
+<td width=10%>0x929  </td>
+<td width=50%>门禁自定义操作42</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM43</b></td>
+<td width=10%>0x92a  </td>
+<td width=50%>门禁自定义操作43</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM44</b></td>
+<td width=10%>0x92b  </td>
+<td width=50%>门禁自定义操作44</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM45</b></td>
+<td width=10%>0x92c  </td>
+<td width=50%>门禁自定义操作45</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM46</b></td>
+<td width=10%>0x92d </td>
+<td width=50%>门禁自定义操作46</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM47</b></td>
+<td width=10%>0x92e  </td>
+<td width=50%>门禁自定义操作47</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM48</b></td>
+<td width=10%>0x92f  </td>
+<td width=50%>门禁自定义操作48</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM49</b></td>
+<td width=10%>0x930 </td>
+<td width=50%>门禁自定义操作49</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM50</b></td>
+<td width=10%>0x931  </td>
+<td width=50%>门禁自定义操作50</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM51</b></td>
+<td width=10%>0x932  </td>
+<td width=50%>门禁自定义操作51</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM52</b></td>
+<td width=10%>0x933  </td>
+<td width=50%>门禁自定义操作52</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM53</b></td>
+<td width=10%>0x934  </td>
+<td width=50%>门禁自定义操作53</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM54</b></td>
+<td width=10%>0x935</td>
+<td width=50%>门禁自定义操作54</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM55</b></td>
+<td width=10%>0x936  </td>
+<td width=50%>门禁自定义操作55</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM56</b></td>
+<td width=10%>0x937  </td>
+<td width=50%>门禁自定义操作56</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM57</b></td>
+<td width=10%>0x938 </td>
+<td width=50%>门禁自定义操作57</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM58</b></td>
+<td width=10%>0x939 </td>
+<td width=50%>门禁自定义操作58</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM59</b></td>
+<td width=10%>0x93a  </td>
+<td width=50%>门禁自定义操作59</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM60</b></td>
+<td width=10%>0x93b  </td>
+<td width=50%>门禁自定义操作60</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM61</b></td>
+<td width=10%>0x93c  </td>
+<td width=50%>门禁自定义操作61</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM62</b></td>
+<td width=10%>0x93d </td>
+<td width=50%>门禁自定义操作62</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM63</b></td>
+<td width=10%>0x93e </td>
+<td width=50%>门禁自定义操作63</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPERATION_CUSTOM64</b></td>
+<td width=10%>0x93f  </td>
+<td width=50%>门禁自定义操作64</td>
+</tr>
+</table>
+<br>
+<table>
+<tr valign=top>
+<th align=left width=40%><b>主类型的宏定义</b></th>
+<th align=left width=10%>主类型的宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MAJOR_EVENT</b></td>
+<td width=10%>0x5</td>
+<td width=50%>事件</td>
+</tr>
+<tr valign=top>
+<th align=left width=40%><b>次类型的宏定义</b></th>
+<th align=left width=10%>次类型的宏定义值</th>
+<th align=left width=50%>含义</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LEGAL_CARD_PASS</b></td>
+<td width=10%>0x01</td>
+<td width=50%>合法卡认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_AND_PSW_PASS</b></td>
+<td width=10%>0x02</td>
+<td width=50%>刷卡加密码认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_AND_PSW_FAIL</b></td>
+<td width=10%>0x03</td>
+<td width=50%>刷卡加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_AND_PSW_TIMEOUT</b></td>
+<td width=10%>0x04</td>
+<td width=50%>数卡加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_AND_PSW_OVER_TIME</b></td>
+<td width=10%>0x05</td>
+<td width=50%>刷卡加密码超次</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_NO_RIGHT</b></td>
+<td width=10%>0x06</td>
+<td width=50%>未分配权限</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_INVALID_PERIOD</b></td>
+<td width=10%>0x07</td>
+<td width=50%>无效时段</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_OUT_OF_DATE</b></td>
+<td width=10%>0x08</td>
+<td width=50%>卡号过期</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_INVALID_CARD</b></td>
+<td width=10%>0x09</td>
+<td width=50%>无此卡号</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ANTI_SNEAK_FAIL</b></td>
+<td width=10%>0x0a</td>
+<td width=50%>反潜回认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_INTERLOCK_DOOR_NOT_CLOSE</b></td>
+<td width=10%>0x0b</td>
+<td width=50%>互锁门未关闭</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_NOT_BELONG_MULTI_GROUP</b></td>
+<td width=10%>0x0c</td>
+<td width=50%>卡不属于多重认证群组</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_INVALID_MULTI_VERIFY_PERIOD</b></td>
+<td width=10%>0x0d</td>
+<td width=50%>卡不在多重认证时间段内</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MULTI_VERIFY_SUPER_RIGHT_FAIL</b></td>
+<td width=10%>0x0e</td>
+<td width=50%>多重认证模式超级权限认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MULTI_VERIFY_REMOTE_RIGHT_FAIL</b></td>
+<td width=10%>0x0f</td>
+<td width=50%>多重认证模式远程认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MULTI_VERIFY_SUCCESS</b></td>
+<td width=10%>0x10</td>
+<td width=50%>多重认证成功</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LEADER_CARD_OPEN_BEGIN</b></td>
+<td width=10%>0x11</td>
+<td width=50%>首卡开门开始</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LEADER_CARD_OPEN_END</b></td>
+<td width=10%>0x12</td>
+<td width=50%>首卡开门结束</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALWAYS_OPEN_BEGIN</b></td>
+<td width=10%>0x13</td>
+<td width=50%>常开状态开始</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALWAYS_OPEN_END</b></td>
+<td width=10%>0x14</td>
+<td width=50%>常开状态结束</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCK_OPEN</b></td>
+<td width=10%>0x15</td>
+<td width=50%>门锁打开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCK_CLOSE</b></td>
+<td width=10%>0x16</td>
+<td width=50%>门锁关闭</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOOR_BUTTON_PRESS</b></td>
+<td width=10%>0x17</td>
+<td width=50%>开门按钮打开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOOR_BUTTON_RELEASE</b></td>
+<td width=10%>0x18</td>
+<td width=50%>开门按钮放开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOOR_OPEN_NORMAL</b></td>
+<td width=10%>0x19</td>
+<td width=50%>正常开门（门磁）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOOR_CLOSE_NORMAL</b></td>
+<td width=10%>0x1a</td>
+<td width=50%>正常关门（门磁）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOOR_OPEN_ABNORMAL</b></td>
+<td width=10%>0x1b</td>
+<td width=50%>门异常打开（门磁）</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOOR_OPEN_TIMEOUT</b></td>
+<td width=10%>0x1c</td>
+<td width=50%>门打开超时（门磁）
+<tr valign=top>
+<td width=40%><b>MINOR_ALARMOUT_ON</b></td>
+<td width=10%>0x1d</td>
+<td width=50%>报警输出打开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALARMOUT_OFF</b></td>
+<td width=10%>0x1e</td>
+<td width=50%>报警输出关闭</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALWAYS_CLOSE_BEGIN</b></td>
+<td width=10%>0x1f</td>
+<td width=50%>常关状态开始</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ALWAYS_CLOSE_END</b></td>
+<td width=10%>0x20</td>
+<td width=50%>常关状态结束</td>
+</tr>                         
+<tr valign=top>
+<td width=40%><b>MINOR_MULTI_VERIFY_NEED_REMOTE_OPEN</b></td>
+<td width=10%>0x21</td>
+<td width=50%>多重多重认证需要远程开门</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MULTI_VERIFY_SUPERPASSWD_VERIFY_SUCCESS</b></td>
+<td width=10%>0x22</td>
+<td width=50%>多重认证超级密码认证成功事件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MULTI_VERIFY_REPEAT_VERIFY</b></td>
+<td width=10%>0x23</td>
+<td width=50%>多重认证重复认证事件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MULTI_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x24</td>
+<td width=50%>多重认证重复认证事件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORBELL_RINGING</b></td>
+<td width=10%>0x25</td>
+<td width=50%>门铃响</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGERPRINT_COMPARE_PASS</b></td>
+<td width=10%>0x26</td>
+<td width=50%>指纹比对通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGERPRINT_COMPARE_FAIL</b></td>
+<td width=10%>0x27</td>
+<td width=50%>指纹比对失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_FINGERPRINT_VERIFY_PASS</b></td>
+<td width=10%>0x28</td>
+<td width=50%>刷卡加指纹认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_FINGERPRINT_VERIFY_FAIL</b></td>
+<td width=10%>0x29</td>
+<td width=50%>刷卡加指纹认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_FINGERPRINT_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x2a</td>
+<td width=50%>刷卡加指纹认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_FINGERPRINT_PASSWD_VERIFY_PASS</b></td>
+<td width=10%>0x2b</td>
+<td width=50%>刷卡加指纹加密码认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_FINGERPRINT_PASSWD_VERIFY_FAIL</b></td>
+<td width=10%>0x2c</td>
+<td width=50%>刷卡加指纹加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_FINGERPRINT_PASSWD_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x2d</td>
+<td width=50%>刷卡加指纹加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGERPRINT_PASSWD_VERIFY_PASS</b></td>
+<td width=10%>0x2e</td>
+<td width=50%>指纹加密码认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGERPRINT_PASSWD_VERIFY_FAIL</b></td>
+<td width=10%>0x2f</td>
+<td width=50%>指纹加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGERPRINT_PASSWD_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x30</td>
+<td width=50%>指纹加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FINGERPRINT_INEXISTENCE</b></td>
+<td width=10%>0x31</td>
+<td width=50%>指纹不存在</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_PLATFORM_VERIFY</b></td>
+<td width=10%>0x32</td>
+<td width=50%>刷卡平台认证</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CALL_CENTER</b></td>
+<td width=10%>0x33</td>
+<td width=50%>呼叫中心事件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRE_RELAY_TURN_ON_DOOR_ALWAYS_OPEN</b></td>
+<td width=10%>0x34</td>
+<td width=50%>消防继电器导通触发门常开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRE_RELAY_RECOVER_DOOR_RECOVER_NORMAL</b></td>
+<td width=10%>0x35</td>
+<td width=50%>消防继电器恢复门恢复正常</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_FP_VERIFY_PASS</b></td>
+<td width=10%>0x36</td>
+<td width=50%>人脸加指纹认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_FP_VERIFY_FAIL </b></td>
+<td width=10%>0x37</td>
+<td width=50%>人脸加指纹认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_FP_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x38</td>
+<td width=50%>人脸加指纹认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_PW_VERIFY_PASS</b></td>
+<td width=10%>0x39</td>
+<td width=50%>人脸加密码认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_PW_VERIFY_FAIL</b></td>
+<td width=10%>0x3a</td>
+<td width=50%>人脸加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_PW_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x3b</td>
+<td width=50%>人脸加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_CARD_VERIFY_PASS</b></td>
+<td width=10%>0x3c</td>
+<td width=50%>人脸加刷卡认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_CARD_VERIFY_FAIL</b></td>
+<td width=10%>0x3d</td>
+<td width=50%>人脸加刷卡认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_CARD_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x3e</td>
+<td width=50%>人脸加刷卡认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_PW_AND_FP_VERIFY_PASS</b></td>
+<td width=10%>0x3f</td>
+<td width=50%>人脸加密码加指纹认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_PW_AND_FP_VERIFY_FAIL</b></td>
+<td width=10%>0x40</td>
+<td width=50%>人脸加密码加指纹认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_AND_PW_AND_FP_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x41</td>
+<td width=50%>人脸加密码加指纹认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_CARD_AND_FP_VERIFY_PASS</b></td>
+<td width=10%>0x42</td>
+<td width=50%>人脸加刷卡加指纹认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_CARD_AND_FP_VERIFY_FAIL</b></td>
+<td width=10%>0x43</td>
+<td width=50%>人脸加刷卡加指纹认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_CARD_AND_FP_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x44</td>
+<td width=50%>人脸加刷卡加指纹认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FP_VERIFY_PASS</b></td>
+<td width=10%>0x45</td>
+<td width=50%>工号加指纹认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FP_VERIFY_FAIL</b></td>
+<td width=10%>0x46</td>
+<td width=50%>工号加指纹认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FP_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x47</td>
+<td width=50%>工号加指纹认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FP_AND_PW_VERIFY_PASS</b></td>
+<td width=10%>0x48</td>
+<td width=50%>工号加指纹加密码认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FP_AND_PW_VERIFY_FAIL</b></td>
+<td width=10%>0x49</td>
+<td width=50%>工号加指纹加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FP_AND_PW_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x4a</td>
+<td width=50%>工号加指纹加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_VERIFY_PASS</b></td>
+<td width=10%>0x4b</td>
+<td width=50%>人脸认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_VERIFY_FAIL</b></td>
+<td width=10%>0x4c</td>
+<td width=50%>人脸认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FACE_VERIFY_PASS</b></td>
+<td width=10%>0x4d</td>
+<td width=50%>工号加人脸认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FACE_VERIFY_FAIL</b></td>
+<td width=10%>0x4e</td>
+<td width=50%>工号加人脸认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_FACE_VERIFY_TIMEOUT</b></td>
+<td width=10%>0x4f</td>
+<td width=50%>工号加人脸认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FACE_RECOGNIZE_FAIL</b></td>
+<td width=10%>0x50</td>
+<td width=50%>人脸识别失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRSTCARD_AUTHORIZE_BEGIN </b></td>
+<td width=10%>0x51</td>
+<td width=50%>首卡授权开始</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRSTCARD_AUTHORIZE_END </b></td>
+<td width=10%>0x52</td>
+<td width=50%>首卡授权结束</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORLOCK_INPUT_SHORT_CIRCUIT</b></td>
+<td width=10%>0x53</td>
+<td width=50%>门锁输入短路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORLOCK_INPUT_BROKEN_CIRCUIT</b></td>
+<td width=10%>0x54</td>
+<td width=50%>门锁输入断路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORLOCK_INPUT_EXCEPTION</b></td>
+<td width=10%>0x55</td>
+<td width=50%>门锁输入异常报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORCONTACT_INPUT_SHORT_CIRCUIT</b></td>
+<td width=10%>0x56</td>
+<td width=50%>门磁输入短路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORCONTACT_INPUT_BROKEN_CIRCUIT</b></td>
+<td width=10%>0x57</td>
+<td width=50%>门磁输入断路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORCONTACT_INPUT_EXCEPTION</b></td>
+<td width=10%>0x58</td>
+<td width=50%>门磁输入异常报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPENBUTTON_INPUT_SHORT_CIRCUIT </b></td>
+<td width=10%>0x59</td>
+<td width=50%>开门按钮输入短路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPENBUTTON_INPUT_BROKEN_CIRCUIT </b></td>
+<td width=10%>0x5a</td>
+<td width=50%>开门按钮输入断路报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_OPENBUTTON_INPUT_EXCEPTION</b></td>
+<td width=10%>0x5b</td>
+<td width=50%>开门按钮输入异常报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORLOCK_OPEN_EXCEPTION</b></td>
+<td width=10%>0x5c</td>
+<td width=50%>门锁异常打开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOORLOCK_OPEN_TIMEOUT</b></td>
+<td width=10%>0x5d</td>
+<td width=50%>门锁打开超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FIRSTCARD_OPEN_WITHOUT_AUTHORIZE</b></td>
+<td width=10%>0x5e</td>
+<td width=50%>首卡未授权开门失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CALL_LADDER_RELAY_BREAK</b></td>
+<td width=10%>0x5f</td>
+<td width=50%>呼梯继电器断开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CALL_LADDER_RELAY_CLOSE</b></td>
+<td width=10%>0x60</td>
+<td width=50%>呼梯继电器闭合</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_AUTO_KEY_RELAY_BREAK</b></td>
+<td width=10%>0x61</td>
+<td width=50%>自动按键继电器断开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_AUTO_KEY_RELAY_CLOSE</b></td>
+<td width=10%>0x62</td>
+<td width=50%>自动按键继电器闭合</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_KEY_CONTROL_RELAY_BREAK</b></td>
+<td width=10%>0x63</td>
+<td width=50%>按键梯控继电器断开</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_KEY_CONTROL_RELAY_CLOSE</b></td>
+<td width=10%>0x64</td>
+<td width=50%>按键梯控继电器闭合</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_PW_PASS</b></td>
+<td width=10%>0x65</td>
+<td width=50%>工号加密码认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_PW_FAIL</b></td>
+<td width=10%>0x66</td>
+<td width=50%>工号加密码认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EMPLOYEENO_AND_PW_TIMEOUT</b></td>
+<td width=10%>0x67</td>
+<td width=50%>工号加密码认证超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_HUMAN_DETECT_FAIL</b></td>
+<td width=10%>0x68</td>
+<td width=50%>真人检测失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_PEOPLE_AND_ID_CARD_COMPARE_PASS</b></td>
+<td width=10%>0x69</td>
+<td width=50%>人证比对通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_PEOPLE_AND_ID_CARD_COMPARE_FAIL</b></td>
+<td width=10%>0x70</td>
+<td width=50%>人证比对失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CERTIFICATE_BLACK_LIST</b></td>
+<td width=10%>0x71</td>
+<td width=50%>黑名单事件</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LEGAL_MESSAGE</b></td>
+<td width=10%>0x72</td>
+<td width=50%>合法短信</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_ILLEGAL_MESSAGE</b></td>
+<td width=10%>0x73</td>
+<td width=50%>非法短信</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_MAC_DETECT</b></td>
+<td width=10%>0x74</td>
+<td width=50%>MAC侦测</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DOOR_OPEN_OR_DORMANT_FAIL</b></td>
+<td width=10%>0x75</td>
+<td width=50%>门状态常闭或休眠状态认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_AUTH_PLAN_DORMANT_FAIL</b></td>
+<td width=10%>0x76</td>
+<td width=50%>认证计划休眠模式认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_AUTH_PLAN_DORMANT_FAIL</b></td>
+<td width=10%>0x76</td>
+<td width=50%>认证计划休眠模式认证失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CARD_ENCRYPT_VERIFY_FAIL</b></td>
+<td width=10%>0x77</td>
+<td width=50%>卡加密校验失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_SUBMARINEBACK_REPLY_FAIL</b></td>
+<td width=10%>0x78</td>
+<td width=50%>反潜回服务器应答失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_TRAILING</b></td>
+<td width=10%>0x85</td>
+<td width=50%>尾随通行</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_REVERSE_ACCESS</b></td>
+<td width=10%>0x86</td>
+<td width=50%>反向闯入</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FORCE_ACCESS</b></td>
+<td width=10%>0x87</td>
+<td width=50%>外力冲撞</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_CLIMBING_OVER_GATE</b></td>
+<td width=10%>0x88</td>
+<td width=50%>翻越</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_PASSING_TIMEOUT</b></td>
+<td width=10%>0x89</td>
+<td width=50%>通行超时</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_INTRUSION_ALARM</b></td>
+<td width=10%>0x8a</td>
+<td width=50%>误闯报警</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_FREE_GATE_PASS_NOT_AUTH</b></td>
+<td width=10%>0x8b</td>
+<td width=50%>闸机自由通行时未认证通过</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DROP_ARM_BLOCK</b></td>
+<td width=10%>0x8c</td>
+<td width=50%>摆臂被阻挡</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_DROP_ARM_BLOCK_RESUME</b></td>
+<td width=10%>0x8d</td>
+<td width=50%>摆臂阻挡消除</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCAL_FACE_MODELING_FAIL</b></td>
+<td width=10%>0x8e</td>
+<td width=50%>设备升级本地人脸建模失败</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_STAY_EVENT</b></td>
+<td width=10%>0x8f</td>
+<td width=50%>逗留事件</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM1</b></td>
+<td width=10%>0x500</td>
+<td width=50%>门禁自定义事件1</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM2</b></td>
+<td width=10%>0x501</td>
+<td width=50%>门禁自定义事件2</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM3</b></td>
+<td width=10%>0x502</td>
+<td width=50%>门禁自定义事件3</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM4</b></td>
+<td width=10%>0x503</td>
+<td width=50%>门禁自定义事件4</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM5</b></td>
+<td width=10%>0x504</td>
+<td width=50%>门禁自定义事件5</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM6</b></td>
+<td width=10%>0x505</td>
+<td width=50%>门禁自定义事件6</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM7</b></td>
+<td width=10%>0x506</td>
+<td width=50%>门禁自定义事件7</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM8</b></td>
+<td width=10%>0x507</td>
+<td width=50%>门禁自定义事件8</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM9</b></td>
+<td width=10%>0x508</td>
+<td width=50%>门禁自定义事件9</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM10</b></td>
+<td width=10%>0x509</td>
+<td width=50%>门禁自定义事件10</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM11</b></td>
+<td width=10%>0x50a</td>
+<td width=50%>门禁自定义事件11</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM12</b></td>
+<td width=10%>0x50b</td>
+<td width=50%>门禁自定义事件12</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_LOCK_MULTI_OPEN_DOOR</b></td>
+<td width=10%>0x609</td>
+<td width=50%>智能锁多重开门</td>
+</tr>
+
+
+
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM13</b></td>
+<td width=10%>0x50c</td>
+<td width=50%>门禁自定义事件13</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM14</b></td>
+<td width=10%>0x50d</td>
+<td width=50%>门禁自定义事件14</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM15</b></td>
+<td width=10%>0x50e</td>
+<td width=50%>门禁自定义事件15</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM16</b></td>
+<td width=10%>0x50f</td>
+<td width=50%>门禁自定义事件16</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM17</b></td>
+<td width=10%>0x510</td>
+<td width=50%>门禁自定义事件17</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM18</b></td>
+<td width=10%>0x511</td>
+<td width=50%>门禁自定义事件18</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM19</b></td>
+<td width=10%>0x512</td>
+<td width=50%>门禁自定义事件19</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM20</b></td>
+<td width=10%>0x513</td>
+<td width=50%>门禁自定义事件20</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM21</b></td>
+<td width=10%>0x514</td>
+<td width=50%>门禁自定义事件21</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM22</b></td>
+<td width=10%>0x515</td>
+<td width=50%>门禁自定义事件22</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM23</b></td>
+<td width=10%>0x516</td>
+<td width=50%>门禁自定义事件23</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM24</b></td>
+<td width=10%>0x517</td>
+<td width=50%>门禁自定义事件24</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM25</b></td>
+<td width=10%>0x518</td>
+<td width=50%>门禁自定义事件25</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM26</b></td>
+<td width=10%>0x519</td>
+<td width=50%>门禁自定义事件26</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM27</b></td>
+<td width=10%>0x51a</td>
+<td width=50%>门禁自定义事件27</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM28</b></td>
+<td width=10%>0x51b</td>
+<td width=50%>门禁自定义事件28</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM29</b></td>
+<td width=10%>0x51c</td>
+<td width=50%>门禁自定义事件29</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM30</b></td>
+<td width=10%>0x51d</td>
+<td width=50%>门禁自定义事件30</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM31</b></td>
+<td width=10%>0x51e</td>
+<td width=50%>门禁自定义事件31</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM32</b></td>
+<td width=10%>0x51f</td>
+<td width=50%>门禁自定义事件32</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM33</b></td>
+<td width=10%>0x520</td>
+<td width=50%>门禁自定义事件33</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM34</b></td>
+<td width=10%>0x521</td>
+<td width=50%>门禁自定义事件34</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM35</b></td>
+<td width=10%>0x522</td>
+<td width=50%>门禁自定义事件35</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM36</b></td>
+<td width=10%>0x523</td>
+<td width=50%>门禁自定义事件36</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM37</b></td>
+<td width=10%>0x524</td>
+<td width=50%>门禁自定义事件37</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM38</b></td>
+<td width=10%>0x525</td>
+<td width=50%>门禁自定义事件38</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM39</b></td>
+<td width=10%>0x526</td>
+<td width=50%>门禁自定义事件39</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM40</b></td>
+<td width=10%>0x527</td>
+<td width=50%>门禁自定义事件40</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM41</b></td>
+<td width=10%>0x528</td>
+<td width=50%>门禁自定义事件41</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM42</b></td>
+<td width=10%>0x529</td>
+<td width=50%>门禁自定义事件42</td>
+</tr>
+
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM43</b></td>
+<td width=10%>0x52a</td>
+<td width=50%>门禁自定义事件43</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM44</b></td>
+<td width=10%>0x52b</td>
+<td width=50%>门禁自定义事件44</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM45</b></td>
+<td width=10%>0x52c</td>
+<td width=50%>门禁自定义事件45</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM46</b></td>
+<td width=10%>0x52d</td>
+<td width=50%>门禁自定义事件46</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM47</b></td>
+<td width=10%>0x52e</td>
+<td width=50%>门禁自定义事件47</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM48</b></td>
+<td width=10%>0x52f</td>
+<td width=50%>门禁自定义事件48</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM49</b></td>
+<td width=10%>0x530</td>
+<td width=50%>门禁自定义事件49</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM50</b></td>
+<td width=10%>0x531</td>
+<td width=50%>门禁自定义事件50</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM51</b></td>
+<td width=10%>0x532</td>
+<td width=50%>门禁自定义事件51</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM52</b></td>
+<td width=10%>0x533</td>
+<td width=50%>门禁自定义事件52</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM53</b></td>
+<td width=10%>0x534</td>
+<td width=50%>门禁自定义事件53</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM54</b></td>
+<td width=10%>0x535</td>
+<td width=50%>门禁自定义事件54</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM55</b></td>
+<td width=10%>0x536</td>
+<td width=50%>门禁自定义事件55</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM56</b></td>
+<td width=10%>0x537</td>
+<td width=50%>门禁自定义事件56</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM57</b></td>
+<td width=10%>0x538</td>
+<td width=50%>门禁自定义事件57</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM58</b></td>
+<td width=10%>0x539</td>
+<td width=50%>门禁自定义事件58</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM59</b></td>
+<td width=10%>0x53a</td>
+<td width=50%>门禁自定义事件59</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM60</b></td>
+<td width=10%>0x53b</td>
+<td width=50%>门禁自定义事件60</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM61</b></td>
+<td width=10%>0x53c</td>
+<td width=50%>门禁自定义事件61</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM62</b></td>
+<td width=10%>0x53d</td>
+<td width=50%>门禁自定义事件62</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM63</b></td>
+<td width=10%>0x53e</td>
+<td width=50%>门禁自定义事件63</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>MINOR_EVENT_CUSTOM64</b></td>
+<td width=10%>0x53f</td>
+<td width=50%>门禁自定义事件64</td>
+</tr>
+</table>
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_SetDVRMessageCallBack_V31.html">NET_DVR_SetDVRMessageCallBack_V31</a>&nbsp;&nbsp; <a href="../definitions/NET_DVR_StartListen_V30.html">NET_DVR_StartListen_V30</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

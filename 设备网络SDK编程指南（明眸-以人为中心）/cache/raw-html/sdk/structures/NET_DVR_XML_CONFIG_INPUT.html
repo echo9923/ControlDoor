@@ -1,0 +1,74 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_XML_CONFIG_INPUT</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+
+<h1>NET_DVR_XML_CONFIG_INPUT</h1>
+<p>透传接口输入参数结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>    dwSize</i><b>;</b>
+<b>  void</b><i>     *lpRequestUrl</i><b>;</b>
+<b>  DWORD</b><i>    dwRequestUrlLen</i><b>;</b>
+<b>  void</b><i>     *lpInBuffer</i><b>;</b>
+<b>  DWORD</b><i>    dwInBufferSize</i><b>;</b>
+<b>  DWORD</b><i>    dwRecvTimeOut</i><b>;</b>
+<b>  BYTE</b><i>     byForceEncrpt</i><b>;</b>
+<b>  BYTE</b><i>     byRes[31]</i><b>;</b>
+<b>}NET_DVR_XML_CONFIG_INPUT,*LPNET_DVR_XML_CONFIG_INPUT;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>lpRequestUrl</i></dt>
+<dd> 请求信令，字符串格式</dd>
+
+<dt><i>dwRequestUrlLen</i></dt>
+<dd> 请求信令长度，字符串长度</dd>
+
+<dt><i>lpInBuffer</i></dt>
+<dd> 输入参数缓冲区，XML格式</dd>
+
+<dt><i>dwInBufferSize</i></dt>
+<dd> 输入参数缓冲区大小</dd>
+
+<dt><i>dwRecvTimeOut</i></dt>
+<dd> 接收超时时间，单位：ms，填0则使用默认超时5s</dd>
+
+<dt><i>byForceEncrpt</i></dt>
+<dd> 是否强制加密（启用之后透传的XML报文将加密传输，AES128加密算法）：0- 否，1- 是</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<ul>
+<li>对于不同的协议功能（lpRequestUrl输入的URL命令），lpInBuffer对应不同的内容，详见NET_DVR_STDXMLConfig接口中"Remarks"说明。</li>
+<li>NET_DVR_STDXMLConfig接口是直接透传的ISAPI协议命令，该结构体中的请求信令以及输入参数信息的详细内容可以参考ISAPI协议文档。</li>
+</ul>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

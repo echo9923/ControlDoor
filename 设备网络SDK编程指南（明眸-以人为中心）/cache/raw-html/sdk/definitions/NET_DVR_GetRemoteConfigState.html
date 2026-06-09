@@ -1,0 +1,96 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_GetRemoteConfigState</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+    <style type="text/css">
+        .style1
+        {
+            width: 495px;
+        }
+        .style2
+        {
+            width: 76px;
+        }
+    </style>
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_GetRemoteConfigState</h1>
+<p>获取长连接配置的状态。</p>
+
+<PRE class=syntax><b>BOOL NET_DVR_GetRemoteConfigState(</b>
+<b>  LONG</b><i>    lHandle</i><b>,</b>
+<b>  void</b><i>    *pState</i><b></b>
+<b>);</b></PRE>
+
+<h4>Parameters</h4>
+<dl>
+<dt><i>lHandle</i></dt>
+<dd>[in] 句柄，NET_DVR_StartRemoteConfig的返回值</dd>
+
+<dt><i>pState</i></dt>
+<dd>[out] 返回的状态值，不同的配置命令对应不同的状态取值，具体见下表</dd>
+</dl>
+<table class="HxLinkTable">
+	<tr valign="top">
+		<th align="left" class="style1">dwCommand宏定义</th>
+		<th align="left" class="style2">宏定义值</th>
+        <th align="left">含义</th>
+	</tr>
+    <tr valign="top">
+		<td class="style1"><b>NET_DVR_FIND_NAS_DIRECTORY</b></td>
+        <td class="style2">6161</td>
+        <td>查找NAS目录</td>
+	</tr>
+    <tr valign="top">
+		<th align="left" class="style1">pState状态宏定义</th>
+		<th align="left" class="style2">宏定义值</th>
+        <th align="left">含义</th>
+	</tr>
+    <tr valign="top">
+		<td class="style1"><b>NET_SDK_CALLBACK_STATUS_SUCCESS</b></td>
+        <td class="style2">1000</td>
+        <td>查找成功</td>
+	</tr>
+    <tr valign="top">
+		<td class="style1"><b>NET_SDK_CALLBACK_STATUS_PROCESSING</b></td>
+        <td class="style2">1001</td>
+        <td>处理中</td>
+	</tr>
+    <tr valign="top">
+		<td class="style1"><b>NET_SDK_CALLBACK_STATUS_FAILED</b></td>
+        <td class="style2">1002</td>
+        <td>查找失败</td>
+	</tr>
+</table>
+
+<h4>Return Values</h4>
+<p>TRUE表示成功，FALSE表示失败。接口返回失败请调用<b><a href="../definitions/NET_DVR_GetLastError.html">NET_DVR_GetLastError</a></b>获取错误码，通过错误码判断出错原因。</p>
+
+<h4>See Also</h4>
+<p><b><a href="NET_DVR_StartRemoteConfig.html">NET_DVR_StartRemoteConfig</a></b></p>
+
+
+<hr color="#999999"><br>
+
+
+
+</body>
+
+</html>
+
+

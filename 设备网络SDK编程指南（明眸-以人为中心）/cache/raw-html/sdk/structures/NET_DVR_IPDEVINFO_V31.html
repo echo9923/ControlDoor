@@ -1,0 +1,95 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_IPDEVINFO_V31</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_IPDEVINFO_V31</h1>
+<p>IP设备信息结构体。</p>
+<pre class="syntax"><b>struct{</b>
+<b>  BYTE</b><i>               byEnable</i><b>;</b>
+<b>  BYTE</b><i>               byProType</i><b>;</b>
+<b>  BYTE</b><i>               byEnableQuickAdd</i><b>;</b>
+<b>  BYTE</b><i>               byCameraType</i><b>;</b>
+<b>  BYTE</b><i>               sUserName[<span title="#define NAME_LEN 32"><em id="mycolor">NAME_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               sPassword[<span title="#define PASSWD_LEN 16"><em id="mycolor">PASSWD_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               byDomain[<span title="#define MAX_DOMAIN_NAME 64"><em id="mycolor">MAX_DOMAIN_NAME</em></span>]</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>     struIP</i><b>;</b>
+<b>  WORD</b><i>               wDVRPort</i><b>;</b>
+<b>  BYTE</b><i>               szDeviceID[<span title="#define DEV_ID_LEN 32"><em id="mycolor">DEV_ID_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>               byEnableTiming</i><b>;</b>
+<b>  BYTE</b><i>               byRes2</i><b>;</b>
+<b>}NET_DVR_IPDEVINFO_V31, *LPNET_DVR_IPDEVINFO_V31;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>byEnable</i></dt>
+<dd> 该IP设备是否启用</dd>
+
+<dt><i>byProType</i></dt>
+<dd> 协议类型(默认为私有协议)：0- 私有协议，1- 松下协议，2- 索尼，更多协议通过<strong><a 
+        href="../definitions/NET_DVR_GetIPCProtoList.html">NET_DVR_GetIPCProtoList</a></strong>获取。</dd>
+
+<dt><i>byEnableQuickAdd</i></dt>
+<dd> 0- 不支持快速添加；1- 使用快速添加，快速添加需要设备IP或设备ID(GB28181协议接入)和协议类型，其他参数信息由设备默认指定</dd>
+
+<dt><i>byCameraType</i></dt>
+<dd> 通道接入的相机类型：0-无意义，1-老师跟踪，2-学生跟踪，3-老师全景，4-学生全景，5-多媒体，6–教师定位，7-学生定位，8-板书定位，9-板书相机</dd>
+
+<dt><i>sUserName</i></dt>
+<dd> 用户名</dd>
+
+<dt><i>sPassword</i></dt>
+<dd> 密码</dd>
+
+<dt><i>byDomain</i></dt>
+<dd> 设备域名</dd>
+
+<dt><i>struIP</i></dt>
+<dd> IP地址</dd>
+
+<dt><i>wDVRPort</i></dt>
+<dd> 端口号</dd>
+ 
+<dt><i>szDeviceID</i></dt>
+<dd> 设备ID，GB28181协议接入时有效</dd>
+
+<dt><i>byEnableTiming</i></dt>
+<dd> 0-保留，1-不启用NVR对IPC自动校时，2-启用NVR对IPC自动校时</dd>
+ 
+<dt><i>byRes2</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<ul>
+<li>当某个IP设备参数对应的所有IP通道被删除，即IP通道资源的中所有IP通道参数的IPID减1没有与该IP设备参数的下标值相对应的时候，设备本地的该IP设备参数将被删除。</li>
+<li>在该结构体中，设备域名为空，ipv4地址有效时，使用ipv4地址去连接设备；ipv4和设备域名都为空，ipv6地址有效时，使用ipv6去连接设备。</li>
+<li>当协议类型为GB28181时，设置NET_DVR_IPDEVINFO_V31中的设备IP地址及域名字段无效，byDeviceID字段有；其它协议接入时，byDeviceID无效，设备IP及域名字段有效。</li>
+</ul>
+
+<h4>See Also</h4>
+<p><b><a href="../structures/NET_DVR_IPALARMINFO_V31.html">NET_DVR_IPALARMINFO_V31</a>&nbsp;&nbsp;&nbsp; <a href="../structures/NET_DVR_IPPARACFG_V31.html">NET_DVR_IPPARACFG_V31</a>&nbsp;&nbsp;&nbsp;&nbsp;
+<a href="../structures/NET_DVR_IPPARACFG_V40.html">NET_DVR_IPPARACFG_V40</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

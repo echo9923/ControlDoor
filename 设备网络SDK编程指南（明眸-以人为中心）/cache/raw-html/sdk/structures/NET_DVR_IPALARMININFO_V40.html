@@ -1,0 +1,51 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_IPALARMININFO_V40</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_IPALARMININFO_V40</h1>
+<p>IP报警输入信息结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>    dwIPID</i><b>;</b>
+<b>  DWORD</b><i>    dwAlarmIn</i><b>;</b>
+<b>  BYTE</b><i>     byRes[32]</i><b>;</b>
+<b>}NET_DVR_IPALARMININFO_V40, *LPNET_DVR_IPALARMININFO_V40;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>dwIPID</i></dt>
+<dd> IP设备ID，取值范围[1,MAX_IP_DEVICE_V40]，其中#define MAX_IP_DEVICE_V40 64</dd>
+
+<dt><i>dwAlarmIn</i></dt>
+<dd> IP设备ID对应的报警输入号</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>See Also</h4>
+<p><b><a href="../structures/NET_DVR_IPALARMINCFG_V40.html">NET_DVR_IPALARMINCFG_V40</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

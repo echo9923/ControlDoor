@@ -1,0 +1,94 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_DEV_CHAN_INFO</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_DEV_CHAN_INFO</h1>
+<p>前端设备信息结构体。</p>
+<pre class="syntax"><b>struct{</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>   struIP</i><b>;</b>
+<b>  WORD</b><i>             wDVRPort</i><b>;</b>
+<b>  BYTE</b><i>             byChannel</i><b>;</b>
+<b>  BYTE</b><i>             byTransProtocol</i><b>;</b>
+<b>  BYTE</b><i>             byTransMode</i><b>;</b>
+<b>  BYTE</b><i>             byFactoryType</i><b>;</b>
+<b>  BYTE</b><i>             byDeviceType</i><b>;</b>
+<b>  BYTE</b><i>             byDispChan</i><b>;</b>
+<b>  BYTE</b><i>             bySubDispChan</i><b>;</b>
+<b>  BYTE</b><i>             byResolution</i><b>;</b>
+<b>  BYTE</b><i>             byRes[2]</i><b>;</b>
+<b>  BYTE</b><i>             byDomain[<span title="#define MAX_DOMAIN_NAME 64"><em id="mycolor">MAX_DOMAIN_NAME</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>             sUserName[<span title="#define NAME_LEN 32"><em id="mycolor">NAME_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>             sPassword[<span title="#define PASSWD_LEN 16"><em id="mycolor">PASSWD_LEN</em></span>]</i><b>;</b>
+<b>}NET_DVR_DEV_CHAN_INFO,*LPNET_DVR_DEV_CHAN_INFO;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>struIP</i></dt>
+<dd> 设备IP地址</dd>
+
+<dt><i>wDVRPort</i></dt>
+<dd> 设备端口号</dd>
+
+<dt><i>byChannel</i></dt>
+<dd> 通道号,目前设备的模拟通道号是从1开始的，对于9000等设备的IPC接入，数字通道号从33开始</dd>
+
+<dt><i>byTransProtocol</i></dt>
+<dd> 传输协议类型：0-TCP，1-UDP，2-多播方式，3-RTP</dd>
+
+<dt><i>byTransMode</i></dt>
+<dd> 传输码流模式：0－主码流，1－子码流</dd>
+
+<dt><i>byFactoryType</i></dt>
+<dd> 前端设备厂家类型， 通过接口NET_DVR_GetIPCProtoList获取</dd>
+
+<dt><i>byDeviceType</i></dt>
+<dd> 设备类型(视频综合平台使用)：1- IPC，2- ENCODER</dd>
+
+<dt><i>byDispChan</i></dt>
+<dd> 显示通道号（智能配置使用），根据能力集决定使用解码通道还是显示通道</dd>
+
+<dt><i>bySubDispChan</i></dt>
+<dd> 显示通道子通道号（智能配置时使用）</dd>
+
+<dt><i>byResolution</i></dt>
+<dd> 分辨率：1- CIF，2- 4CIF，3- 720P，4- 1080P，5- 500W<!--，用于多屏控制器，多屏控制器会根据该参数分配解码资源--></dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>byDomain</i></dt>
+<dd> 设备域名</dd>
+
+<dt><i>sUserName</i></dt>
+<dd> 设备登陆帐号</dd>
+
+<dt><i>sPassword</i></dt>
+<dd> 设备密码</dd>
+</dl>
+
+<h4>See Also</h4>
+<p><b><a href="../structures/NET_DVR_MATRIX_CHAN_INFO_V30.html">NET_DVR_MATRIX_CHAN_INFO_V30</a>&nbsp;&nbsp;&nbsp; <a href="../structures/NET_DVR_MATRIX_DEC_CHAN_INFO_V30.html">NET_DVR_MATRIX_DEC_CHAN_INFO_V30</a></b></p>
+<p><b><a href="../structures/NET_DVR_PU_STREAM_CFG.html">NET_DVR_PU_STREAM_CFG</a></b></p>
+<p><b><a href="../definitions/NET_DVR_GetIPCProtoList.html">NET_DVR_GetIPCProtoList</a></b></p>
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

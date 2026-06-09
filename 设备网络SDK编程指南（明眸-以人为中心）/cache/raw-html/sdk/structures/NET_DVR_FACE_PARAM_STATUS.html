@@ -1,0 +1,73 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_FACE_PARAM_STATUS</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_FACE_PARAM_STATUS</h1>
+<p>人脸参数下发状态信息结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>    dwSize</i><b>;</b>
+<b>  BYTE</b><i>     byCardNo[<span title="#define ACS_CARD_NO_LEN 32"><em id="mycolor">ACS_CARD_NO_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>     byCardReaderRecvStatus[<span title="#define MAX_CARD_READER_NUM_512 512"><em id="mycolor">MAX_CARD_READER_NUM_512</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>     byErrorMsg[<span title="#define ERROR_MSG_LEN 32"><em id="mycolor">ERROR_MSG_LEN</em></span>]</i><b>;</b>
+<b>  DWORD</b><i>    dwCardReaderNo</i><b>;</b>
+<b>  BYTE</b><i>     byTotalStatus</i><b>;</b>
+<b>  BYTE</b><i>     byFaceID</i><b>;</b>
+<b>  BYTE</b><i>     byRes[130]</i><b>;</b>
+<b>}NET_DVR_FACE_PARAM_STATUS, *LPNET_DVR_FACE_PARAM_STATUS;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>byCardNo</i></dt>
+<dd> 人脸关联的卡号</dd>
+
+<dt><i>byCardReaderRecvStatus</i></dt>
+<dd> 人脸读卡器状态，按数组表示，每位数组表示一个读卡器，取值：0-失败，1-成功，2-重试或人脸质量差，3-内存已满，4-已存在该人脸，5-非法人脸ID，6-算法建模失败，7-未下发卡权限，8-未定义（保留），9-人眼间距小，10-图片数据长度小于1KB，11-图片格式不符（png/jpg/bmp）,12-图片像素数量超过上限，13-图片像素数量低于下限，14-图片信息校验失败，15-图片解码失败，16-人脸检测失败，17-人脸评分失败</dd>
+
+<dt><i>byErrorMsg</i></dt>
+<dd> 下发错误信息，当byCardReaderRecvStatus为4时表示已存在人脸对应的卡号</dd>
+
+<dt><i>dwCardReaderNo</i></dt>
+<dd> 指纹读卡器编号</dd>
+
+<dt><i>byTotalStatus</i></dt>
+<dd> 下发总的状态：0- 当前人脸未下完所有读卡器，1- 已下完所有读卡器(这里的所有指的是门禁主机往所有的读卡器下发了，不管成功与否)</dd>
+
+<dt><i>byFaceID</i></dt>
+<dd> 人脸ID编号，有效取值范围：1~2</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<p>对应ACS_ABILITY中&lt;FaceParam&gt;节点下&lt;isSupportFaceCover&gt;节点</p>
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_StartRemoteConfig_ACS_FACE.html">NET_DVR_StartRemoteConfig</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

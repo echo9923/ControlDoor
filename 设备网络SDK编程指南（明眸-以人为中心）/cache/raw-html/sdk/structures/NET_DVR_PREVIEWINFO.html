@@ -1,0 +1,101 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_PREVIEWINFO</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_PREVIEWINFO</h1>
+<p>预览参数结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  LONG</b><i>     lChannel</i><b>;</b>
+<b>  DWORD</b><i>    dwStreamType</i><b>;</b>
+<b>  DWORD</b><i>    dwLinkMode</i><b>;</b>
+<b>  HWND</b><i>     hPlayWnd</i><b>;</b>
+<b>  BOOL</b><i>     bBlocked</i><b>;</b>
+<b>  BOOL</b><i>     bPassbackRecord</i><b>;</b>
+<b>  BYTE</b><i>     byPreviewMode</i><b>;</b>
+<b>  BYTE</b><i>     byStreamID[<span title="#define STREAM_ID_LEN 32"><em id="mycolor">STREAM_ID_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>     byProtoType</i><b>;</b>
+<b>  BYTE</b><i>     byRes1</i><b>;</b>
+<b>  BYTE</b><i>     byVideoCodingType</i><b>;</b>
+<b>  DWORD</b><i>    dwDisplayBufNum</i><b>;</b>
+<b>  BYTE</b><i>     byRes[216]</i><b>;</b>
+<b>}NET_DVR_PREVIEWINFO, *LPNET_DVR_PREVIEWINFO;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>lChannel</i></dt>
+<dd> 通道号，目前设备模拟通道号从1开始，数字通道的起始通道号通过NET_DVR_GetDVRConfig（配置命令NET_DVR_GET_IPPARACFG_V40）获取（dwStartDChan）。</dd>
+
+<dt><i>dwStreamType</i></dt>
+<dd> 码流类型：0-主码流，1-子码流，2-三码流，3-虚拟码流，以此类推</dd>
+
+<dt><i>dwLinkMode</i></dt>
+<dd> 连接方式：0- TCP方式，1- UDP方式，2- 多播方式，3- RTP方式，4- RTP/RTSP，5- RTP/HTTP，6- HRUDP（可靠传输）</dd>
+
+<dt><i>hPlayWnd</i></dt>
+<dd> 播放窗口的句柄，为NULL表示不解码显示。</dd>
+
+<dt><i>bBlocked</i></dt>
+<dd> 0- 非阻塞取流，1- 阻塞取流<BR/>
+若设为不阻塞，表示发起与设备的连接就认为连接成功，如果发生码流接收失败、播放失败等情况以预览异常的方式通知上层。在循环播放的时候可以减短停顿的时间，与NET_DVR_RealPlay处理一致。<BR/>
+若设为阻塞，表示直到播放操作完成才返回成功与否，网络异常时SDK内部connect失败将会有5s的超时才能够返回，不适合于轮询取流操作。
+</dd>
+
+<dt><i>bPassbackRecord</i></dt>
+<dd> 是否启用录像回传：0-不启用录像回传，1-启用录像回传。ANR断网补录功能，客户端和设备之间网络异常恢复之后自动将前端数据同步过来，需要设备支持。</dd> 
+
+<dt><i>byPreviewMode</i></dt>
+<dd> 延迟预览模式：0- 正常预览，1- 延迟预览</dd>
+
+<dt><i>byStreamID</i></dt>
+<dd> 流ID，为字母、数字和"_"的组合，lChannel为0xffffffff时启用此参数</dd> 
+
+<dt><i>byProtoType</i></dt>
+<dd> 应用层取流协议：0- 私有协议，1- RTSP协议。主子码流支持的取流协议通过登录返回结构参数<strong><a 
+        href="NET_DVR_DEVICEINFO_V30.html">NET_DVR_DEVICEINFO_V30</a></strong>的byMainProto、bySubProto值得知。设备同时支持私协议和RTSP协议时，该参数才有效，默认使用私有协议，可选RTSP协议。</dd>
+
+<dt><i>byRes1</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>byVideoCodingType</i></dt>
+<dd> 码流数据编解码类型：0- 通用编码数据，1- 热成像探测器产生的原始数据（温度数据的加密信息，通过去加密运算，将原始数据算出真实的温度值）</dd>
+
+<dt><i>dwDisplayBufNum</i></dt>
+<dd> 播放库播放缓冲区最大缓冲帧数，取值范围：1、6（默认，自适应播放模式）、15，置0时默认为1</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<ul>
+<LI>dwStreamType(码流类型)、dwLinkMode(连接方式)、bPassbackRecord(录像回传)、byPreviewMode(延迟预览模式)、byStreamID(流ID)这些参数的取值需要设备支持。</LI>
+<LI>NET_DVR_RealPlay_V40支持多播方式预览（dwLinkMode设为2），不需要传多播组地址，底层自动从设备获取已配置的多播组地址（<b><a href="../structures/NET_DVR_NETCFG_V50.html">NET_DVR_NETCFG_V50</a></b>中的参数struMulticastIpAddr）并以该多播组地址实现多播。</LI>
+<LI>设备码流类型详细介绍可以参考“帮助”->“常见问题解答”中的<a href="../常见问题解答.html#STREAMTYPE"><strong>Question 33</strong></a>。</LI>
+</ul>
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_RealPlay_V40.html">NET_DVR_RealPlay_V40</a></b></p>
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

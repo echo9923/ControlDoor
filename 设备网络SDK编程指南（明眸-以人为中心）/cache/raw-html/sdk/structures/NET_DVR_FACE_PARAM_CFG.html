@@ -1,0 +1,75 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_FACE_PARAM_CFG</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_FACE_PARAM_CFG</h1>
+<p>人脸参数配置结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>    dwSize</i><b>;</b>
+<b>  BYTE</b><i>     byCardNo[<span title="#define ACS_CARD_NO_LEN 32"><em id="mycolor">ACS_CARD_NO_LEN</em></span>]</i><b>;</b>
+<b>  DWORD</b><i>    dwFaceLen</i><b>;</b>
+<b>  char</b><i>     *pFaceBuffer</i><b>;</b>
+<b>  BYTE</b><i>     byEnableCardReader[<span title="#define MAX_CARD_READER_NUM_512 512"><em id="mycolor">MAX_CARD_READER_NUM_512</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>     byFaceID</i><b>;</b>
+<b>  BYTE</b><i>     byFaceDataType</i><b>;</b>
+<b>  BYTE</b><i>     byRes[126]</i><b>;</b>
+<b>}NET_DVR_FACE_PARAM_CFG, *LPNET_DVR_FACE_PARAM_CFG;</b></pre>
+<h4>Members</h4>
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>byCardNo</i></dt>
+<dd> 人脸关联的卡号</dd>
+
+<dt><i>dwFaceLen</i></dt>
+<dd> 人脸数据长度</dd>
+
+<dt><i>pFaceBuffer</i></dt>
+<dd> 人脸数据缓冲区指针，dwFaceLen不为0时存放人脸数据（DES加密处理，设备端返回的即加密后的数据）</dd>
+
+<dt><i>byEnableCardReader</i></dt>
+<dd> 需要下发人脸的读卡器，按数组表示，每位数组表示一个读卡器，数组取值：0-不下发该读卡器，1-下发到该读卡器</dd>
+
+<dt><i>byFaceID</i></dt>
+<dd> 人脸ID编号，有效取值范围：1~2</dd>
+
+<dt><i>byFaceDataType</i></dt>
+<dd> 人脸数据类型：0- 模板（默认），1- 图片</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<ul>
+<li>设备是否支持人脸参数配置或者支持的参数能力，可以通过设备能力集进行判断，对应门禁能力集(<a href="../XMLs/ACS_ABILITY.html"><b>AcsAbility</b></a>)，相关接口：<a href="../definitions/NET_DVR_GetDeviceAbility_ACS.html"><b>NET_DVR_GetDeviceAbility</b></a>，能力集类型：ACS_ABILITY，节点：&lt;FaceParam&gt;。</li>
+</ul>
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_StartRemoteConfig_ACS_FACE.html">NET_DVR_StartRemoteConfig</a>&nbsp;&nbsp; <a href="../definitions/NET_DVR_SendRemoteConfig_ACS_FACE.html">NET_DVR_SendRemoteConfig</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

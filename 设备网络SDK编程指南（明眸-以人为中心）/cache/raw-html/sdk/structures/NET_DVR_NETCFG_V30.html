@@ -1,0 +1,131 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_NETCFG_V30</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_NETCFG_V30</h1>
+<p>网络配置结构体。</p>
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>                    dwSize</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_ETHERNET_V30.html">NET_DVR_ETHERNET_V30</a></b><i>     struEtherNet[<span title="#define MAX_ETHERNET 2"><em id="mycolor">MAX_ETHERNET</em></span>]</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>           struRes1[2]</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>           struAlarmHostIpAddr</i><b>;</b>
+<b>  BYTE</b><i>                     byRes2[4]</i><b>;</b>
+<b>  WORD</b><i>                     wAlarmHostIpPort</i><b>;</b>
+<b>  BYTE</b><i>                     byUseDhcp</i><b>;</b>
+<b>  BYTE</b><i>                     byIPv6Mode</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>           struDnsServer1IpAddr</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>           struDnsServer2IpAddr</i><b>;</b>
+<b>  BYTE</b><i>                     byIpResolver[<span title="#define MAX_DOMAIN_NAME 64"><em id="mycolor">MAX_DOMAIN_NAME</em></span>]</i><b>;</b>
+<b>  WORD</b><i>                     wIpResolverPort</i><b>;</b>
+<b>  WORD</b><i>                     wHttpPortNo</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>           struMulticastIpAddr</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_IPADDR.html">NET_DVR_IPADDR</a></b><i>           struGatewayIpAddr</i><b>;</b>
+<b>  <a href="../structures/NET_DVR_PPPOECFG.html">NET_DVR_PPPOECFG</a></b><i>         struPPPoE</i><b>;</b>
+<b>  BYTE</b><i>                     byEnablePrivateMulticastDiscovery</i><b>;</b>
+<b>  BYTE</b><i>                     byEnableOnvifMulticastDiscovery</i><b>;</b>
+<b>  BYTE</b><i>                     byEnableDNS</i><b>;</b>
+<b>  BYTE</b><i>                     byRes[61]</i><b>;</b>
+<b>}NET_DVR_NETCFG_V30,*LPNET_DVR_NETCFG_V30;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>struEtherNet</i></dt>
+<dd> 以太网口</dd>
+
+<dt><i>struRes1</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>struAlarmHostIpAddr</i></dt>
+<dd> 报警主机IP地址</dd>
+
+<dt><i>byRes2  </i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>wAlarmHostIpPort</i></dt>
+<dd> 报警主机端口号</dd>
+
+<dt><i>byUseDhcp</i></dt>
+<dd> 是否启用DHCP：0xff-无效；0-不启用；1-启用</dd>
+
+<dt><i>byIPv6Mode</i></dt>
+<dd> IPv6分配方式：0-路由公告，1-手动设置，2-启用DHCP分配</dd>
+
+<dt><i>struDnsServer1IpAddr</i></dt>
+<dd> 域名服务器1的IP地址</dd>
+
+<dt><i>struDnsServer2IpAddr</i></dt>
+<dd> 域名服务器2的IP地址</dd>
+
+<dt><i>byIpResolver</i></dt>
+<dd> IP解析服务器域名或IP地址（8000设备不支持域名）</dd>
+
+<dt><i>wIpResolverPort</i></dt>
+<dd> IP解析服务器端口号</dd>
+
+<dt><i>wHttpPortNo</i></dt>
+<dd> HTTP端口号</dd>
+
+<dt><i>struMulticastIpAddr</i></dt>
+<dd> 多播组地址</dd>
+
+<dt><i>struGatewayIpAddr</i></dt>
+<dd> 网关地址</dd>
+
+<dt><i>struPPPoE</i></dt>
+<dd> PPPoE参数</dd>
+
+<dt><i>byEnablePrivateMulticastDiscovery</i></dt>
+<dd> 私有多播搜索(SADP)：0- 默认，1- 启用，2- 禁用</dd>
+
+<dt><i>byEnableOnvifMulticastDiscovery</i></dt>
+<dd> Onvif多播搜索(SADP)：0- 默认，1- 启用，2- 禁用 </dd>
+
+<dt><i>byEnableDNS</i></dt>
+<dd> 手动设置DNS服务器地址使能：0- 自动获取，1- 手动设置</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+<h4>Remarks</h4>
+<ul>
+<li>8000等3.0协议以下的设备，参数byUseDhcp为0xff-无效，将其IP地址填成空，设备会自动去获取DHCP。</li>
+<li>当byIPv6Mode选择“0-路由公告”或“2-启用DHCP分配”时，无需设置struEtherNet中的IPv6地址，设备自动获取；当byIPv6Mode选择“1-手动设置”时，需要设置struEtherNet中的IPv6地址。由于多IPv6地址（路由公告地址多个，可以正常使用），当前登录的设备IPv6地址可能和此结构中的struEtherNet中的IPv6地址不一致。</li>
+</ul>
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_GetDVRConfig_old.html#Remarks">NET_DVR_GetDVRConfig</a>&nbsp;&nbsp;&nbsp;<a href="../definitions/NET_DVR_SetDVRConfig_old.html#Remarks">NET_DVR_SetDVRConfig</a></b></p>
+
+<h4>Reference Structure</h4>
+<p>该结构扩展源于</p>
+<p><b><a href="../structures/NET_DVR_NETCFG.html">NET_DVR_NETCFG</a></b></p>
+<p>扩展结构体可见</p>
+<p><b><a href="../structures/NET_DVR_NETCFG_V50.html">NET_DVR_NETCFG_V50</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>

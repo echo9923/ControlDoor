@@ -1,0 +1,132 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_Logout_V30</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_Logout_V30</h1>
+<p>用户注销。</p>
+
+<PRE class=syntax><b>BOOL NET_DVR_Logout_V30(</b>
+<b>  LONG</b><i>    lUserID</i><b></b>
+<b>);</b></PRE>
+
+<h4>Parameters</h4>
+<dl>
+<dt><i>lUserID</i></dt>
+<dd>
+    [in] 
+   用户ID号，NET_DVR_Login_V40等登录接口的返回值</dd>
+</dl>
+
+<h4>Return Values</h4>
+<p>TRUE表示成功，FALSE表示失败。接口返回失败请调用<b><a href="../definitions/NET_DVR_GetLastError.html">NET_DVR_GetLastError</a></b>获取错误码，通过错误码判断出错原因。</p>
+<p>以下是该接口可能返回的错误值</p>
+<table>
+<tr valign=top>
+<th align=left width=40%><b>错误类型</b></th>
+<th align=left width=20%>错误值</th>
+<th align=left width=40%>错误信息</th>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_NOERROR</b></td>
+<td width=20%>0</td>
+<td width=40%>没有错误。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_NOINIT</b></td>
+<td width=20%>3</td>
+<td width=40%>SDK未初始化。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_NETWORK_FAIL_CONNECT</b></td>
+<td width=20%>7</td>
+<td width=40%>连接设备失败。设备不在线或网络原因引起的连接超时等。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_NETWORK_SEND_ERROR</b></td>
+<td width=20%>8</td>
+<td width=40%>向设备发送失败。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_NETWORK_RECV_ERROR</b></td>
+<td width=20%>9</td>
+<td width=40%>从设备接收数据失败。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_NETWORK_RECV_TIMEOUT</b></td>
+<td width=20%>10</td>
+<td width=40%>从设备接收数据超时。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_COMMANDTIMEOUT</b></td>
+<td width=20%>14</td>
+<td width=40%>设备命令执行超时。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_PARAMETER_ERROR</b></td>
+<td width=20%>17</td>
+<td width=40%>参数错误。SDK接口中给入的输入或输出参数为空。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_ALLOC_RESOURCE_ERROR</b></td>
+<td width=20%>41</td>
+<td width=40%>SDK资源分配错误。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_CREATESOCKET_ERROR</b></td>
+<td width=20%>44</td>
+<td width=40%>创建SOCKET出错。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_USERNOTEXIST</b></td>
+<td width=20%>47</td>
+<td width=40%>用户不存在。注册的用户ID已注销或不可用。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_BINDSOCKET_ERROR</b></td>
+<td width=20%>72</td>
+<td width=40%>绑定套接字失败。</td>
+</tr>
+<tr valign=top>
+<td width=40%><b>NET_DVR_SOCKETCLOSE_ERROR</b></td>
+<td width=20%>73</td>
+<td width=40%>socket连接中断，此错误通常是由于连接中断或目的地不可达。</td>
+</tr>
+</table>
+
+<h4>Remarks</h4>
+<p>该接口强制停止该用户的所有操作和释放所有的资源，确保该ID对应的线程都安全退出，资源得到释放。建议使用<a href="NET_DVR_Logout.html">NET_DVR_Logout</a>接口实现注销功能。
+</p>
+
+<h4>See Also</h4>
+<p><b><a href="NET_DVR_Login_V40.html">NET_DVR_Login_V40</a></b></p>
+
+<h4>Reference Interface</h4>
+<p>该接口扩展源于<br>
+<b><a href="NET_DVR_Logout.html">NET_DVR_Logout</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+
+</html>
+
+

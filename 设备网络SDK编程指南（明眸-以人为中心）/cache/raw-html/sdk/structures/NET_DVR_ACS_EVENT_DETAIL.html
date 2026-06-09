@@ -1,0 +1,169 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>NET_DVR_ACS_EVENT_DETAIL</title>
+
+<link href="../style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body topmargin="0">
+
+<table class="buttonbarshade" cellspacing="0">
+	<tr>
+		<td>&nbsp;</td>
+	</tr>
+</table>
+<table class="buttonbartable" cellspacing="0">
+	<tr id="hdr">
+		<td class="runninghead" nowrap>设备网络SDK开发使用手册</td>
+	</tr>
+</table>
+
+<h1>NET_DVR_ACS_EVENT_DETAIL</h1>
+<p>门禁主机报警事件细节结构体。</p>
+
+
+
+<pre class="syntax"><b>struct{</b>
+<b>  DWORD</b><i>                     dwSize</i><b>;</b>
+<b>  BYTE</b><i>                      byCardNo[<span title="#define ACS_CARD_NO_LEN 32"><em id="Em3">ACS_CARD_NO_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>                      byCardType</i><b>;</b>
+<b>  BYTE</b><i>                      byWhiteListNo</i><b>;</b>
+<b>  BYTE</b><i>                      byReportChannel</i><b>;</b>
+<b>  BYTE</b><i>                      byCardReaderKind</i><b>;</b>
+<b>  DWORD</b><i>                     dwCardReaderNo</i><b>;</b>
+<b>  DWORD</b><i>                     dwDoorNo</i><b>;</b>
+<b>  DWORD</b><i>                     dwVerifyNo</i><b>;</b>
+<b>  DWORD</b><i>                     dwAlarmInNo</i><b>;</b> 
+<b>  DWORD</b><i>                     dwAlarmOutNo</i><b>;</b> 
+<b>  DWORD</b><i>                     dwCaseSensorNo</i><b>;</b> 
+<b>  DWORD</b><i>                     dwRs485No</i><b>;</b> 
+<b>  DWORD</b><i>                     dwMultiCardGroupNo</i><b>;</b> 
+<b>  WORD</b><i>                      wAccessChannel</i><b>;</b> 
+<b>  BYTE</b><i>                      byDeviceNo</i><b>;</b>
+<b>  BYTE</b><i>                      byDistractControlNo</i><b>;</b>
+<b>  DWORD</b><i>                     dwEmployeeNo</i><b>;</b> 
+<b>  WORD</b><i>                      wLocalControllerID</i><b>;</b> 
+<b>  BYTE</b><i>                      byInternetAccess</i><b>;</b>
+<b>  BYTE</b><i>                      byType</i><b>;</b>
+<b>  BYTE</b><i>                      byMACAddr[<span title="#define MACADDR_LEN 6"><em id="Em4">MACADDR_LEN</em></span>]</i><b>;</b>
+<b>  BYTE</b><i>                      bySwipeCardType</i><b>;</b>
+<b>  BYTE</b><i>                      byRes2</i><b>;</b>
+<b>  DWORD </b><i>                    dwSerialNo</i><b>;</b>
+<b>  BYTE</b><i>                      byChannelControllerID</i><b>;</b>
+<b>  BYTE</b><i>                      byChannelControllerLampID</i><b>;</b>
+<b>  BYTE</b><i>                      byChannelControllerIRAdaptorID</i><b>;</b>
+<b>  BYTE</b><i>                      byChannelControllerIREmitterID</i><b>;</b>
+<b>  BYTE</b><i>                      byRes[108]</i><b>;</b>
+<b>}NET_DVR_ACS_EVENT_DETAIL,*LPNET_DVR_ACS_EVENT_DETAIL;</b></pre>
+<h4>Members</h4>
+
+<dl>
+<dt><i>dwSize</i></dt>
+<dd> 结构体大小</dd>
+
+<dt><i>byCardNo</i></dt>
+<dd> 卡号（mac地址），为0无效</dd>
+
+<dt><i>byCardType</i></dt>
+<dd> 卡类型，1-普通卡，2-残疾人卡，3-黑名单卡，4-巡更卡，5-胁迫卡，6-超级卡，7-来宾卡，8-解除卡，为0无效</dd>
+
+<dt><i>byWhiteListNo</i></dt>
+<dd> 白名单单号,1-8，为0无效</dd>
+
+<dt><i>byReportChannel</i></dt>
+<dd> 报告上传通道，1-布防上传，2-中心组1上传，3-中心组2上传，为0无效</dd>
+
+<dt><i>byCardReaderKind</i></dt>
+<dd> 读卡器属于哪一类，0-无效，1-IC读卡器，2-身份证读卡器，3-二维码读卡器,4-指纹头</dd>
+
+<dt><i>dwCardReaderNo</i></dt>
+<dd> 读卡器编号，为0无效</dd>
+
+<dt><i>dwDoorNo</i></dt>
+<dd> 门编号（楼层编号），为0无效</dd>
+ 
+ <dt><i>dwVerifyNo</i></dt>
+<dd> 多重卡认证序号，为0无效</dd>  
+
+ <dt><i>dwAlarmInNo</i></dt>
+<dd> 报警输入号，为0无效</dd>  
+
+<dt><i>dwAlarmOutNo</i></dt>
+<dd> 报警输出号，为0无效</dd>  
+
+<dt><i>dwCaseSensorNo</i></dt>
+<dd> 事件触发器编号</dd>  
+
+<dt><i>dwRs485No</i></dt>
+<dd> RS485通道号，为0无效</dd>  
+
+<dt><i>dwMultiCardGroupNo</i></dt>
+<dd> 群组编号</dd>  
+
+<dt><i>wAccessChannel</i></dt>
+<dd> 人员通道号</dd>  
+
+<dt><i> byDistractControlNo</i></dt>
+<dd> 分控器编号，为0无效</dd>  
+
+<dt><i> dwEmployeeNo</i></dt>
+<dd> 工号，为0无效</dd>  
+
+<dt><i> dwEmployeeNo</i></dt>
+<dd> 工号，为0无效</dd>  
+
+<dt><i> wLocalControllerID</i></dt>
+<dd> 就地控制器编号，0-门禁主机，1-64代表就地控制器</dd>  
+
+<dt><i> wLocalControllerID</i></dt>
+<dd> 就地控制器编号，0-门禁主机，1-64代表就地控制器</dd>  
+
+<dt><i> byInternetAccess</i></dt>
+<dd>网口ID：（1-上行网口1,2-上行网口2,3-下行网口1）</dd>
+
+<dt><i> byType</i></dt>
+<dd>防区类型，0:即时防区,1-24小时防区,2-延时防区 ,3-内部防区，4-钥匙防区 5-火警防区 6-周界防区 7-24小时无声防区  8-24小时辅助防区，9-24小时震动防区,10-门禁紧急开门防区，11-门禁紧急关门防区 0xff-无</dd>
+
+<dt><i> byMACAddr</i></dt>
+<dd>物理地址，为0无效</dd>
+
+<dt><i> bySwipeCardType</i></dt>
+<dd>刷卡类型，0-无效，1-二维码</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+
+<dt><i>dwSerialNo</i></dt>
+<dd> 事件流水号，为0无效</dd>
+
+<dt><i>byChannelControllerID</i></dt>
+<dd> 通道控制器ID，为0无效，1-主通道控制器，2-从通道控制器</dd>
+
+<dt><i>byChannelControllerLampID</i></dt>
+<dd> 通道控制器灯板ID，为0无效（有效范围1-255）</dd>
+
+<dt><i>byChannelControllerIRAdaptorID</i></dt>
+<dd> 通道控制器红外转接板ID，为0无效（有效范围1-255）</dd>
+
+<dt><i>byChannelControllerIREmitterID</i></dt>
+<dd> 通道控制器红外对射ID，为0无效（有效范围1-255）</dd>
+
+<dt><i>byRes</i></dt>
+<dd> 保留，置为0</dd>
+</dl>
+
+
+<h4>Remarks</h4>
+<p>对应的能力集：为ACS_ABILITY能力集的&lt;isSupportGetDeviceEvent&gt;节点；详细信息为GET /ISAPI/AccessControl/GetAcsEvent/capabilities。</p>
+
+
+<h4>See Also</h4>
+<p><b><a href="../definitions/NET_DVR_StartRemoteConfig_ACS_Event.html">NET_DVR_StartRemoteConfig</a>&nbsp;&nbsp; <a href="../definitions/NET_DVR_StopRemoteConfig_ACS_Event.html">NET_DVR_StopRemoteConfig</a></b></p>
+
+<hr color="#999999"><br>
+
+
+
+</body>
+</html>
