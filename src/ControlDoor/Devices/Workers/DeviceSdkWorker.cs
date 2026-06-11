@@ -103,7 +103,7 @@ namespace ControlDoor.Devices.Workers
 
                 var now = DateTime.Now;
                 var effectiveTimeout = task.GetEffectiveTimeoutMilliseconds(defaultTaskTimeoutMilliseconds);
-                if (!queue.TryEnqueue(task, now, effectiveTimeout, out _))
+                if (!queue.TryEnqueue(task, now, effectiveTimeout, out var item))
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "QUEUE_FULL", "Worker queue is full.");
                     task.MarkRejected(rejected);
@@ -113,7 +113,16 @@ namespace ControlDoor.Devices.Workers
 
                 queueInfo = BuildQueueInfoLocked();
                 Monitor.PulseAll(gate);
-                result = DeviceTaskSubmissionResult.AcceptedResult(task, WorkerIndex, task.Sequence.Value, DeviceTaskResult.Queued(task));
+                if (item == null)
+                {
+                    var coalesced = DeviceTaskResult.Rejected(task, "COALESCED", "Background task was coalesced.");
+                    task.Completion.TrySetResult(coalesced);
+                    result = DeviceTaskSubmissionResult.AcceptedResult(task, WorkerIndex, null, coalesced);
+                }
+                else
+                {
+                    result = DeviceTaskSubmissionResult.AcceptedResult(task, WorkerIndex, task.Sequence.Value, DeviceTaskResult.Queued(task));
+                }
             }
 
             registry.UpdateQueueInfo(task.DeviceId, queueInfo);
@@ -198,7 +207,7 @@ namespace ControlDoor.Devices.Workers
                 DeviceQueueInfo queueInfo = null;
                 lock (gate)
                 {
-                    while (!cancellationToken.IsCancellationRequested && !queue.TryDequeue(out item))
+                    while (!cancellationToken.IsCancellationRequested && !queue.TryDequeue(DateTime.Now, out item, out _))
                     {
                         Monitor.Wait(gate, TimeSpan.FromMilliseconds(100));
                     }
@@ -382,7 +391,8 @@ namespace ControlDoor.Devices.Workers
                 CancelledTaskCount = cancelledTaskCount,
                 LastTaskCompletedAt = lastTaskCompletedAt,
                 LastError = lastError,
-                OldestQueuedTaskAgeMilliseconds = oldest.HasValue ? (long?)Math.Max(0, (DateTime.Now - oldest.Value).TotalMilliseconds) : null
+                OldestQueuedTaskAgeMilliseconds = oldest.HasValue ? (long?)Math.Max(0, (DateTime.Now - oldest.Value).TotalMilliseconds) : null,
+                PriorityQueue = queue.GetPrioritySnapshot()
             };
         }
     }

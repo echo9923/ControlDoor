@@ -34,5 +34,7 @@ namespace ControlDoor.Devices.Workers
         public string LastError { get; set; }
 
         public long? OldestQueuedTaskAgeMilliseconds { get; set; }
+
+        public DevicePriorityQueueSnapshot PriorityQueue { get; set; }
     }
 }

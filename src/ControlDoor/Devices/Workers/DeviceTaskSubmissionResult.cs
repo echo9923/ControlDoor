@@ -23,7 +23,7 @@ namespace ControlDoor.Devices.Workers
 
         public DeviceSdkTask Task { get; }
 
-        public static DeviceTaskSubmissionResult AcceptedResult(DeviceSdkTask task, int workerIndex, long sequence, DeviceTaskResult immediateResult = null)
+        public static DeviceTaskSubmissionResult AcceptedResult(DeviceSdkTask task, int workerIndex, long? sequence, DeviceTaskResult immediateResult = null)
         {
             return new DeviceTaskSubmissionResult(true, workerIndex, sequence, immediateResult, task);
         }
