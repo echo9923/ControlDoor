@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>ControlDoor</AssemblyName>
+    <RootNamespace>ControlDoor</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AssemblyTitle>ControlDoor</AssemblyTitle>
+    <Product>ControlDoor</Product>
+    <Description>门禁设备控制服务</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Configuration.Install" />
+    <Reference Include="System.ServiceProcess" />
+  </ItemGroup>
+</Project>

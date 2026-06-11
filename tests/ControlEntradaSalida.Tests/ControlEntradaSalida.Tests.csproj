@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>ControlEntradaSalida.Tests</AssemblyName>
+    <RootNamespace>ControlEntradaSalida.Tests</RootNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ControlDoor\ControlDoor.csproj" />
+  </ItemGroup>
+</Project>
