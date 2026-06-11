@@ -26,6 +26,15 @@
 - `docs/gRPC接口清单.md`：gRPC 接口定义、调用约束和接口实现依据。
 - `docs/底层数据库文档.md`：数据库表结构、字段说明、数据关系和落库规则。
 - `docs/海康AIOP短衣短裤报警SDK布防回调说明.md`：海康 AIOP 报警布防、回调流程和 SDK 使用说明。
+- `docs/stage4/task01.md`：阶段 4 边界与任务总览，适用于确认设备生命周期和设备管理 gRPC 的实施范围。
+- `docs/stage4/task02.md`：设备加载与运行时注册方案，适用于实现 `dbo.devices` 加载、设备运行时对象和索引注册。
+- `docs/stage4/task03.md`：启动登录与登出清理方案，适用于实现登录任务、登出任务、停止清理和 `last_used_time` 更新。
+- `docs/stage4/task04.md`：状态检测与重连策略，适用于实现周期检测、自动重连、手动重连和退避规则。
+- `docs/stage4/task05.md`：布防编排与撤防策略，适用于实现登录后布防、断开前撤防和 AlarmHandle 管理。
+- `docs/stage4/task06.md`：`GetDeviceStatus` 实施方案，适用于实现设备状态查询、筛选、刷新和鉴权。
+- `docs/stage4/task07.md`：`AddDevice` 实施方案，适用于实现新增设备入库、运行时注册和可选立即连接。
+- `docs/stage4/task08.md`：`DeleteDevice`、`DisconnectDevice`、`ReconnectDevice` 实施方案，适用于实现设备删除、手动断开和手动重连。
+- `docs/stage4/task09.md`：阶段 4 测试与验收方案，适用于验证设备生命周期、设备管理 gRPC、数据库兼容和 mock SDK 集成。
 
 在 `docs/` 下每新增一个文档，必须在本节同步增加一条目录指引项。目录项应包含文档路径、核心用途和适用场景，确保后续查阅和实施时能快速定位。
 

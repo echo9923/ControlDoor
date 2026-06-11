@@ -1,0 +1,81 @@
+# 阶段 4 / 任务 03：启动登录与登出清理
+
+## 目标
+
+把阶段 3.4 的登录/登出网关方法接入设备固定执行通道。启动时为启用设备投递登录任务，删除、断开、重连和服务停止时投递登出清理任务。
+
+## 登录任务
+
+| 字段 | 说明 |
+| --- | --- |
+| `OperationName` | `DeviceLogin`。 |
+| `Priority` | `High`，高于状态检测，低于强制断开/删除。 |
+| `DeviceId` | 设备 ID。 |
+| `TimeoutMs` | `DeviceConnection.LoginTimeoutMs`。 |
+| `Execute` | 调用 `IHikvisionSdkGateway.Login`。 |
+
+## 登录流程
+
+| 步骤 | 动作 | 失败处理 |
+| --- | --- | --- |
+| 1 | worker 读取设备当前状态和连接参数。 | 设备不存在返回 `NOT_FOUND`。 |
+| 2 | 如果已在线且 UserID 有效，跳过重复登录。 | 返回当前快照。 |
+| 3 | 设置状态为 `Connecting`。 | 写内存状态，不写数据库。 |
+| 4 | 调用 `Login`。 | 失败记录 SDK 错误并进入重连策略。 |
+| 5 | 登录成功写入 `SdkUserId`、设备序列号、字符编码和登录模式。 | 写入索引失败时尝试登出。 |
+| 6 | 更新状态为 `Online`。 | 记录 `LastCheckedAt`。 |
+| 7 | 更新 `dbo.devices.last_used_time = SYSDATETIME()`。 | DB 失败不登出设备，但记录 `DB_ERROR`。 |
+| 8 | 按任务 4.5 决定是否投递布防任务。 | 布防失败不影响登录成功。 |
+
+## 登出任务
+
+| 场景 | 优先级 | 行为 |
+| --- | --- | --- |
+| 服务停止 | `Critical` | best-effort 撤防后登出。 |
+| 删除设备 | `Critical` | 撤防、登出、清理索引后删除数据库。 |
+| 手动断开 | `Critical` | 撤防、登出、状态置为 `Disconnected`。 |
+| 强制重连 | `Critical` | 撤防、登出、清理旧 UserID 后重新登录。 |
+
+## 登出流程
+
+| 步骤 | 动作 | 失败处理 |
+| --- | --- | --- |
+| 1 | 如果有 AlarmHandle，先投递或执行撤防。 | 撤防失败记录 warning，继续登出。 |
+| 2 | 如果有 UserID，调用 `Logout`。 | false 后读取错误码并记录。 |
+| 3 | 清理 UserID 反查索引。 | 即使 SDK 登出失败也清理本地索引。 |
+| 4 | 清理 AlarmHandle 反查索引。 | 保证本地不再误用旧句柄。 |
+| 5 | 更新设备状态。 | 根据场景置为 `Disconnected`、`Deleted`、`Reconnecting`。 |
+| 6 | 完成任务并记录日志。 | 失败信息保留在 `LastError`。 |
+
+## 数据库写入
+
+| 操作 | SQL |
+| --- | --- |
+| 登录成功最近使用时间 | `UPDATE dbo.devices SET last_used_time = SYSDATETIME() WHERE device_id = @deviceId` |
+
+约束：
+
+- 不修改 `status` 字段表示在线/离线。
+- `last_used_time` 更新失败不影响设备在线状态。
+- 删除设备的 `DELETE` 在任务 4.8 定义。
+
+## 不做的事
+
+| 不做内容 | 原因 |
+| --- | --- |
+| 不实现具体重连退避 | 任务 4.4 负责。 |
+| 不下发权限/人员/人脸 | 阶段 5 负责。 |
+| 不解析报警事件 | 阶段 7 负责。 |
+| 不写补偿表 | 阶段 6 负责。 |
+
+## 测试
+
+| 测试 | 验证 |
+| --- | --- |
+| 登录成功 | UserID 写入状态和反查索引，状态为 Online。 |
+| 登录失败 | 状态为 Offline/ReconnectPending，错误码保存。 |
+| 重复登录 | 已在线设备不重复调用 SDK。 |
+| 登录后索引失败 | 尝试 Logout，避免 UserID 泄漏。 |
+| 登出成功 | UserID、AlarmHandle 和反查索引清空。 |
+| 登出失败 | 本地索引仍清理，错误进入日志。 |
+| DB 更新时间失败 | 设备仍在线，日志记录 `DB_ERROR`。 |
