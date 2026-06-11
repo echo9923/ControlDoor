@@ -30,17 +30,13 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void ControlDoorHost_StartAndStop_AreIdempotent()
+        public static void ControlDoorHost_StopIsIdempotentWithoutExternalServices()
         {
             using (var host = new ControlDoorHost())
             {
-                var start = host.StartAsync().GetAwaiter().GetResult();
-                var startAgain = host.StartAsync().GetAwaiter().GetResult();
                 var stop = host.StopAsync("test").GetAwaiter().GetResult();
                 var stopAgain = host.StopAsync("test").GetAwaiter().GetResult();
 
-                Assert.True(start.Success);
-                Assert.True(startAgain.Success);
                 Assert.True(stop.Success);
                 Assert.True(stopAgain.Success);
                 Assert.Equal(ServiceLifecycleState.Stopped, host.State);

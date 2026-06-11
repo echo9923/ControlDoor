@@ -5,6 +5,7 @@ using System.Threading;
 using ControlDoor.Configuration;
 using ControlDoor.Host;
 using ControlDoor.Observability;
+using ControlDoor.Runtime.Health;
 
 namespace ControlDoor
 {
@@ -94,6 +95,15 @@ namespace ControlDoor
                         logger.Info("ValidateConfig", "配置验证模式已完成配置加载。");
                         Console.WriteLine("日志检查: OK");
                         Console.WriteLine("日志文件: " + logger.CurrentLogPath);
+
+                        var summary = HealthCheckService
+                            .CreateStage1(runDirectory)
+                            .Run(new HealthCheckContext(runDirectory, result.Settings, logger, CancellationToken.None));
+                        WriteHealthSummary(summary);
+                        if (!summary.Success)
+                        {
+                            return 1;
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -103,7 +113,6 @@ namespace ControlDoor
                 }
             }
 
-            Console.WriteLine("目录、数据库、端口和 DLL 健康检查将在阶段 1.7 完成。");
             return result.Success ? 0 : 1;
         }
 
@@ -130,6 +139,15 @@ namespace ControlDoor
             foreach (var value in values)
             {
                 Console.WriteLine("  - " + value);
+            }
+        }
+
+        private static void WriteHealthSummary(HealthCheckSummary summary)
+        {
+            Console.WriteLine("健康检查: OK=" + summary.OkCount + " Warning=" + summary.WarningCount + " Failed=" + summary.FailedCount);
+            foreach (var item in summary.Results)
+            {
+                Console.WriteLine("  - " + item.Status + " " + item.Name + ": " + item.Message);
             }
         }
     }

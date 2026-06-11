@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Configuration;
 using ControlDoor.Database;
 using ControlDoor.Observability;
 using ControlDoor.Runtime;
+using ControlDoor.Runtime.Health;
 
 namespace ControlDoor.Host
 {
@@ -94,6 +96,19 @@ namespace ControlDoor.Host
             }
 
             database = new SqlServerDatabase(settings.Database, logger);
+            var healthSummary = HealthCheckService
+                .CreateStage1(runDirectory, database)
+                .Run(new HealthCheckContext(runDirectory, settings, logger, cancellationToken));
+            if (!healthSummary.Success)
+            {
+                lock (gate)
+                {
+                    state = ServiceLifecycleState.Failed;
+                }
+
+                return Task.FromResult(HostStartupResult.Failed("基础健康检查失败。", healthSummary.Results.Where(item => item.Status == HealthCheckStatus.Failed).Select(item => item.Message).ToList()));
+            }
+
             backgroundTaskHost = new BackgroundTaskHost(logger);
             backgroundTaskHost.Register(new NoopBackgroundTask("Stage1Bootstrap"), startOrder: 0, stopOrder: 100, isCritical: false);
             var backgroundResult = backgroundTaskHost.StartAsync(cancellationToken).GetAwaiter().GetResult();
