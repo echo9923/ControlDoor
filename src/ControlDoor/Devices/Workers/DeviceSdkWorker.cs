@@ -64,10 +64,28 @@ namespace ControlDoor.Devices.Workers
 
         public bool TryCancelQueuedTask(string taskId, string reason)
         {
+            DeviceTaskQueueItem cancelledItem;
+            DeviceQueueInfo queueInfo;
+            DeviceTaskResult result;
             lock (gate)
             {
-                return queue.TryCancel(taskId, reason);
+                if (!queue.TryCancel(taskId, reason, out cancelledItem))
+                {
+                    return false;
+                }
+
+                result = DeviceTaskResult.Cancelled(cancelledItem.Task, string.IsNullOrEmpty(reason) ? "Task was cancelled before execution." : reason);
+                cancelledItem.Task.MarkCancelled(result.CompletedAt);
+                cancelledItem.Task.Completion.TrySetResult(result);
+                completedTaskCount++;
+                cancelledTaskCount++;
+                lastTaskCompletedAt = result.CompletedAt;
+                queueInfo = BuildQueueInfoLocked();
+                Monitor.PulseAll(gate);
             }
+
+            registry.UpdateQueueInfo(cancelledItem.Task.DeviceId, queueInfo);
+            return true;
         }
 
         public void Start()
@@ -235,7 +253,8 @@ namespace ControlDoor.Devices.Workers
                 }
                 catch (Exception ex)
                 {
-                    CompleteTask(item.Task, DeviceTaskResult.FromException(item.Task, ex, DateTime.Now, DateTime.Now));
+                    var now = DateTime.Now;
+                    CompleteTask(item.Task, DeviceTaskExceptionMapper.Map(item.Task, ex, now, now));
                 }
             }
         }
@@ -287,8 +306,12 @@ namespace ControlDoor.Devices.Workers
                 }
                 else
                 {
-                    var context = new DeviceTaskContext(task, registry, snapshotBeforeExecution, RequestContext.Background(task.OperationName), logger, workerCancellationToken);
-                    result = await task.ExecuteAsync(context).ConfigureAwait(false);
+                    using (var cancellationScope = DeviceTaskCancellationScope.Create(task, workerCancellationToken, startedAt))
+                    {
+                        var context = new DeviceTaskContext(task, registry, snapshotBeforeExecution, RequestContext.Background(task.OperationName), logger, cancellationScope.Token);
+                        result = await task.ExecuteAsync(context).ConfigureAwait(false);
+                    }
+
                     if (result == null)
                     {
                         result = DeviceTaskResult.Rejected(task, "INTERNAL_ERROR", "Task returned null result.");

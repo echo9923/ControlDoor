@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Tasks;
@@ -126,6 +127,25 @@ namespace ControlDoor.Devices.Workers
 
         public async Task<DeviceTaskResult> SubmitAndWaitAsync(DeviceSdkTask task)
         {
+            return await SubmitAndWaitAsync(task, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        public async Task<DeviceTaskResult> SubmitAndWaitAsync(DeviceSdkTask task, CancellationToken cancellationToken)
+        {
+            if (task == null)
+            {
+                throw new ArgumentNullException(nameof(task));
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                var cancelled = DeviceTaskResult.Cancelled(task, "Caller cancelled before task submission.");
+                task.MarkCancelled(cancelled.CompletedAt);
+                task.Completion.TrySetResult(cancelled);
+                return cancelled;
+            }
+
+            task.AttachCallerCancellationToken(cancellationToken);
             var submitResult = Submit(task);
             if (!submitResult.Accepted || task.WaitMode != DeviceTaskWaitMode.WaitForResult)
             {
@@ -133,19 +153,41 @@ namespace ControlDoor.Devices.Workers
             }
 
             var timeout = task.GetEffectiveTimeoutMilliseconds(defaultTaskTimeoutMilliseconds);
-            if (timeout <= 0)
+            var waitTask = task.Completion.Task;
+            if (timeout <= 0 && !cancellationToken.CanBeCanceled)
             {
-                return await task.Completion.Task.ConfigureAwait(false);
+                return await waitTask.ConfigureAwait(false);
             }
 
-            var completed = await Task.WhenAny(task.Completion.Task, Task.Delay(timeout)).ConfigureAwait(false);
-            if (completed == task.Completion.Task)
+            var timeoutTask = timeout > 0 ? Task.Delay(timeout) : null;
+            var cancellationTask = cancellationToken.CanBeCanceled
+                ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                : null;
+            var waiters = new List<Task> { waitTask };
+            if (timeoutTask != null)
             {
-                return await task.Completion.Task.ConfigureAwait(false);
+                waiters.Add(timeoutTask);
+            }
+
+            if (cancellationTask != null)
+            {
+                waiters.Add(cancellationTask);
+            }
+
+            var completed = await Task.WhenAny(waiters).ConfigureAwait(false);
+            if (completed == waitTask)
+            {
+                return await waitTask.ConfigureAwait(false);
+            }
+
+            if (completed == cancellationTask)
+            {
+                TryCancelQueuedTask(task.TaskId, "Caller cancelled before task started.");
+                return DeviceTaskResult.Cancelled(task, "Caller cancelled while waiting for task result.");
             }
 
             TryCancelQueuedTask(task.TaskId, "Caller wait timed out before task started.");
-            return DeviceTaskResult.Timeout(task);
+            return DeviceTaskResult.Timeout(task, "Caller wait timed out before task completed.");
         }
 
         public bool TryCancelQueuedTask(string taskId, string reason)

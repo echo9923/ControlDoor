@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ControlDoor.Devices.Tasks
@@ -23,6 +24,7 @@ namespace ControlDoor.Devices.Tasks
             Priority = DeviceTaskPriority.Normal;
             WaitMode = DeviceTaskWaitMode.WaitForResult;
             TimeoutMilliseconds = 0;
+            CallerCancellationToken = CancellationToken.None;
             Payload = DeviceTaskPayload.Empty();
             RetrySource = new DeviceTaskRetrySource();
             Completion = new DeviceTaskCompletion();
@@ -55,6 +57,8 @@ namespace ControlDoor.Devices.Tasks
 
         public int TimeoutMilliseconds { get; set; }
 
+        public CancellationToken CallerCancellationToken { get; private set; }
+
         public DeviceTaskWaitMode WaitMode { get; set; }
 
         public bool RequiresOnline { get; set; }
@@ -83,6 +87,11 @@ namespace ControlDoor.Devices.Tasks
             Sequence = sequence;
             DeadlineAt = effectiveTimeoutMilliseconds > 0 ? enqueuedAt.AddMilliseconds(effectiveTimeoutMilliseconds) : (DateTime?)null;
             ExecutionState = DeviceTaskExecutionState.Queued;
+        }
+
+        public void AttachCallerCancellationToken(CancellationToken cancellationToken)
+        {
+            CallerCancellationToken = cancellationToken;
         }
 
         public void MarkRunning(DateTime startedAt)

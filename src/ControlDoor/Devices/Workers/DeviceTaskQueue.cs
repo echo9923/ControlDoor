@@ -121,13 +121,42 @@ namespace ControlDoor.Devices.Workers
             return drained;
         }
 
-        public bool TryCancel(string taskId, string reason)
+        public bool TryCancel(string taskId, string reason, out DeviceTaskQueueItem cancelledItem)
         {
-            foreach (var item in buckets.Values.SelectMany(bucket => bucket))
+            cancelledItem = null;
+            foreach (var priority in PriorityOrder)
             {
-                if (item.Task.TaskId == taskId && !item.Cancelled)
+                var bucket = buckets[priority];
+                if (bucket.Count == 0)
                 {
-                    item.Cancel(reason);
+                    continue;
+                }
+
+                var retained = new Queue<DeviceTaskQueueItem>();
+                var found = false;
+                while (bucket.Count > 0)
+                {
+                    var item = bucket.Dequeue();
+                    if (!found && item.Task.TaskId == taskId && !item.Cancelled)
+                    {
+                        item.Cancel(reason);
+                        cancelledItem = item;
+                        found = true;
+                        count--;
+                    }
+                    else
+                    {
+                        retained.Enqueue(item);
+                    }
+                }
+
+                while (retained.Count > 0)
+                {
+                    bucket.Enqueue(retained.Dequeue());
+                }
+
+                if (found)
+                {
                     return true;
                 }
             }
