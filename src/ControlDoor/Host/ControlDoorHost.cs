@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using ControlDoor.Configuration;
 using ControlDoor.Database;
 using ControlDoor.Observability;
+using ControlDoor.Runtime;
 
 namespace ControlDoor.Host
 {
@@ -18,6 +19,7 @@ namespace ControlDoor.Host
         private AppSettings settings;
         private ServiceLogger logger;
         private SqlServerDatabase database;
+        private BackgroundTaskHost backgroundTaskHost;
 
         public ControlDoorHost()
             : this(RuntimePaths.GetRunDirectory())
@@ -92,6 +94,18 @@ namespace ControlDoor.Host
             }
 
             database = new SqlServerDatabase(settings.Database, logger);
+            backgroundTaskHost = new BackgroundTaskHost(logger);
+            backgroundTaskHost.Register(new NoopBackgroundTask("Stage1Bootstrap"), startOrder: 0, stopOrder: 100, isCritical: false);
+            var backgroundResult = backgroundTaskHost.StartAsync(cancellationToken).GetAwaiter().GetResult();
+            if (!backgroundResult.Success)
+            {
+                lock (gate)
+                {
+                    state = ServiceLifecycleState.Failed;
+                }
+
+                return Task.FromResult(HostStartupResult.Failed("后台任务启动失败。", backgroundResult.Errors));
+            }
 
             lock (gate)
             {
@@ -125,6 +139,7 @@ namespace ControlDoor.Host
             cancellationToken.ThrowIfCancellationRequested();
 
             logger?.Info("Host", "ControlDoor Host 正在停止。", new LogFields { Extra = { ["reason"] = reason ?? string.Empty } });
+            backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
             database?.Dispose();
 
             lock (gate)
@@ -151,6 +166,7 @@ namespace ControlDoor.Host
             }
 
             logger?.Dispose();
+            backgroundTaskHost?.Dispose();
             database?.Dispose();
         }
 
