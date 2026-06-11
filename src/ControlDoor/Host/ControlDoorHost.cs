@@ -1,14 +1,31 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using ControlDoor.Configuration;
+using ControlDoor.Observability;
 
 namespace ControlDoor.Host
 {
     public sealed class ControlDoorHost : IControlDoorHost
     {
         private readonly object gate = new object();
+        private readonly string runDirectory;
         private ServiceLifecycleState state = ServiceLifecycleState.Created;
         private bool disposed;
+        private AppSettings settings;
+        private ServiceLogger logger;
+
+        public ControlDoorHost()
+            : this(RuntimePaths.GetRunDirectory())
+        {
+        }
+
+        public ControlDoorHost(string runDirectory)
+        {
+            this.runDirectory = string.IsNullOrWhiteSpace(runDirectory) ? RuntimePaths.GetRunDirectory() : runDirectory;
+        }
 
         public ServiceLifecycleState State
         {
@@ -40,12 +57,44 @@ namespace ControlDoor.Host
                 state = ServiceLifecycleState.Starting;
             }
 
+            var stopwatch = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
+
+            var configurationResult = new ConfigurationLoader().Load(runDirectory);
+            if (!configurationResult.Success)
+            {
+                lock (gate)
+                {
+                    state = ServiceLifecycleState.Failed;
+                }
+
+                return Task.FromResult(HostStartupResult.Failed("配置加载失败。", configurationResult.Errors));
+            }
+
+            settings = configurationResult.Settings;
+            logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, settings.Logging, mirrorToConsole: false));
+            logger.Info("Host", "ControlDoor Host 正在启动。", new LogFields
+            {
+                Extra =
+                {
+                    ["runDirectory"] = runDirectory,
+                    ["configPath"] = configurationResult.ConfigPath,
+                    ["grpcPort"] = settings.Service.GrpcListenPort.ToString(),
+                    ["workerCount"] = settings.DeviceSdkDispatcher.WorkerCount.ToString()
+                }
+            });
+
+            foreach (var warning in configurationResult.Warnings)
+            {
+                logger.Warn("Configuration", warning);
+            }
 
             lock (gate)
             {
                 state = ServiceLifecycleState.Running;
             }
+
+            logger.Info("Host", "ControlDoor Host 启动成功。", new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
 
             return Task.FromResult(HostStartupResult.Succeeded("Host 启动成功。"));
         }
@@ -68,12 +117,17 @@ namespace ControlDoor.Host
                 state = ServiceLifecycleState.Stopping;
             }
 
+            var stopwatch = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
+
+            logger?.Info("Host", "ControlDoor Host 正在停止。", new LogFields { Extra = { ["reason"] = reason ?? string.Empty } });
 
             lock (gate)
             {
                 state = ServiceLifecycleState.Stopped;
             }
+
+            logger?.Info("Host", "ControlDoor Host 停止成功。", new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
 
             return Task.FromResult(HostStopResult.Succeeded(reason, "Host 停止成功。"));
         }
@@ -90,6 +144,8 @@ namespace ControlDoor.Host
                 disposed = true;
                 state = ServiceLifecycleState.Stopped;
             }
+
+            logger?.Dispose();
         }
 
         private void ThrowIfDisposed()

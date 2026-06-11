@@ -4,6 +4,7 @@ using System.ServiceProcess;
 using System.Threading;
 using ControlDoor.Configuration;
 using ControlDoor.Host;
+using ControlDoor.Observability;
 
 namespace ControlDoor
 {
@@ -84,6 +85,21 @@ namespace ControlDoor
                 Console.WriteLine("日志目录: " + result.Settings.Logging.LogDirectory);
                 Console.WriteLine("数据库命令超时: " + result.Settings.Database.CommandTimeoutSeconds + " 秒");
                 Console.WriteLine("设备 worker 数: " + result.Settings.DeviceSdkDispatcher.WorkerCount);
+
+                try
+                {
+                    using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, result.Settings.Logging, mirrorToConsole: false)))
+                    {
+                        logger.Info("ValidateConfig", "配置验证模式已完成配置加载。");
+                        Console.WriteLine("日志检查: OK");
+                        Console.WriteLine("日志文件: " + logger.CurrentLogPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("日志检查: Failed " + ex.Message);
+                    return 1;
+                }
             }
 
             Console.WriteLine("目录、数据库、端口和 DLL 健康检查将在阶段 1.7 完成。");
