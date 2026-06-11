@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Configuration;
+using ControlDoor.Database;
 using ControlDoor.Observability;
 
 namespace ControlDoor.Host
@@ -16,6 +17,7 @@ namespace ControlDoor.Host
         private bool disposed;
         private AppSettings settings;
         private ServiceLogger logger;
+        private SqlServerDatabase database;
 
         public ControlDoorHost()
             : this(RuntimePaths.GetRunDirectory())
@@ -89,6 +91,8 @@ namespace ControlDoor.Host
                 logger.Warn("Configuration", warning);
             }
 
+            database = new SqlServerDatabase(settings.Database, logger);
+
             lock (gate)
             {
                 state = ServiceLifecycleState.Running;
@@ -121,6 +125,7 @@ namespace ControlDoor.Host
             cancellationToken.ThrowIfCancellationRequested();
 
             logger?.Info("Host", "ControlDoor Host 正在停止。", new LogFields { Extra = { ["reason"] = reason ?? string.Empty } });
+            database?.Dispose();
 
             lock (gate)
             {
@@ -146,6 +151,7 @@ namespace ControlDoor.Host
             }
 
             logger?.Dispose();
+            database?.Dispose();
         }
 
         private void ThrowIfDisposed()
