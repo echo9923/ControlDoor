@@ -78,6 +78,42 @@ namespace ControlDoor.Devices.Workers
                 throw new ArgumentNullException(nameof(task));
             }
 
+            lock (gate)
+            {
+                if (stopping)
+                {
+                    var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPING", "Dispatcher is stopping.");
+                    task.MarkRejected(rejected);
+                    task.Completion.TrySetResult(rejected);
+                    return DeviceTaskSubmissionResult.Rejected(task, rejected);
+                }
+
+                if (stopped)
+                {
+                    var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPED", "Dispatcher is stopped.");
+                    task.MarkRejected(rejected);
+                    task.Completion.TrySetResult(rejected);
+                    return DeviceTaskSubmissionResult.Rejected(task, rejected);
+                }
+            }
+
+            var route = registry.TryGetWorkerRoute(task.DeviceId);
+            if (!route.Found || !route.WorkerIndex.HasValue)
+            {
+                var rejected = DeviceTaskResult.Rejected(task, "DEVICE_NOT_FOUND", "Device runtime was not found.");
+                task.MarkRejected(rejected);
+                task.Completion.TrySetResult(rejected);
+                return DeviceTaskSubmissionResult.Rejected(task, rejected);
+            }
+
+            if (route.WorkerIndex.Value < 0 || route.WorkerIndex.Value >= workers.Length)
+            {
+                var rejected = DeviceTaskResult.Rejected(task, "INTERNAL_ERROR", "Worker route is outside dispatcher range.");
+                task.MarkRejected(rejected);
+                task.Completion.TrySetResult(rejected);
+                return DeviceTaskSubmissionResult.Rejected(task, rejected);
+            }
+
             var shouldStart = false;
             lock (gate)
             {
@@ -103,23 +139,6 @@ namespace ControlDoor.Devices.Workers
             if (shouldStart)
             {
                 Start();
-            }
-
-            var route = registry.TryGetWorkerRoute(task.DeviceId);
-            if (!route.Found || !route.WorkerIndex.HasValue)
-            {
-                var rejected = DeviceTaskResult.Rejected(task, "DEVICE_NOT_FOUND", "Device runtime was not found.");
-                task.MarkRejected(rejected);
-                task.Completion.TrySetResult(rejected);
-                return DeviceTaskSubmissionResult.Rejected(task, rejected);
-            }
-
-            if (route.WorkerIndex.Value < 0 || route.WorkerIndex.Value >= workers.Length)
-            {
-                var rejected = DeviceTaskResult.Rejected(task, "INTERNAL_ERROR", "Worker route is outside dispatcher range.");
-                task.MarkRejected(rejected);
-                task.Completion.TrySetResult(rejected);
-                return DeviceTaskSubmissionResult.Rejected(task, rejected);
             }
 
             return workers[route.WorkerIndex.Value].Enqueue(task);
