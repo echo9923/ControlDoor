@@ -37,6 +37,7 @@ namespace ControlDoor
             using (var host = new ControlDoorHost())
             using (var stopSignal = new ManualResetEventSlim(false))
             {
+                var lifecycle = new ServiceLifecycleController(host);
                 Console.CancelKeyPress += (sender, eventArgs) =>
                 {
                     eventArgs.Cancel = true;
@@ -47,7 +48,7 @@ namespace ControlDoor
                 Console.WriteLine("运行目录: " + RuntimePaths.GetRunDirectory());
                 Console.WriteLine("配置路径: " + RuntimePaths.GetConfigPath(RuntimePaths.GetRunDirectory()));
 
-                var startResult = host.StartAsync().GetAwaiter().GetResult();
+                var startResult = lifecycle.StartAsync(TimeSpan.FromMilliseconds(120000)).GetAwaiter().GetResult();
                 if (!startResult.Success)
                 {
                     Console.Error.WriteLine(startResult.Message);
@@ -61,7 +62,7 @@ namespace ControlDoor
                     stopSignal.Wait(200);
                 }
 
-                var stopResult = host.StopAsync("Console").GetAwaiter().GetResult();
+                var stopResult = lifecycle.StopAsync("Console", TimeSpan.FromMilliseconds(60000)).GetAwaiter().GetResult();
                 Console.WriteLine(stopResult.Message);
                 return stopResult.Success ? 0 : 2;
             }

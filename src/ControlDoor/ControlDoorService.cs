@@ -7,6 +7,7 @@ namespace ControlDoor
     public sealed class ControlDoorService : ServiceBase
     {
         private readonly IControlDoorHost host;
+        private readonly ServiceLifecycleController lifecycle;
 
         public ControlDoorService()
             : this(new ControlDoorHost())
@@ -16,6 +17,7 @@ namespace ControlDoor
         public ControlDoorService(IControlDoorHost host)
         {
             this.host = host ?? throw new ArgumentNullException(nameof(host));
+            lifecycle = new ServiceLifecycleController(this.host);
             ServiceName = ServiceIdentity.ServiceName;
             CanStop = true;
             CanShutdown = true;
@@ -24,17 +26,21 @@ namespace ControlDoor
 
         protected override void OnStart(string[] args)
         {
-            host.StartAsync().GetAwaiter().GetResult();
+            var result = lifecycle.StartAsync(TimeSpan.FromMilliseconds(120000)).GetAwaiter().GetResult();
+            if (!result.Success)
+            {
+                throw new InvalidOperationException(result.Message);
+            }
         }
 
         protected override void OnStop()
         {
-            host.StopAsync("WindowsService").GetAwaiter().GetResult();
+            lifecycle.StopAsync("WindowsService", TimeSpan.FromMilliseconds(60000)).GetAwaiter().GetResult();
         }
 
         protected override void OnShutdown()
         {
-            host.StopAsync("Shutdown").GetAwaiter().GetResult();
+            lifecycle.ShutdownAsync().GetAwaiter().GetResult();
             base.OnShutdown();
         }
 
