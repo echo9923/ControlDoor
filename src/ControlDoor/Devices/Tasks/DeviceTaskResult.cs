@@ -94,5 +94,13 @@ namespace ControlDoor.Devices.Tasks
             result.ExceptionType = exception?.GetType().Name ?? string.Empty;
             return result;
         }
+
+        public DeviceTaskResult WithCompletionTiming(DateTime startedAt, DateTime completedAt)
+        {
+            StartedAt = startedAt;
+            CompletedAt = completedAt;
+            DurationMilliseconds = Math.Max(0, (long)(completedAt - startedAt).TotalMilliseconds);
+            return this;
+        }
     }
 }

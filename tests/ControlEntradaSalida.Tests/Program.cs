@@ -7,13 +7,16 @@ namespace ControlEntradaSalida.Tests
 {
     internal static class Program
     {
-        private static int Main()
+        private static int Main(string[] args)
         {
+            var filter = args != null && args.Length > 0 ? args[0] : string.Empty;
             var failures = new List<string>();
             var tests = Assembly.GetExecutingAssembly()
                 .GetTypes()
                 .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Static))
                 .Where(method => method.GetCustomAttributes(typeof(TestCaseAttribute), false).Any())
+                .Where(method => string.IsNullOrWhiteSpace(filter) ||
+                    (method.DeclaringType.FullName + "." + method.Name).IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
                 .OrderBy(method => method.DeclaringType.FullName)
                 .ThenBy(method => method.Name)
                 .ToList();
@@ -22,6 +25,7 @@ namespace ControlEntradaSalida.Tests
             {
                 try
                 {
+                    Console.WriteLine("[RUN] " + test.DeclaringType.Name + "." + test.Name);
                     test.Invoke(null, null);
                     Console.WriteLine("[PASS] " + test.DeclaringType.Name + "." + test.Name);
                 }

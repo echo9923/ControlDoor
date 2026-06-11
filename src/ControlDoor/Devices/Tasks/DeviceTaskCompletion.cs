@@ -5,7 +5,7 @@ namespace ControlDoor.Devices.Tasks
 {
     public sealed class DeviceTaskCompletion
     {
-        private readonly TaskCompletionSource<DeviceTaskResult> source = new TaskCompletionSource<DeviceTaskResult>();
+        private readonly TaskCompletionSource<DeviceTaskResult> source = new TaskCompletionSource<DeviceTaskResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<DeviceTaskResult> Task => source.Task;
 
