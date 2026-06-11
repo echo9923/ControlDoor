@@ -363,7 +363,7 @@ namespace ControlDoor.Devices.Runtime
 
         private int CalculateWorkerIndex(int deviceId)
         {
-            return (int)(Math.Abs((long)deviceId) % workerCount);
+            return DeviceWorkerRouter.CalculateWorkerIndex(deviceId, workerCount);
         }
 
         private int GetWorkerIndexLocked(int deviceId)
