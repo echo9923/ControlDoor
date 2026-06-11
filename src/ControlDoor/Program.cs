@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.ServiceProcess;
 using System.Threading;
+using ControlDoor.Configuration;
 using ControlDoor.Host;
 
 namespace ControlDoor
@@ -68,10 +69,25 @@ namespace ControlDoor
         private static int RunValidateConfig()
         {
             Console.WriteLine("ControlDoor 配置验证模式。");
-            Console.WriteLine("运行目录: " + RuntimePaths.GetRunDirectory());
-            Console.WriteLine("配置路径: " + RuntimePaths.GetConfigPath(RuntimePaths.GetRunDirectory()));
-            Console.WriteLine("配置加载和健康检查将在阶段 1.2-1.7 完成。");
-            return 0;
+            var runDirectory = RuntimePaths.GetRunDirectory();
+            Console.WriteLine("运行目录: " + runDirectory);
+
+            var result = new ConfigurationLoader().Load(runDirectory);
+            Console.WriteLine("配置路径: " + result.ConfigPath);
+            Console.WriteLine("配置结果: " + (result.Success ? "OK" : "Failed"));
+            WriteList("Errors", result.Errors);
+            WriteList("Warnings", result.Warnings);
+
+            if (result.Success)
+            {
+                Console.WriteLine("gRPC 端口: " + result.Settings.Service.GrpcListenPort);
+                Console.WriteLine("日志目录: " + result.Settings.Logging.LogDirectory);
+                Console.WriteLine("数据库命令超时: " + result.Settings.Database.CommandTimeoutSeconds + " 秒");
+                Console.WriteLine("设备 worker 数: " + result.Settings.DeviceSdkDispatcher.WorkerCount);
+            }
+
+            Console.WriteLine("目录、数据库、端口和 DLL 健康检查将在阶段 1.7 完成。");
+            return result.Success ? 0 : 1;
         }
 
         private static void PrintVersion()
@@ -89,6 +105,15 @@ namespace ControlDoor
             Console.WriteLine("  ControlDoor.exe --console");
             Console.WriteLine("  ControlDoor.exe --validate-config");
             Console.WriteLine("  ControlDoor.exe --version");
+        }
+
+        private static void WriteList(string title, System.Collections.Generic.IReadOnlyList<string> values)
+        {
+            Console.WriteLine(title + ": " + values.Count);
+            foreach (var value in values)
+            {
+                Console.WriteLine("  - " + value);
+            }
         }
     }
 }
