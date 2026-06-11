@@ -62,6 +62,12 @@
 - `docs/stage8/task04.md`：配置模板与运行前检查方案，适用于实现 `Configuration/appsettings.json` 模板和 `--validate-config` 检查项。
 - `docs/stage8/task05.md`：Windows Service 安装、启动、停止和卸载方案，适用于现场服务部署、运行状态检查和服务生命周期验证。
 - `docs/stage8/task06.md`：现场联调、排障、回滚与最终验收方案，适用于真实设备联调、问题定位、服务包回滚和验收资料整理。
+- `docs/stage9/task01.md`：阶段 9 边界与任务总览，适用于确认摄像头 AIOP 报警联动门禁常闭窗口的实施范围和关键语义。
+- `docs/stage9/task02.md`：AIOP 回调识别与载荷解析方案，适用于实现 `0x4021 / COMM_UPLOAD_AIOP_VIDEO` 识别、来源匹配和 JSON/JPEG 摘要解析。
+- `docs/stage9/task03.md`：配置映射与目标解析方案，适用于实现 `CameraAlarmDoorInterlock.Mappings` 的摄像头、门禁设备和门号映射。
+- `docs/stage9/task04.md`：摄像头窗口与门目标活动集合方案，适用于实现窗口不续期、多摄像头共享门和最后窗口结束恢复规则。
+- `docs/stage9/task05.md`：门禁常闭、恢复和停止清理方案，适用于实现 `NET_DVR_ControlGateway` 常闭/恢复、恢复重试和服务停止 best-effort 恢复。
+- `docs/stage9/task06.md`：阶段 9 测试、联调与验收方案，适用于验证 AIOP 触发、窗口语义、多目标联动、恢复可靠性和默认关闭兼容性。
 
 在 `docs/` 下每新增一个文档，必须在本节同步增加一条目录指引项。目录项应包含文档路径、核心用途和适用场景，确保后续查阅和实施时能快速定位。
 
