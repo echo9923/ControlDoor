@@ -42,6 +42,13 @@
 - `docs/stage5/task05.md`：设备端人脸查询 `GetFaces` 方案，适用于实现员工人脸查询、设备维度明细和原始响应边界。
 - `docs/stage5/task06.md`：人脸采集 `CaptureFaceStream` 与采集状态方案，适用于实现流式采集、任务状态和失败单帧返回。
 - `docs/stage5/task07.md`：阶段 5 测试与验收方案，适用于验证权限、人员、人脸同步的 gRPC 契约、mock 设备和补偿意图。
+- `docs/stage6/task01.md`：阶段 6 边界与任务总览，适用于确认离线补偿机制的实施范围、状态语义和阶段完成标准。
+- `docs/stage6/task02.md`：补偿状态写入与合并方案，适用于实现 `device_operation_retry_states` 的 upsert、冲突覆盖和补偿意图持久化。
+- `docs/stage6/task03.md`：到期扫描与领取方案，适用于实现补偿后台扫描、in-flight 去重、设备状态过滤和异常恢复。
+- `docs/stage6/task04.md`：重试任务投递与执行编排方案，适用于实现补偿状态到 `RetryDeviceOperation` 设备任务的转换和执行顺序。
+- `docs/stage6/task05.md`：补偿结果回写方案，适用于实现成功清除 pending、失败退避、终态标记和权限完成标记。
+- `docs/stage6/task06.md`：补偿清理、配置、日志和运维观测方案，适用于实现终态清理、配置校验、运行日志和现场排查。
+- `docs/stage6/task07.md`：阶段 6 测试与验收方案，适用于验证离线补偿的数据库兼容、mock 设备执行、退避终态和契约兼容。
 
 在 `docs/` 下每新增一个文档，必须在本节同步增加一条目录指引项。目录项应包含文档路径、核心用途和适用场景，确保后续查阅和实施时能快速定位。
 
