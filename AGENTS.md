@@ -35,6 +35,13 @@
 - `docs/stage4/task07.md`：`AddDevice` 实施方案，适用于实现新增设备入库、运行时注册和可选立即连接。
 - `docs/stage4/task08.md`：`DeleteDevice`、`DisconnectDevice`、`ReconnectDevice` 实施方案，适用于实现设备删除、手动断开和手动重连。
 - `docs/stage4/task09.md`：阶段 4 测试与验收方案，适用于验证设备生命周期、设备管理 gRPC、数据库兼容和 mock SDK 集成。
+- `docs/stage5/task01.md`：阶段 5 边界与任务总览，适用于确认权限、人员、人脸同步的实施范围和顺序。
+- `docs/stage5/task02.md`：权限同步 `SyncPermissions` 方案，适用于实现权限请求解析、在线设备下发和人员权限同步状态更新。
+- `docs/stage5/task03.md`：人员与人脸同步 `SyncPersons` 方案，适用于实现人员基础信息、人脸图片校验、人员先于人脸的设备下发流程。
+- `docs/stage5/task04.md`：删除人脸与删除人员方案，适用于实现 `DeleteFaces`、`DeletePersons` 的设备端删除和结果明细。
+- `docs/stage5/task05.md`：设备端人脸查询 `GetFaces` 方案，适用于实现员工人脸查询、设备维度明细和原始响应边界。
+- `docs/stage5/task06.md`：人脸采集 `CaptureFaceStream` 与采集状态方案，适用于实现流式采集、任务状态和失败单帧返回。
+- `docs/stage5/task07.md`：阶段 5 测试与验收方案，适用于验证权限、人员、人脸同步的 gRPC 契约、mock 设备和补偿意图。
 
 在 `docs/` 下每新增一个文档，必须在本节同步增加一条目录指引项。目录项应包含文档路径、核心用途和适用场景，确保后续查阅和实施时能快速定位。
 
