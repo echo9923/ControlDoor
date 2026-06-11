@@ -268,6 +268,20 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public DeviceRuntimeMutationResult UpdateCapabilities(int deviceId, DeviceCapabilities capabilities, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.MarkCapabilities(capabilities, now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "CAPABILITIES_UPDATED", "Device capabilities were updated.");
+            }
+        }
+
         public DeviceRuntimeMutationResult RemoveDevice(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
             lock (gate)
