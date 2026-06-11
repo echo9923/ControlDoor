@@ -62,6 +62,14 @@ namespace ControlDoor.Devices.Workers
             }
         }
 
+        public bool TryCancelQueuedTask(string taskId, string reason)
+        {
+            lock (gate)
+            {
+                return queue.TryCancel(taskId, reason);
+            }
+        }
+
         public void Start()
         {
             lock (gate)
@@ -237,7 +245,7 @@ namespace ControlDoor.Devices.Workers
             var task = item.Task;
             if (item.Cancelled || workerCancellationToken.IsCancellationRequested)
             {
-                CompleteCancelled(task, "Task was cancelled before execution.");
+                CompleteCancelled(task, string.IsNullOrEmpty(item.CancellationReason) ? "Task was cancelled before execution." : item.CancellationReason);
                 return;
             }
 
@@ -281,7 +289,6 @@ namespace ControlDoor.Devices.Workers
                 {
                     var context = new DeviceTaskContext(task, registry, snapshotBeforeExecution, RequestContext.Background(task.OperationName), logger, workerCancellationToken);
                     result = await task.ExecuteAsync(context).ConfigureAwait(false);
-                    await Task.Yield();
                     if (result == null)
                     {
                         result = DeviceTaskResult.Rejected(task, "INTERNAL_ERROR", "Task returned null result.");
@@ -290,7 +297,7 @@ namespace ControlDoor.Devices.Workers
             }
             catch (Exception ex)
             {
-                result = DeviceTaskResult.FromException(task, ex, startedAt, DateTime.Now);
+                result = DeviceTaskExceptionMapper.Map(task, ex, startedAt, DateTime.Now);
             }
 
             CompleteTask(task, result.WithCompletionTiming(startedAt, DateTime.Now));
@@ -349,7 +356,7 @@ namespace ControlDoor.Devices.Workers
         {
             foreach (var item in queue.Drain())
             {
-                item.Cancel();
+                item.Cancel("Worker stopped before task started.");
                 var result = DeviceTaskResult.Cancelled(item.Task, "Worker stopped before task started.");
                 item.Task.MarkCancelled(result.CompletedAt);
                 item.Task.Completion.TrySetResult(result);

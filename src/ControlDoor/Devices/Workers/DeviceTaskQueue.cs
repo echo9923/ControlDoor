@@ -24,6 +24,7 @@ namespace ControlDoor.Devices.Workers
         private int highPriorityBurst;
         private long fairnessSelectionCount;
         private long coalescedTaskCount;
+        private long droppedLowPriorityTaskCount;
 
         public DeviceTaskQueue(int capacity, DeviceTaskQueuePolicy policy = null)
         {
@@ -56,12 +57,18 @@ namespace ControlDoor.Devices.Workers
 
             if (count >= capacity)
             {
+                if (policy.DropLowPriorityWhenQueueFull && task.Priority == DeviceTaskPriority.Low)
+                {
+                    droppedLowPriorityTaskCount++;
+                    task.MarkRejected(DeviceTaskResult.Rejected(task, "LOW_PRIORITY_DROPPED", "Low priority task was dropped because the queue is full."));
+                }
+
                 return false;
             }
 
             item = new DeviceTaskQueueItem(task, ++nextSequence, enqueuedAt);
             task.MarkQueued(enqueuedAt, item.Sequence, effectiveTimeoutMilliseconds);
-            buckets[item.Task.Priority].Enqueue(item);
+            buckets[NormalizePriority(item.Task.Priority)].Enqueue(item);
             count++;
             return true;
         }
@@ -110,7 +117,22 @@ namespace ControlDoor.Devices.Workers
             }
 
             count = 0;
+            highPriorityBurst = 0;
             return drained;
+        }
+
+        public bool TryCancel(string taskId, string reason)
+        {
+            foreach (var item in buckets.Values.SelectMany(bucket => bucket))
+            {
+                if (item.Task.TaskId == taskId && !item.Cancelled)
+                {
+                    item.Cancel(reason);
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public DateTime? GetOldestEnqueuedAt()
@@ -123,12 +145,18 @@ namespace ControlDoor.Devices.Workers
             return count == 0 ? (DateTime?)null : oldest;
         }
 
-        public DevicePriorityQueueSnapshot GetPrioritySnapshot()
+        public DevicePriorityQueueSnapshot GetPrioritySnapshot(DateTime? now = null)
         {
+            var snapshotAt = now ?? DateTime.Now;
             return new DevicePriorityQueueSnapshot(
                 buckets.ToDictionary(item => item.Key, item => item.Value.Count),
+                buckets.ToDictionary(
+                    item => item.Key,
+                    item => item.Value.Count == 0 ? (long?)null : Math.Max(0, (long)(snapshotAt - item.Value.Peek().EnqueuedAt).TotalMilliseconds)),
+                highPriorityBurst,
                 fairnessSelectionCount,
-                coalescedTaskCount);
+                coalescedTaskCount,
+                droppedLowPriorityTaskCount);
         }
 
         private DeviceTaskPriority SelectPriority(DateTime now, out bool fairnessApplied)
@@ -189,6 +217,11 @@ namespace ControlDoor.Devices.Workers
             return buckets.Values
                 .SelectMany(bucket => bucket)
                 .Any(item => item.Task.DeviceId == task.DeviceId && item.Task.TaskType == task.TaskType && !item.Cancelled);
+        }
+
+        private static DeviceTaskPriority NormalizePriority(DeviceTaskPriority priority)
+        {
+            return PriorityOrder.Contains(priority) ? priority : DeviceTaskPriority.Normal;
         }
     }
 }

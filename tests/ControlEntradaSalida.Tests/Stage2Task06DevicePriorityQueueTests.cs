@@ -111,6 +111,27 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceTaskQueue_DropsLowPriorityWhenFullAndRecordsSnapshot()
+        {
+            var queue = new DeviceTaskQueue(1);
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            var normal = NewTask(1, DeviceTaskType.SyncPerson, DeviceTaskPriority.Normal);
+            var low = NewTask(1, DeviceTaskType.ProbeCapabilities, DeviceTaskPriority.Low);
+
+            var firstAccepted = queue.TryEnqueue(normal, now, 30000, out _);
+            var secondAccepted = queue.TryEnqueue(low, now.AddMilliseconds(1), 30000, out var lowItem);
+            var snapshot = queue.GetPrioritySnapshot(now.AddMilliseconds(2));
+
+            Assert.True(firstAccepted);
+            Assert.False(secondAccepted);
+            Assert.Equal(null, lowItem);
+            Assert.Equal(DeviceTaskExecutionState.Rejected, low.ExecutionState);
+            Assert.Equal(1L, snapshot.DroppedLowPriorityTaskCount);
+            Assert.Equal(1, snapshot.GetQueueLength(DeviceTaskPriority.Normal));
+            Assert.True(snapshot.GetOldestTaskAgeMilliseconds(DeviceTaskPriority.Normal).HasValue);
+        }
+
+        [TestCase]
         public static void DeviceSdkWorker_DoesNotPreemptRunningLowPriorityTask()
         {
             var registry = NewRegistry();

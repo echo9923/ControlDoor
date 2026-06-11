@@ -144,7 +144,13 @@ namespace ControlDoor.Devices.Workers
                 return await task.Completion.Task.ConfigureAwait(false);
             }
 
+            TryCancelQueuedTask(task.TaskId, "Caller wait timed out before task started.");
             return DeviceTaskResult.Timeout(task);
+        }
+
+        public bool TryCancelQueuedTask(string taskId, string reason)
+        {
+            return workers.Any(worker => worker.TryCancelQueuedTask(taskId, reason));
         }
 
         public async Task StopAsync(TimeSpan waitTimeout)

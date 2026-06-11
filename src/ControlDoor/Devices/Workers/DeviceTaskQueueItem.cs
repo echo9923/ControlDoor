@@ -20,9 +20,17 @@ namespace ControlDoor.Devices.Workers
 
         public bool Cancelled { get; private set; }
 
+        public string CancellationReason { get; private set; }
+
         public void Cancel()
         {
+            Cancel("Task was cancelled.");
+        }
+
+        public void Cancel(string reason)
+        {
             Cancelled = true;
+            CancellationReason = reason ?? string.Empty;
         }
     }
 }
