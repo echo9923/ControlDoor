@@ -56,6 +56,12 @@
 - `docs/stage7/task05.md`：`attendance_gate_v2` 入库与防重复方案，适用于实现事件字段映射、唯一流水防重和重复事件处理。
 - `docs/stage7/task06.md`：`face_event_checkpoint` 与历史补偿方案，适用于实现设备恢复后的历史事件查询、批次处理和断点前移。
 - `docs/stage7/task07.md`：实时缓冲、配置、测试与验收方案，适用于验证阶段 7 事件链路、历史补偿、排除设备和真实设备联调。
+- `docs/stage8/task01.md`：阶段 8 边界与任务总览，适用于确认测试、发布、运维阶段的交付范围和完成标准。
+- `docs/stage8/task02.md`：自动化测试矩阵与执行顺序方案，适用于规划单元、契约、mock 集成、数据库兼容、发布包和现场联调测试。
+- `docs/stage8/task03.md`：构建、产物和发布包结构方案，适用于固定构建命令、发布目录、第三方 DLL 和配置模板要求。
+- `docs/stage8/task04.md`：配置模板与运行前检查方案，适用于实现 `Configuration/appsettings.json` 模板和 `--validate-config` 检查项。
+- `docs/stage8/task05.md`：Windows Service 安装、启动、停止和卸载方案，适用于现场服务部署、运行状态检查和服务生命周期验证。
+- `docs/stage8/task06.md`：现场联调、排障、回滚与最终验收方案，适用于真实设备联调、问题定位、服务包回滚和验收资料整理。
 
 在 `docs/` 下每新增一个文档，必须在本节同步增加一条目录指引项。目录项应包含文档路径、核心用途和适用场景，确保后续查阅和实施时能快速定位。
 
