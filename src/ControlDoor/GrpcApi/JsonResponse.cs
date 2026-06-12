@@ -25,7 +25,7 @@ namespace ControlDoor.GrpcApi
                 }
             }
 
-            return new JavaScriptSerializer().Serialize(body);
+            return new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(body);
         }
     }
 }

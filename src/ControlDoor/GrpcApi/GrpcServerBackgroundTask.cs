@@ -8,13 +8,15 @@ namespace ControlDoor.GrpcApi
     {
         private readonly int port;
         private readonly AccessControlGrpcService accessControlService;
+        private readonly PermissionSyncGrpcService permissionSyncService;
         private readonly BackgroundTaskStatus status = new BackgroundTaskStatus("GrpcServer", true);
         private Server server;
 
-        public GrpcServerBackgroundTask(int port, AccessControlGrpcService accessControlService)
+        public GrpcServerBackgroundTask(int port, AccessControlGrpcService accessControlService, PermissionSyncGrpcService permissionSyncService = null)
         {
             this.port = port;
             this.accessControlService = accessControlService;
+            this.permissionSyncService = permissionSyncService;
         }
 
         public string Name => "GrpcServer";
@@ -26,9 +28,14 @@ namespace ControlDoor.GrpcApi
             status.MarkStarting();
             server = new Server
             {
-                Services = { new AccessControlGrpcBinder(accessControlService).Bind() },
                 Ports = { new ServerPort("0.0.0.0", port, ServerCredentials.Insecure) }
             };
+            server.Services.Add(new AccessControlGrpcBinder(accessControlService).Bind());
+            if (permissionSyncService != null)
+            {
+                server.Services.Add(new PermissionSyncGrpcBinder(permissionSyncService).Bind());
+            }
+
             server.Start();
             status.MarkStarted();
             return Task.CompletedTask;

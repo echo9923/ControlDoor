@@ -58,7 +58,7 @@
 | 完整方法名 | `/permission.PermissionSyncService/SyncPermissions` |
 | 方法类型 | Unary |
 | 用途 | 按员工编号同步门禁权限编号到设备 |
-| 服务端处理 | `PermissionRefreshManager.RefreshPermissionsForEmployees` |
+| 服务端处理 | `PermissionSyncGrpcService.SyncPermissions` |
 
 请求支持三种结构：数组、对象中的 `items`、对象中的 `records`，也支持单个对象。
 
@@ -98,7 +98,7 @@
 | 完整方法名 | `/permission.PermissionSyncService/SyncPersons` |
 | 方法类型 | Unary |
 | 用途 | 向设备下发人员基础信息，可同时下发人脸图片 |
-| 服务端处理 | `PermissionRefreshManager.SyncPersonsToConnectedDevices` |
+| 服务端处理 | `PermissionSyncGrpcService.SyncPersons` |
 
 请求支持数组、对象中的 `people/items/records/data`，也支持单个对象。
 
@@ -151,7 +151,7 @@
 | 完整方法名 | `/permission.PermissionSyncService/DeleteFaces` |
 | 方法类型 | Unary |
 | 用途 | 从设备端删除指定员工的人脸 |
-| 服务端处理 | `PermissionRefreshManager.DeleteFacesOnDevices` |
+| 服务端处理 | `PermissionSyncGrpcService.DeleteFaces` |
 
 请求支持字符串数组、对象数组、`items`、`records`、单个对象。
 
@@ -185,7 +185,7 @@
 | 完整方法名 | `/permission.PermissionSyncService/DeletePersons` |
 | 方法类型 | Unary |
 | 用途 | 从设备端删除指定员工人员信息 |
-| 服务端处理 | `PermissionRefreshManager.DeletePersonsFromDevices` |
+| 服务端处理 | `PermissionSyncGrpcService.DeletePersons` |
 
 请求格式同 `DeleteFaces`。
 
@@ -208,7 +208,7 @@
 | 完整方法名 | `/permission.PermissionSyncService/GetFaces` |
 | 方法类型 | Unary |
 | 用途 | 查询指定员工在设备端的人脸信息 |
-| 服务端处理 | `PermissionRefreshManager.GetFacesFromDevices` |
+| 服务端处理 | `PermissionSyncGrpcService.GetFaces` |
 
 请求格式同 `DeleteFaces`。
 
@@ -230,7 +230,7 @@
 | 完整方法名 | `/permission.PermissionSyncService/CaptureFaceStream` |
 | 方法类型 | ServerStreaming |
 | 用途 | 从“人脸录入仪”采集员工人脸，并以流式响应返回采集结果 |
-| 服务端处理 | `PermissionRefreshManager.CaptureFaceFromEnrollmentDevice` |
+| 服务端处理 | `PermissionSyncGrpcService.CaptureFaceStream` |
 
 请求示例：
 
@@ -275,7 +275,7 @@
 | 完整方法名 | `/permission.PermissionSyncService/GetEnrollmentStatus` |
 | 方法类型 | Unary |
 | 用途 | 查询人脸采集任务状态 |
-| 服务端处理 | `EnrollmentTaskStore.Get` |
+| 服务端处理 | `PermissionSyncGrpcService.GetEnrollmentStatus` |
 
 请求示例：
 
