@@ -249,6 +249,73 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_UploadFace_UsesCompatibleFaceRemoteConfigPayload()
+        {
+            var native = new Stage3FakeNativeClient
+            {
+                FaceUploadStatus = 1000,
+                FaceUploadResponse = @"{""statusCode"":1}"
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+            var face = Face("10001");
+
+            gateway.UploadFaceAsync(new UploadFaceRequest { UserId = login.UserId, Face = face }).GetAwaiter().GetResult();
+
+            Assert.Equal(login.UserId, native.LastFaceUploadUserId);
+            Assert.Equal("PUT /ISAPI/Intelligent/FDLib/FDSetUp?format=json", native.LastFaceUploadUrl);
+            Assert.Contains(@"""faceLibType"":""blackFD""", native.LastFaceUploadJson);
+            Assert.Contains(@"""FDID"":""1""", native.LastFaceUploadJson);
+            Assert.Contains(@"""FPID"":""10001""", native.LastFaceUploadJson);
+            Assert.Equal(Stage3TestReflection.JpegBytes().Length, native.LastFaceUploadPictureBytes.Length);
+            Assert.Equal(0xFF, native.LastFaceUploadPictureBytes[0]);
+            Assert.Equal(0xD9, native.LastFaceUploadPictureBytes[native.LastFaceUploadPictureBytes.Length - 1]);
+            Assert.Equal(0, native.StdXmlCallCount);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_UploadFace_StartRemoteConfigFailure_ThrowsLastError()
+        {
+            var native = new Stage3FakeNativeClient
+            {
+                FaceUploadStatus = -1,
+                LastError = 23
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            var ex = Stage3TestReflection.Expect<DeviceGatewayException>(() => gateway.UploadFaceAsync(new UploadFaceRequest
+            {
+                UserId = login.UserId,
+                Face = Face("10001")
+            }).GetAwaiter().GetResult());
+
+            Assert.Equal(23, ex.Error.Code);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_UploadFace_RemoteConfigFailure_ThrowsResponseMessage()
+        {
+            var native = new Stage3FakeNativeClient
+            {
+                FaceUploadStatus = 1003,
+                FaceUploadResponse = @"{""statusCode"":2,""statusString"":""failed"",""subStatusCode"":""badFace"",""errorMsg"":""invalid picture""}"
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            var ex = Stage3TestReflection.Expect<DeviceGatewayException>(() => gateway.UploadFaceAsync(new UploadFaceRequest
+            {
+                UserId = login.UserId,
+                Face = Face("10001")
+            }).GetAwaiter().GetResult());
+
+            Assert.Equal(1003, ex.Error.Code);
+            Assert.Contains("badFace", ex.Error.Message);
+            Assert.Contains("invalid picture", ex.Error.Message);
+        }
+
+        [TestCase]
         public static void SdkWrapper_QueryEventRecord_UsesAcsEventPath()
         {
             var native = new Stage3FakeNativeClient { StdXmlOutput = "{\"records\":[]}" };
@@ -293,6 +360,16 @@ namespace ControlEntradaSalida.Tests
                 EmployeeId = employeeId,
                 Name = "Test",
                 CardNumber = "C" + employeeId
+            };
+        }
+
+        private static FaceInfo Face(string employeeId)
+        {
+            return new FaceInfo
+            {
+                EmployeeId = employeeId,
+                CardNumber = "C" + employeeId,
+                ImageBytes = Stage3TestReflection.JpegBytes()
             };
         }
     }
@@ -351,15 +428,29 @@ namespace ControlEntradaSalida.Tests
 
         public string StdXmlOutput { get; set; } = "{}";
 
+        public int FaceUploadStatus { get; set; } = 1000;
+
+        public string FaceUploadResponse { get; set; } = @"{""statusCode"":1}";
+
         public int SetupAlarmCallCount { get; private set; }
 
         public int CleanupCallCount { get; private set; }
+
+        public int StdXmlCallCount { get; private set; }
 
         public string LastStdXmlUrl { get; private set; }
 
         public string LastStdXmlInput { get; private set; }
 
         public string LastCapturePath { get; private set; }
+
+        public int LastFaceUploadUserId { get; private set; }
+
+        public string LastFaceUploadUrl { get; private set; }
+
+        public string LastFaceUploadJson { get; private set; }
+
+        public byte[] LastFaceUploadPictureBytes { get; private set; }
 
         public bool Init()
         {
@@ -419,10 +510,21 @@ namespace ControlEntradaSalida.Tests
 
         public bool StandardXmlConfig(int userId, string requestUrl, string inputXml, out string outputXml)
         {
+            StdXmlCallCount++;
             LastStdXmlUrl = requestUrl;
             LastStdXmlInput = inputXml;
             outputXml = StdXmlOutput;
             return StdXmlResult;
+        }
+
+        public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody)
+        {
+            LastFaceUploadUserId = userId;
+            LastFaceUploadUrl = requestUrl;
+            LastFaceUploadJson = jsonPayload;
+            LastFaceUploadPictureBytes = pictureBytes == null ? null : (byte[])pictureBytes.Clone();
+            responseBody = FaceUploadResponse;
+            return FaceUploadStatus;
         }
 
         public int GetLastError()

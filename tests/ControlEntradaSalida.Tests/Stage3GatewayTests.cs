@@ -973,6 +973,10 @@ namespace ControlEntradaSalida.Tests
 
             public string StdXmlOutput { get; set; } = "{}";
 
+            public int FaceUploadStatus { get; set; } = 1000;
+
+            public string FaceUploadResponse { get; set; } = @"{""statusCode"":1}";
+
             public bool InitCalled { get; private set; }
 
             public bool CallbackRegistered { get; private set; }
@@ -988,6 +992,12 @@ namespace ControlEntradaSalida.Tests
             public string LastCapturePath { get; private set; }
 
             public string LastStdXmlUrl { get; private set; }
+
+            public string LastFaceUploadUrl { get; private set; }
+
+            public string LastFaceUploadJson { get; private set; }
+
+            public byte[] LastFaceUploadPictureBytes { get; private set; }
 
             public bool Init()
             {
@@ -1054,6 +1064,15 @@ namespace ControlEntradaSalida.Tests
                 LastStdXmlUrl = requestUrl;
                 outputXml = StdXmlOutput;
                 return StdXmlResult;
+            }
+
+            public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody)
+            {
+                LastFaceUploadUrl = requestUrl;
+                LastFaceUploadJson = jsonPayload;
+                LastFaceUploadPictureBytes = pictureBytes == null ? null : (byte[])pictureBytes.Clone();
+                responseBody = FaceUploadResponse;
+                return FaceUploadStatus;
             }
 
             public int GetLastError()

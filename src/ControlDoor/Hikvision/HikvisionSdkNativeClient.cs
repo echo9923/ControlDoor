@@ -124,6 +124,114 @@ namespace ControlDoor.Hikvision
             }
         }
 
+        public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody)
+        {
+            var urlBytes = Encoding.UTF8.GetBytes(requestUrl ?? string.Empty);
+            var jsonBytes = Encoding.UTF8.GetBytes(jsonPayload ?? string.Empty);
+            var pictureData = pictureBytes ?? new byte[0];
+            var responseBuffer = new byte[2048];
+
+            IntPtr urlPtr = IntPtr.Zero;
+            IntPtr jsonPtr = IntPtr.Zero;
+            IntPtr picturePtr = IntPtr.Zero;
+            IntPtr configPtr = IntPtr.Zero;
+            var handle = -1;
+            responseBody = string.Empty;
+
+            try
+            {
+                urlPtr = Marshal.AllocHGlobal(urlBytes.Length + 1);
+                Marshal.Copy(urlBytes, 0, urlPtr, urlBytes.Length);
+                Marshal.WriteByte(urlPtr, urlBytes.Length, 0);
+
+                handle = NativeMethods.NET_DVR_StartRemoteConfig(
+                    userId,
+                    NativeMethods.NET_DVR_FACE_DATA_RECORD,
+                    urlPtr,
+                    urlBytes.Length,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+
+                if (handle < 0)
+                {
+                    return -1;
+                }
+
+                if (jsonBytes.Length > 0)
+                {
+                    jsonPtr = Marshal.AllocHGlobal(jsonBytes.Length);
+                    Marshal.Copy(jsonBytes, 0, jsonPtr, jsonBytes.Length);
+                }
+
+                if (pictureData.Length > 0)
+                {
+                    picturePtr = Marshal.AllocHGlobal(pictureData.Length);
+                    Marshal.Copy(pictureData, 0, picturePtr, pictureData.Length);
+                }
+
+                var config = new NativeMethods.NET_DVR_JSON_DATA_CFG
+                {
+                    dwSize = (uint)Marshal.SizeOf(typeof(NativeMethods.NET_DVR_JSON_DATA_CFG)),
+                    lpJsonData = jsonPtr,
+                    dwJsonDataSize = (uint)jsonBytes.Length,
+                    lpPicData = picturePtr,
+                    dwPicDataSize = (uint)pictureData.Length,
+                    byRes = new byte[256]
+                };
+
+                var configSize = Marshal.SizeOf(typeof(NativeMethods.NET_DVR_JSON_DATA_CFG));
+                configPtr = Marshal.AllocHGlobal(configSize);
+                Marshal.StructureToPtr(config, configPtr, false);
+
+                var responseHandle = GCHandle.Alloc(responseBuffer, GCHandleType.Pinned);
+                try
+                {
+                    uint responseSize = 0;
+                    var status = NativeMethods.NET_DVR_SendWithRecvRemoteConfig(
+                        handle,
+                        configPtr,
+                        (uint)configSize,
+                        responseHandle.AddrOfPinnedObject(),
+                        (uint)responseBuffer.Length,
+                        ref responseSize);
+
+                    responseBody = ReadUtf8String(responseBuffer, responseSize);
+                    return status;
+                }
+                finally
+                {
+                    responseHandle.Free();
+                }
+            }
+            finally
+            {
+                if (handle >= 0)
+                {
+                    NativeMethods.NET_DVR_StopRemoteConfig(handle);
+                }
+
+                if (urlPtr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(urlPtr);
+                }
+
+                if (jsonPtr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(jsonPtr);
+                }
+
+                if (picturePtr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(picturePtr);
+                }
+
+                if (configPtr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(configPtr);
+                }
+            }
+        }
+
         public int GetLastError()
         {
             return NativeMethods.NET_DVR_GetLastError();
@@ -185,8 +293,26 @@ namespace ControlDoor.Hikvision
             Buffer.BlockCopy(bytes, 0, target, 0, Math.Min(bytes.Length, target.Length - 1));
         }
 
+        private static string ReadUtf8String(byte[] buffer, uint length)
+        {
+            if (buffer == null || buffer.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            var count = length > 0 ? Math.Min((int)length, buffer.Length) : Array.IndexOf(buffer, (byte)0);
+            if (count < 0)
+            {
+                count = buffer.Length;
+            }
+
+            return count == 0 ? string.Empty : Encoding.UTF8.GetString(buffer, 0, count).TrimEnd('\0');
+        }
+
         private static class NativeMethods
         {
+            public const uint NET_DVR_FACE_DATA_RECORD = 2551;
+
             [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
             public static extern bool NET_DVR_Init();
 
@@ -216,6 +342,15 @@ namespace ControlDoor.Hikvision
 
             [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
             public static extern bool NET_DVR_STDXMLConfig(int userId, ref NET_DVR_XML_CONFIG_INPUT input, ref NET_DVR_XML_CONFIG_OUTPUT output);
+
+            [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
+            public static extern int NET_DVR_StartRemoteConfig(int userId, uint command, IntPtr inputBuffer, int inputBufferLength, IntPtr stateCallback, IntPtr userData);
+
+            [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
+            public static extern bool NET_DVR_StopRemoteConfig(int handle);
+
+            [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
+            public static extern int NET_DVR_SendWithRecvRemoteConfig(int handle, IntPtr inputBuffer, uint inputBufferSize, IntPtr outputBuffer, uint outputBufferSize, ref uint outputDataLength);
 
             [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
             public static extern int NET_DVR_GetLastError();
@@ -432,6 +567,23 @@ namespace ControlDoor.Hikvision
                 public uint dwStatusSize;
 
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+                public byte[] byRes;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            public struct NET_DVR_JSON_DATA_CFG
+            {
+                public uint dwSize;
+
+                public IntPtr lpJsonData;
+
+                public uint dwJsonDataSize;
+
+                public IntPtr lpPicData;
+
+                public uint dwPicDataSize;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
                 public byte[] byRes;
             }
         }

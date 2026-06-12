@@ -11,6 +11,11 @@ namespace ControlDoor.Hikvision
 {
     public sealed class HikvisionSdkWrapper : IHikvisionGateway
     {
+        private const string FaceSetupUrl = "PUT /ISAPI/Intelligent/FDLib/FDSetUp?format=json";
+        private const int NetSdkConfigStatusSuccess = 1000;
+        private const int NetSdkConfigStatusFinish = 1002;
+        private const int NetSdkConfigStatusFailed = 1003;
+
         private readonly IHikvisionSdkNativeClient nativeClient;
         private readonly HikvisionIsapiClient isapiClient;
         private readonly SdkTraceLogger traceLogger;
@@ -202,7 +207,31 @@ namespace ControlDoor.Hikvision
 
             HikvisionGatewayValidator.RequireUserId(request.UserId);
             HikvisionGatewayValidator.RequireFace(request.Face, request.MaxImageBytes);
-            return SendIsapiJsonAsync("UploadFace", "/ISAPI/Intelligent/FDLib/FaceDataRecord", IsapiMethod.Post, request.UserId, request.Face, cancellationToken);
+            var pictureBytes = HikvisionGatewayValidator.ResolveFaceBytes(request.Face);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Execute("UploadFace", request, () =>
+            {
+                EnsureInitialized();
+                var body = BuildFaceSetupPayload(request.Face.EmployeeId);
+                string responseBody;
+                var status = nativeClient.UploadFaceData(request.UserId, FaceSetupUrl, body, pictureBytes, out responseBody);
+                if (status < 0)
+                {
+                    ThrowLastError("UploadFace");
+                }
+
+                if (status == NetSdkConfigStatusSuccess || status == NetSdkConfigStatusFinish)
+                {
+                    EnsureIsapiBodyAccepted("UploadFace", responseBody);
+                    return 0;
+                }
+
+                throw new DeviceGatewayException("UploadFace", SdkError.FromCode(
+                    status == 0 ? NetSdkConfigStatusFailed : status,
+                    BuildRemoteConfigErrorMessage(status, responseBody),
+                    "SDK_REMOTE_CONFIG"));
+            });
         }
 
         public Task DeleteFaceAsync(DeleteFaceRequest request, CancellationToken cancellationToken = default)
@@ -577,6 +606,16 @@ namespace ControlDoor.Hikvision
             return method + " " + request.Path;
         }
 
+        private static string BuildFaceSetupPayload(string employeeId)
+        {
+            return HikvisionGatewayJson.Serialize(new
+            {
+                faceLibType = "blackFD",
+                FDID = "1",
+                FPID = employeeId
+            });
+        }
+
         private static void EnsureIsapiBodyAccepted(string operationName, string body)
         {
             if (string.IsNullOrWhiteSpace(body))
@@ -625,6 +664,29 @@ namespace ControlDoor.Hikvision
             }.Where(item => !string.IsNullOrWhiteSpace(item)).ToArray();
 
             return parts.Length == 0 ? fallback : string.Join(" / ", parts);
+        }
+
+        private static string BuildRemoteConfigErrorMessage(int status, string body)
+        {
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                Dictionary<string, object> values;
+                try
+                {
+                    values = HikvisionGatewayJson.Deserialize<Dictionary<string, object>>(body);
+                    var message = BuildIsapiErrorMessage(values, body);
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        return message;
+                    }
+                }
+                catch
+                {
+                    return body;
+                }
+            }
+
+            return "RemoteConfig status " + status;
         }
 
         private static string TryGetString(IDictionary<string, object> values, string key)

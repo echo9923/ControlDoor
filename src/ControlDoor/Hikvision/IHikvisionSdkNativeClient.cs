@@ -24,6 +24,8 @@ namespace ControlDoor.Hikvision
 
         bool StandardXmlConfig(int userId, string requestUrl, string inputXml, out string outputXml);
 
+        int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody);
+
         int GetLastError();
 
         string GetErrorMessage(int errorCode);
