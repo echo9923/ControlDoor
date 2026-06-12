@@ -573,7 +573,7 @@ namespace ControlDoor.GrpcApi
                     return offline;
                 }
 
-                await gateway.ModifyPersonAsync(new ModifyPersonRequest
+                await gateway.UpsertPersonAsync(new UpsertPersonRequest
                 {
                     UserId = snapshot.SdkUserId.Value,
                     Person = command.ToPersonInfo()

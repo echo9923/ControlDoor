@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Observability;
@@ -131,6 +133,19 @@ namespace ControlDoor.Hikvision
             HikvisionGatewayValidator.RequireUserId(request.UserId);
             HikvisionGatewayValidator.RequirePerson(request.Person);
             return SendIsapiJsonAsync("AddPerson", "/ISAPI/AccessControl/UserManagement/UserInfo/Record", IsapiMethod.Post, request.UserId, request.Person, cancellationToken);
+        }
+
+        public Task UpsertPersonAsync(UpsertPersonRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            HikvisionGatewayValidator.RequireUserId(request.UserId);
+            HikvisionGatewayValidator.RequirePerson(request.Person);
+            var body = HikvisionPersonPayloadBuilder.BuildUserInfoSetup(request.Person);
+            return SendIsapiJsonAsync("UpsertPerson", "/ISAPI/AccessControl/UserInfo/SetUp?format=json", IsapiMethod.Put, request.UserId, body, cancellationToken);
         }
 
         public Task DeletePersonAsync(DeletePersonRequest request, CancellationToken cancellationToken = default)
@@ -453,6 +468,7 @@ namespace ControlDoor.Hikvision
                 throw new DeviceGatewayException(operationName, SdkError.FromHttpStatusCode(response.StatusCode, response.Body));
             }
 
+            EnsureIsapiBodyAccepted(operationName, response.Body);
             return response;
         }
 
@@ -559,6 +575,62 @@ namespace ControlDoor.Hikvision
         {
             var method = request.Method.ToString().ToUpperInvariant();
             return method + " " + request.Path;
+        }
+
+        private static void EnsureIsapiBodyAccepted(string operationName, string body)
+        {
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return;
+            }
+
+            Dictionary<string, object> values;
+            try
+            {
+                values = HikvisionGatewayJson.Deserialize<Dictionary<string, object>>(body);
+            }
+            catch
+            {
+                return;
+            }
+
+            if (values == null || !values.ContainsKey("statusCode"))
+            {
+                return;
+            }
+
+            var statusCode = Convert.ToString(values["statusCode"]);
+            if (string.Equals(statusCode, "1", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            int numericCode;
+            if (!int.TryParse(statusCode, out numericCode))
+            {
+                numericCode = 500;
+            }
+
+            throw new DeviceGatewayException(operationName, SdkError.FromCode(numericCode, BuildIsapiErrorMessage(values, body), "ISAPI"));
+        }
+
+        private static string BuildIsapiErrorMessage(IDictionary<string, object> values, string fallback)
+        {
+            var parts = new[]
+            {
+                TryGetString(values, "statusString"),
+                TryGetString(values, "subStatusCode"),
+                TryGetString(values, "errorMsg"),
+                TryGetString(values, "errorCode")
+            }.Where(item => !string.IsNullOrWhiteSpace(item)).ToArray();
+
+            return parts.Length == 0 ? fallback : string.Join(" / ", parts);
+        }
+
+        private static string TryGetString(IDictionary<string, object> values, string key)
+        {
+            object value;
+            return values != null && values.TryGetValue(key, out value) ? Convert.ToString(value) : null;
         }
 
         private static void TryDelete(string filePath)

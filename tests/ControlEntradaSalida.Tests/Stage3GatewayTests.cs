@@ -23,6 +23,7 @@ namespace ControlEntradaSalida.Tests
             Assert.True(methods.Contains("SetAlarmAsync"));
             Assert.True(methods.Contains("CloseAlarmAsync"));
             Assert.True(methods.Contains("AddPersonAsync"));
+            Assert.True(methods.Contains("UpsertPersonAsync"));
             Assert.True(methods.Contains("DeletePersonAsync"));
             Assert.True(methods.Contains("ModifyPersonAsync"));
             Assert.True(methods.Contains("QueryPersonAsync"));

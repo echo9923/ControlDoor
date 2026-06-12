@@ -106,7 +106,7 @@ namespace ControlEntradaSalida.Tests
 
                 Assert.Equal("OK", response["code"]);
                 Assert.Equal(1, Convert.ToInt32(response["facesUploaded"]));
-                var modifyIndex = fixture.Gateway.Calls.ToList().FindIndex(call => call.MethodName == "ModifyPersonAsync");
+                var modifyIndex = fixture.Gateway.Calls.ToList().FindIndex(call => call.MethodName == "UpsertPersonAsync");
                 var faceIndex = fixture.Gateway.Calls.ToList().FindIndex(call => call.MethodName == "UploadFaceAsync");
                 Assert.True(modifyIndex >= 0);
                 Assert.True(faceIndex > modifyIndex);
@@ -142,7 +142,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("OK", response["code"]);
                 Assert.Equal(1, Convert.ToInt32(response["succeeded"]));
                 Assert.Equal(0, Convert.ToInt32(response["facesUploaded"]));
-                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "ModifyPersonAsync"));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "UpsertPersonAsync"));
                 Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "UploadFaceAsync"));
             }
         }
@@ -153,7 +153,7 @@ namespace ControlEntradaSalida.Tests
             using (var fixture = new Stage5Fixture())
             {
                 fixture.AddOnlineDevice();
-                fixture.Gateway.ConfigureException("ModifyPersonAsync", new InvalidOperationException("人员失败"));
+                fixture.Gateway.ConfigureException("UpsertPersonAsync", new InvalidOperationException("人员失败"));
                 var face = Convert.ToBase64String(new byte[] { 1, 2, 3 });
 
                 var response = fixture.Response(fixture.Service.SyncPersons(@"{""records"":[{""employee_no"":""10001"",""face_image_base64"":""" + face + @"""}]}", fixture.Context("persons-fail")));
@@ -223,7 +223,7 @@ namespace ControlEntradaSalida.Tests
             using (var fixture = new Stage5Fixture())
             {
                 fixture.AddOnlineDevice();
-                fixture.Gateway.ConfigureTimeout("ModifyPersonAsync");
+                fixture.Gateway.ConfigureTimeout("UpsertPersonAsync");
 
                 var response = fixture.Response(fixture.Service.SyncPersons(@"{""items"":[{""employee_id"":""10001"",""name"":""钱七""}]}", fixture.Context("persons-timeout")));
 
@@ -238,7 +238,7 @@ namespace ControlEntradaSalida.Tests
             using (var fixture = new Stage5Fixture())
             {
                 fixture.AddOnlineDevice();
-                fixture.Gateway.ConfigureException("ModifyPersonAsync", new DeviceGatewayException("ModifyPerson", SdkError.FromCode(23, "设备不支持该功能")));
+                fixture.Gateway.ConfigureException("UpsertPersonAsync", new DeviceGatewayException("UpsertPerson", SdkError.FromCode(23, "设备不支持该功能")));
 
                 var response = fixture.Response(fixture.Service.SyncPersons(@"{""items"":[{""employee_id"":""10001"",""name"":""孙八""}]}", fixture.Context("persons-unsupported")));
 

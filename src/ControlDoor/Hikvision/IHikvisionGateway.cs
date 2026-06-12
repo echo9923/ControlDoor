@@ -52,6 +52,14 @@ namespace ControlDoor.Hikvision
         Task AddPersonAsync(AddPersonRequest request, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Creates or updates a person record through the compatible UserInfo/SetUp provisioning endpoint.
+        /// </summary>
+        /// <param name="request">Person upsert request containing user id and person data.</param>
+        /// <param name="cancellationToken">Cancellation token used before the request is started.</param>
+        /// <returns>A completed task when the device accepts the upsert operation.</returns>
+        Task UpsertPersonAsync(UpsertPersonRequest request, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Deletes a person record from the device.
         /// </summary>
         /// <param name="request">Person delete request containing user id and employee identity.</param>

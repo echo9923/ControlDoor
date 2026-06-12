@@ -219,6 +219,23 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_UpsertPerson_UsesCompatibleUserInfoSetupPayload()
+        {
+            var native = new Stage3FakeNativeClient { StdXmlOutput = @"{""statusCode"":1}" };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            gateway.UpsertPersonAsync(new UpsertPersonRequest { UserId = login.UserId, Person = Person("10001") }).GetAwaiter().GetResult();
+
+            Assert.Contains("PUT", native.LastStdXmlUrl);
+            Assert.Contains("/ISAPI/AccessControl/UserInfo/SetUp?format=json", native.LastStdXmlUrl);
+            Assert.Contains(@"""UserInfo""", native.LastStdXmlInput);
+            Assert.Contains(@"""employeeNo"":""10001""", native.LastStdXmlInput);
+            Assert.Contains(@"""doorRight"":""1""", native.LastStdXmlInput);
+            Assert.Contains(@"""RightPlan""", native.LastStdXmlInput);
+        }
+
+        [TestCase]
         public static void SdkWrapper_DeleteFace_UsesStdXmlDeletePath()
         {
             var native = new Stage3FakeNativeClient { StdXmlOutput = "{}" };

@@ -211,6 +211,23 @@ namespace ControlDoor.Hikvision
             });
         }
 
+        public Task UpsertPersonAsync(UpsertPersonRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            HikvisionGatewayValidator.RequireUserId(request.UserId);
+            HikvisionGatewayValidator.RequirePerson(request.Person);
+            return ExecuteAsync("UpsertPersonAsync", request, cancellationToken, () =>
+            {
+                RequireSession(request.UserId);
+                persons[request.Person.EmployeeId] = ClonePerson(request.Person);
+                return 0;
+            });
+        }
+
         public Task DeletePersonAsync(DeletePersonRequest request, CancellationToken cancellationToken = default)
         {
             if (request == null)
