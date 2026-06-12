@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
@@ -21,7 +22,8 @@ namespace ControlDoor.Database
 
         public DatabaseCommandRecord ExecuteScalar(string operationName, string commandText)
         {
-            return Execute(operationName, commandText, command =>
+            EnsureReadOnly(commandText);
+            return Execute(operationName, commandText, null, command =>
             {
                 command.ExecuteScalar();
                 return null;
@@ -30,7 +32,44 @@ namespace ControlDoor.Database
 
         public DatabaseCommandRecord ExecuteNonQuery(string operationName, string commandText)
         {
-            return Execute(operationName, commandText, command => command.ExecuteNonQuery());
+            EnsureReadOnly(commandText);
+            return Execute(operationName, commandText, null, command => command.ExecuteNonQuery());
+        }
+
+        public DatabaseCommandRecord ExecuteNonQuery(string operationName, string commandText, params DatabaseParameter[] parameters)
+        {
+            return Execute(operationName, commandText, parameters, command => command.ExecuteNonQuery());
+        }
+
+        public IReadOnlyList<IReadOnlyDictionary<string, object>> ExecuteQuery(string operationName, string commandText, params DatabaseParameter[] parameters)
+        {
+            EnsureReadOnly(commandText);
+            var rows = new List<IReadOnlyDictionary<string, object>>();
+            var record = Execute(operationName, commandText, parameters, command =>
+            {
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                        for (var index = 0; index < reader.FieldCount; index++)
+                        {
+                            row[reader.GetName(index)] = reader.IsDBNull(index) ? null : reader.GetValue(index);
+                        }
+
+                        rows.Add(row);
+                    }
+                }
+
+                return rows.Count;
+            });
+
+            if (record.Error != null)
+            {
+                throw new InvalidOperationException(record.Error.Message);
+            }
+
+            return rows;
         }
 
         public void Dispose()
@@ -38,14 +77,13 @@ namespace ControlDoor.Database
             disposed = true;
         }
 
-        private DatabaseCommandRecord Execute(string operationName, string commandText, Func<SqlCommand, int?> execute)
+        private DatabaseCommandRecord Execute(string operationName, string commandText, DatabaseParameter[] parameters, Func<SqlCommand, int?> execute)
         {
             if (disposed)
             {
                 throw new ObjectDisposedException(nameof(SqlServerDatabase));
             }
 
-            EnsureReadOnly(commandText);
             var stopwatch = Stopwatch.StartNew();
             var record = new DatabaseCommandRecord
             {
@@ -62,6 +100,7 @@ namespace ControlDoor.Database
                     command.CommandText = commandText;
                     command.CommandType = CommandType.Text;
                     command.CommandTimeout = options.CommandTimeoutSeconds;
+                    AddParameters(command, parameters);
                     connection.Open();
                     record.RowsAffected = execute(command);
                 }
@@ -111,6 +150,27 @@ namespace ControlDoor.Database
             }
 
             return record;
+        }
+
+        private static void AddParameters(SqlCommand command, DatabaseParameter[] parameters)
+        {
+            if (parameters == null)
+            {
+                return;
+            }
+
+            foreach (var parameter in parameters)
+            {
+                if (parameter == null || string.IsNullOrWhiteSpace(parameter.Name))
+                {
+                    continue;
+                }
+
+                var name = parameter.Name.StartsWith("@", StringComparison.Ordinal)
+                    ? parameter.Name
+                    : "@" + parameter.Name;
+                command.Parameters.AddWithValue(name, parameter.Value ?? DBNull.Value);
+            }
         }
 
         public static void EnsureReadOnly(string commandText)

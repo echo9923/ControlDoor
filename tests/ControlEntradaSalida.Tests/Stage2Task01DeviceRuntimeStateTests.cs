@@ -13,7 +13,7 @@ namespace ControlEntradaSalida.Tests
             var enabled = NewState(1, "front", "192.168.1.10", true, now);
             var disabled = NewState(2, "side", "192.168.1.11", false, now);
 
-            Assert.Equal(DeviceConnectionStatus.Unknown, enabled.ToSnapshot().Status);
+            Assert.Equal(DeviceConnectionStatus.Loaded, enabled.ToSnapshot().Status);
             Assert.Equal(DeviceConnectionStatus.Disabled, disabled.ToSnapshot().Status);
             Assert.Equal(now, enabled.ToSnapshot().UpdatedAt);
         }
@@ -32,6 +32,11 @@ namespace ControlEntradaSalida.Tests
             Assert.True(names.Contains("Disconnecting"));
             Assert.True(names.Contains("Faulted"));
             Assert.True(names.Contains("Deleted"));
+            Assert.True(names.Contains("Loaded"));
+            Assert.True(names.Contains("InvalidConfig"));
+            Assert.True(names.Contains("ReconnectPending"));
+            Assert.True(names.Contains("Disconnected"));
+            Assert.True(names.Contains("Failed"));
         }
 
         [TestCase]

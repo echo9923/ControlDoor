@@ -50,10 +50,11 @@ namespace ControlDoor.Devices.Runtime
             username = options.Username ?? string.Empty;
             password = options.Password ?? string.Empty;
             enabled = options.Enabled;
-            status = enabled ? DeviceConnectionStatus.Unknown : DeviceConnectionStatus.Disabled;
+            status = enabled ? DeviceConnectionStatus.Loaded : DeviceConnectionStatus.Disabled;
             serialNumber = string.Empty;
             capabilities = DeviceCapabilities.Unknown();
             reconnect = ReconnectState.New();
+            lastUsedAt = options.LastUsedAt;
             updatedAt = options.CreatedAt ?? DateTime.Now;
         }
 
@@ -196,6 +197,25 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public DeviceRuntimeCreationOptions ToConnectionOptions()
+        {
+            lock (gate)
+            {
+                return new DeviceRuntimeCreationOptions
+                {
+                    DeviceId = deviceId,
+                    DeviceName = deviceName,
+                    IpAddress = ipAddress,
+                    Port = port,
+                    Username = username,
+                    Password = password,
+                    Enabled = enabled,
+                    LastUsedAt = lastUsedAt,
+                    CreatedAt = updatedAt
+                };
+            }
+        }
+
         public void MarkConnecting(DateTime now)
         {
             lock (gate)
@@ -237,6 +257,46 @@ namespace ControlDoor.Devices.Runtime
                 lastError = error == null ? null : error.Clone();
                 reconnect.AttemptCount++;
                 reconnect.LastAttemptAt = now;
+                Touch(now);
+            }
+        }
+
+        public void MarkInvalidConfig(DeviceRuntimeError error, DateTime now)
+        {
+            lock (gate)
+            {
+                enabled = false;
+                sdkUserId = null;
+                alarmHandle = null;
+                status = DeviceConnectionStatus.InvalidConfig;
+                lastError = error == null ? null : error.Clone();
+                reconnect.InCooldown = true;
+                reconnect.CooldownReason = "InvalidConfig";
+                Touch(now);
+            }
+        }
+
+        public void MarkReconnectPending(DateTime nextReconnectAt, string reason, DateTime now)
+        {
+            lock (gate)
+            {
+                status = DeviceConnectionStatus.ReconnectPending;
+                reconnect.NextReconnectAt = nextReconnectAt;
+                reconnect.InCooldown = true;
+                reconnect.CooldownReason = reason;
+                Touch(now);
+            }
+        }
+
+        public void ResetReconnect(DateTime now)
+        {
+            lock (gate)
+            {
+                reconnect.AttemptCount = 0;
+                reconnect.NextReconnectAt = null;
+                reconnect.InCooldown = false;
+                reconnect.CooldownReason = null;
+                reconnect.ManualDisconnected = false;
                 Touch(now);
             }
         }
@@ -283,13 +343,32 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public void MarkManualDisconnected(DeviceRuntimeError error, DateTime now)
+        {
+            lock (gate)
+            {
+                sdkUserId = null;
+                alarmHandle = null;
+                status = DeviceConnectionStatus.Disconnected;
+                reconnect.ManualDisconnected = true;
+                reconnect.InCooldown = true;
+                reconnect.CooldownReason = "ManualDisconnected";
+                lastError = error == null ? null : error.Clone();
+                lastLogoutAt = now;
+                Touch(now);
+            }
+        }
+
         public void MarkDisconnected(DeviceRuntimeError error, DateTime now, DeviceConnectionStatus newStatus = DeviceConnectionStatus.Offline)
         {
             if (newStatus != DeviceConnectionStatus.Offline &&
                 newStatus != DeviceConnectionStatus.Disconnecting &&
-                newStatus != DeviceConnectionStatus.Faulted)
+                newStatus != DeviceConnectionStatus.Faulted &&
+                newStatus != DeviceConnectionStatus.Disconnected &&
+                newStatus != DeviceConnectionStatus.ReconnectPending &&
+                newStatus != DeviceConnectionStatus.Failed)
             {
-                throw new ArgumentException("Disconnected status must be Offline, Disconnecting, or Faulted.", nameof(newStatus));
+                throw new ArgumentException("Disconnected status must be Offline, Disconnecting, Faulted, Disconnected, ReconnectPending, or Failed.", nameof(newStatus));
             }
 
             lock (gate)
@@ -320,7 +399,15 @@ namespace ControlDoor.Devices.Runtime
             {
                 status = newStatus;
                 lastCheckedAt = now;
-                lastError = error == null ? lastError : error.Clone();
+                if (error == null && (newStatus == DeviceConnectionStatus.Online || newStatus == DeviceConnectionStatus.Degraded))
+                {
+                    lastError = null;
+                }
+                else if (error != null)
+                {
+                    lastError = error.Clone();
+                }
+
                 Touch(now);
             }
         }

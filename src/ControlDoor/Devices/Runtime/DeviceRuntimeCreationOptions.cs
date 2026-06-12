@@ -19,5 +19,7 @@ namespace ControlDoor.Devices.Runtime
         public bool Enabled { get; set; } = true;
 
         public DateTime? CreatedAt { get; set; }
+
+        public DateTime? LastUsedAt { get; set; }
     }
 }

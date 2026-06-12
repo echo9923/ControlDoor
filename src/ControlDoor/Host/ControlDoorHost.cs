@@ -6,6 +6,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Configuration;
 using ControlDoor.Database;
+using ControlDoor.Devices.Management;
+using ControlDoor.Devices.Runtime;
+using ControlDoor.Devices.Workers;
+using ControlDoor.GrpcApi;
+using ControlDoor.Hikvision;
 using ControlDoor.Observability;
 using ControlDoor.Runtime;
 using ControlDoor.Runtime.Health;
@@ -22,6 +27,12 @@ namespace ControlDoor.Host
         private ServiceLogger logger;
         private SqlServerDatabase database;
         private BackgroundTaskHost backgroundTaskHost;
+        private DeviceRuntimeRegistry deviceRegistry;
+        private DeviceSdkDispatcher deviceDispatcher;
+        private DelayedDeviceTaskScheduler delayedScheduler;
+        private DeviceLifecycleService deviceLifecycle;
+        private IHikvisionGateway hikvisionGateway;
+        private AccessControlGrpcService accessControlGrpcService;
 
         public ControlDoorHost()
             : this(RuntimePaths.GetRunDirectory())
@@ -109,7 +120,33 @@ namespace ControlDoor.Host
                 return Task.FromResult(HostStartupResult.Failed("基础健康检查失败。", healthSummary.Results.Where(item => item.Status == HealthCheckStatus.Failed).Select(item => item.Message).ToList()));
             }
 
+            deviceRegistry = new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = settings.DeviceSdkDispatcher.WorkerCount });
+            deviceDispatcher = new DeviceSdkDispatcher(deviceRegistry, new Devices.Workers.DeviceSdkDispatcherOptions
+            {
+                WorkerCount = settings.DeviceSdkDispatcher.WorkerCount,
+                QueueCapacityPerWorker = settings.DeviceSdkDispatcher.QueueCapacity,
+                DefaultTaskTimeoutMilliseconds = settings.DeviceSdkDispatcher.DefaultTaskTimeoutMs
+            }, logger);
+            delayedScheduler = new DelayedDeviceTaskScheduler(deviceDispatcher, logger: logger);
+            hikvisionGateway = new HikvisionSdkWrapper();
+            var deviceOptions = new DeviceLifecycleOptions
+            {
+                LoginTimeoutMs = settings.DeviceConnection.LoginTimeoutMs,
+                LogoutTimeoutMs = settings.DeviceConnection.LogoutTimeoutMs,
+                HealthCheckTimeoutMs = settings.DeviceConnection.StatusCheckIntervalMs,
+                HealthCheckIntervalMs = settings.DeviceConnection.StatusCheckIntervalMs,
+                ReconnectBaseDelayMs = settings.DeviceConnection.ReconnectBaseDelayMs,
+                ReconnectMaxDelayMs = settings.DeviceConnection.ReconnectMaxDelayMs,
+                MaxReconnectAttempts = settings.DeviceOperationRetry.MaxRetryAttempts
+            };
+            var deviceRepository = new SqlDeviceRepository(database);
+            deviceLifecycle = new DeviceLifecycleService(deviceRegistry, deviceDispatcher, delayedScheduler, deviceRepository, hikvisionGateway, deviceOptions, logger);
+            accessControlGrpcService = new AccessControlGrpcService(deviceLifecycle, deviceRepository, settings.Service.GrpcManagementApiKey);
+
             backgroundTaskHost = new BackgroundTaskHost(logger);
+            backgroundTaskHost.Register(delayedScheduler, startOrder: 10, stopOrder: 80, isCritical: false);
+            backgroundTaskHost.Register(new DeviceHealthCheckBackgroundTask(deviceLifecycle, deviceOptions), startOrder: 20, stopOrder: 70, isCritical: false);
+            backgroundTaskHost.Register(new GrpcServerBackgroundTask(settings.Service.GrpcListenPort, accessControlGrpcService), startOrder: 30, stopOrder: 60, isCritical: true);
             backgroundTaskHost.Register(new NoopBackgroundTask("Stage1Bootstrap"), startOrder: 0, stopOrder: 100, isCritical: false);
             var backgroundResult = backgroundTaskHost.StartAsync(cancellationToken).GetAwaiter().GetResult();
             if (!backgroundResult.Success)
@@ -120,6 +157,23 @@ namespace ControlDoor.Host
                 }
 
                 return Task.FromResult(HostStartupResult.Failed("后台任务启动失败。", backgroundResult.Errors));
+            }
+
+            try
+            {
+                deviceLifecycle.LoadEnabledDevices(enqueueLogin: true);
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Host", "阶段 4 设备加载失败。", ex);
+                backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+                deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+                lock (gate)
+                {
+                    state = ServiceLifecycleState.Failed;
+                }
+
+                return Task.FromResult(HostStartupResult.Failed("阶段 4 设备加载失败。", new[] { ex.Message }));
             }
 
             lock (gate)
@@ -154,7 +208,9 @@ namespace ControlDoor.Host
             cancellationToken.ThrowIfCancellationRequested();
 
             logger?.Info("Host", "ControlDoor Host 正在停止。", new LogFields { Extra = { ["reason"] = reason ?? string.Empty } });
+            deviceLifecycle?.StopAllDevicesBestEffort();
             backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+            deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
             database?.Dispose();
 
             lock (gate)
@@ -180,9 +236,12 @@ namespace ControlDoor.Host
                 state = ServiceLifecycleState.Stopped;
             }
 
-            logger?.Dispose();
+            deviceLifecycle?.Dispose();
+            hikvisionGateway?.Dispose();
             backgroundTaskHost?.Dispose();
+            deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(100)).GetAwaiter().GetResult();
             database?.Dispose();
+            logger?.Dispose();
         }
 
         private void ThrowIfDisposed()

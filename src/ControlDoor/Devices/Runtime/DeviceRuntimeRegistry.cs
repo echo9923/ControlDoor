@@ -91,6 +91,20 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public DeviceRuntimeCreationOptions GetConnectionOptions(int deviceId)
+        {
+            if (deviceId <= 0)
+            {
+                return null;
+            }
+
+            lock (gate)
+            {
+                DeviceRuntimeState state;
+                return devices.TryGetValue(deviceId, out state) ? state.ToConnectionOptions() : null;
+            }
+        }
+
         public DeviceRuntimeLookupResult TryGetByIpAddress(string ipAddress)
         {
             var key = DeviceIndexKeyNormalizer.NormalizeIpAddress(ipAddress);
@@ -193,6 +207,36 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public DeviceRuntimeMutationResult MarkLoginFailed(int deviceId, DeviceRuntimeError error, DateTime now, bool faulted = false, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
+                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
+                state.MarkLoginFailed(error, now, faulted);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "LOGIN_FAILED", "Device login failure was recorded.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult MarkConnecting(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.MarkConnecting(now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "CONNECTING", "Device runtime is connecting.");
+            }
+        }
+
         public DeviceRuntimeMutationResult RegisterAlarmHandle(int deviceId, int alarmHandle, DateTime now, DeviceIndexUpdateContext context = null)
         {
             if (alarmHandle < 0)
@@ -252,6 +296,66 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public DeviceRuntimeMutationResult MarkManualDisconnected(int deviceId, DeviceRuntimeError error, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
+                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
+                state.MarkManualDisconnected(error, now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "MANUAL_DISCONNECTED", "Device runtime was manually disconnected.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult MarkInvalidConfig(int deviceId, DeviceRuntimeError error, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
+                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
+                state.MarkInvalidConfig(error, now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "INVALID_CONFIG", "Device runtime was marked invalid.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult MarkReconnectPending(int deviceId, DateTime nextReconnectAt, string reason, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.MarkReconnectPending(nextReconnectAt, reason, now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "RECONNECT_PENDING", "Device reconnect was scheduled.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult ResetReconnect(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.ResetReconnect(now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "RECONNECT_RESET", "Device reconnect state was reset.");
+            }
+        }
+
         public DeviceRuntimeMutationResult MarkDisconnected(int deviceId, DeviceRuntimeError error, DateTime now, DeviceConnectionStatus status = DeviceConnectionStatus.Offline, DeviceIndexUpdateContext context = null)
         {
             lock (gate)
@@ -265,6 +369,34 @@ namespace ControlDoor.Devices.Runtime
                 RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
                 state.MarkDisconnected(error, now, status);
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "DISCONNECTED", "Device runtime was disconnected.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult MarkChecked(int deviceId, DateTime now, DeviceConnectionStatus status, DeviceRuntimeError error = null, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.MarkChecked(now, status, error);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "CHECKED", "Device runtime check state was updated.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult RecordError(int deviceId, DeviceRuntimeError error, DateTime now, DeviceConnectionStatus? status = null, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.RecordError(error, now, status);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "ERROR_RECORDED", "Device runtime error was recorded.");
             }
         }
 

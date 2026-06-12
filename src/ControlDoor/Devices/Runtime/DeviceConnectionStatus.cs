@@ -10,6 +10,11 @@ namespace ControlDoor.Devices.Runtime
         Degraded = 5,
         Disconnecting = 6,
         Faulted = 7,
-        Deleted = 8
+        Deleted = 8,
+        Loaded = 9,
+        InvalidConfig = 10,
+        ReconnectPending = 11,
+        Disconnected = 12,
+        Failed = 13
     }
 }

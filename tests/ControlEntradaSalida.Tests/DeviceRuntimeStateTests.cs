@@ -6,14 +6,14 @@ namespace ControlEntradaSalida.Tests
     public static class DeviceRuntimeStateTests
     {
         [TestCase]
-        public static void DeviceRuntimeState_NewEnabledDevice_StartsAsUnknown()
+        public static void DeviceRuntimeState_NewEnabledDevice_StartsAsLoaded()
         {
             var now = new DateTime(2026, 1, 1, 8, 0, 0);
             var state = NewState(now: now);
 
             var snapshot = state.ToSnapshot();
 
-            Assert.Equal(DeviceConnectionStatus.Unknown, snapshot.Status);
+            Assert.Equal(DeviceConnectionStatus.Loaded, snapshot.Status);
             Assert.False(snapshot.IsConnected);
             Assert.Equal(now, snapshot.UpdatedAt);
             Assert.Equal(8000, snapshot.Port);
@@ -85,7 +85,7 @@ namespace ControlEntradaSalida.Tests
         [TestCase]
         public static void DeviceRuntimeState_CoversAllConnectionStatuses()
         {
-            Assert.Equal(9, Enum.GetValues(typeof(DeviceConnectionStatus)).Length);
+            Assert.Equal(14, Enum.GetValues(typeof(DeviceConnectionStatus)).Length);
             Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Unknown));
             Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Disabled));
             Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Offline));
@@ -95,6 +95,11 @@ namespace ControlEntradaSalida.Tests
             Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Disconnecting));
             Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Faulted));
             Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Deleted));
+            Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Loaded));
+            Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.InvalidConfig));
+            Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.ReconnectPending));
+            Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Disconnected));
+            Assert.True(Enum.IsDefined(typeof(DeviceConnectionStatus), DeviceConnectionStatus.Failed));
         }
 
         private static DeviceRuntimeState NewState(bool enabled = true, DateTime? now = null)

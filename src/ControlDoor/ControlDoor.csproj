@@ -18,6 +18,10 @@
     <Reference Include="System.Web.Extensions" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Grpc.Core" Version="2.46.6" />
+    <PackageReference Include="Grpc.Core.Api" Version="2.46.6" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="Configuration\appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Configuration\appsettings.json</Link>

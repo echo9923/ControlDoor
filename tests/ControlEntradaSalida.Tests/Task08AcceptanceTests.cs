@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using ControlDoor;
 using ControlDoor.Database;
+using ControlDoor.GrpcApi;
 using ControlDoor.Host;
 using ControlDoor.Runtime.Health;
 
@@ -27,15 +28,13 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void Acceptance_NoGrpcBusinessMethodsAreRegisteredInStage1()
+        public static void Acceptance_Stage4AccessControlGrpcMethodsAreRegisteredByContract()
         {
-            var assembly = typeof(ServiceIdentity).Assembly;
-            var grpcLikeTypes = assembly
-                .GetTypes()
-                .Where(type => type.FullName.IndexOf("Grpc", StringComparison.OrdinalIgnoreCase) >= 0)
-                .ToList();
-
-            Assert.True(grpcLikeTypes.Count == 0 || grpcLikeTypes.All(type => type.Namespace.StartsWith("ControlDoor.Configuration")));
+            Assert.Equal("/device.AccessControlService/GetDeviceStatus", AccessControlGrpcService.GetDeviceStatusFullName);
+            Assert.Equal("/device.AccessControlService/AddDevice", AccessControlGrpcService.AddDeviceFullName);
+            Assert.Equal("/device.AccessControlService/DeleteDevice", AccessControlGrpcService.DeleteDeviceFullName);
+            Assert.Equal("/device.AccessControlService/DisconnectDevice", AccessControlGrpcService.DisconnectDeviceFullName);
+            Assert.Equal("/device.AccessControlService/ReconnectDevice", AccessControlGrpcService.ReconnectDeviceFullName);
         }
 
         [TestCase]
