@@ -180,6 +180,32 @@ Remove-Item Env:\CONTROLDOOR_STAGE14_CONNECTION_STRING
 | 2026-06-12 | `ControlDoor.exe --validate-config` | 通过；数据库在该模式下按现有实现为跳过真实连接的 Warning，SDK DLL/SqlServerTypes 缺失为 Warning。 |
 | 2026-06-12 | `Stage14Integration` | 通过；真实 `ControlDoorHost` 启动、连接 Docker SQL Server、启动 gRPC server、`GetDeviceStatus` 返回禁用设备 `9001`、`AddDevice` 新增禁用设备 `9010`、`DeleteDevice` 删除 `9010`。 |
 | 2026-06-12 | 全量测试 runner | 通过；集成测试默认跳过，`Total: 274, Failed: 0`。 |
-| 2026-06-12 | 联调库残留检查 | 通过；`dbo.devices` 仅剩禁用占位设备 `9001`，`last_used_time` 仍为 `NULL`，未触发真实 SDK 登录。 |
+| 2026-06-12 | 真实设备接入前联调库残留检查 | 通过；`dbo.devices` 仅剩禁用占位设备 `9001`，`last_used_time` 仍为 `NULL`，未触发真实 SDK 登录。 |
 
-下一步等待现场接入真实设备。接入后先提供设备 IP、端口、用户名和密码，保持 `9001` 禁用状态更新连接信息；确认 SDK DLL 放置和网络连通后，再启用设备并观察登录、布防和状态检测日志。
+## 当前真实设备联调记录
+
+| 时间 | 项目 | 结果 |
+| --- | --- | --- |
+| 2026-06-12 | 设备网络连通性 | 通过；现场设备 `169.254.66.109:8000` TCP 端口可达。 |
+| 2026-06-12 | 运行目录 SDK DLL 检查 | 通过；运行目录已补齐 `HCNetSDK.dll`、`HCNetSDKCom`、`SqlServerTypes` 及海康 SDK 依赖 DLL。 |
+| 2026-06-12 | 首次真实设备冒烟 | 未通过；测试进程工作目录不在 ControlDoor 运行目录，`DllImport("HCNetSDK.dll")` 未能命中运行目录 DLL，报 `0x8007007E`。 |
+| 2026-06-12 | `Stage14Integration_RealDevice_LoginAndStatusSmoke` | 通过；测试在启动 Host 前调用 `SetDllDirectory(runDirectory)`，真实 `ControlDoorHost` 连接 Docker SQL Server 后加载设备 `9001`，`GetDeviceStatus refresh=true` 返回 `isConnected=true`、`status=Online`、`lastErrorCode=null`。 |
+| 2026-06-12 | 数据库回写检查 | 通过；`dbo.devices.device_id = 9001` 的 `last_used_time` 更新为 `2026-06-12 02:20:22`，联调结束后已将 `status` 切回 `0`，避免后续启动自动登录真实设备。 |
+| 2026-06-12 | 日志检查 | 通过；日志确认 Host 启动、数据库健康检查、`dbo.devices` 加载、`UpdateDeviceLastUsedTime`、后台任务停止和 Host 停止成功。当前阶段日志对登录/布防成功的细粒度记录较少，后续可在生命周期任务中补充更明确的成功日志。 |
+| 2026-06-12 | 全量测试 runner | 通过；集成测试默认跳过，`Total: 275, Failed: 0`。 |
+
+真实设备冒烟测试默认跳过，只有显式设置环境变量才会运行：
+
+```powershell
+$env:CONTROLDOOR_STAGE14_REAL_DEVICE = "1"
+$env:CONTROLDOOR_STAGE14_RUN_DIRECTORY = "C:\Users\Administrator\AppData\Local\Temp\ControlDoorArtifacts\bin\ControlDoor\debug"
+$env:CONTROLDOOR_STAGE14_DEVICE_ID = "9001"
+$env:CONTROLDOOR_STAGE14_REAL_DEVICE_TIMEOUT_SECONDS = "60"
+C:\Users\Administrator\AppData\Local\Temp\ControlDoorArtifacts\bin\ControlEntradaSalida.Tests\debug\ControlEntradaSalida.Tests.exe Stage14Integration_RealDevice_LoginAndStatusSmoke
+Remove-Item Env:\CONTROLDOOR_STAGE14_REAL_DEVICE
+Remove-Item Env:\CONTROLDOOR_STAGE14_RUN_DIRECTORY
+Remove-Item Env:\CONTROLDOOR_STAGE14_DEVICE_ID
+Remove-Item Env:\CONTROLDOOR_STAGE14_REAL_DEVICE_TIMEOUT_SECONDS
+```
+
+后续如果需要继续现场联调，应先按需启用 `9001`，测试结束后再切回禁用状态。

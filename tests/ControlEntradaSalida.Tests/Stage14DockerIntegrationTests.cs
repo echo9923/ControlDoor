@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Web.Script.Serialization;
 using ControlDoor.GrpcApi;
@@ -15,6 +16,9 @@ namespace ControlEntradaSalida.Tests
     {
         private const string EnableVariable = "CONTROLDOOR_STAGE14_INTEGRATION";
         private const string ConnectionStringVariable = "CONTROLDOOR_STAGE14_CONNECTION_STRING";
+        private const string RealDeviceVariable = "CONTROLDOOR_STAGE14_REAL_DEVICE";
+        private const string RunDirectoryVariable = "CONTROLDOOR_STAGE14_RUN_DIRECTORY";
+        private const string RealDeviceIdVariable = "CONTROLDOOR_STAGE14_DEVICE_ID";
 
         [TestCase]
         public static void Stage14Integration_DockerSqlServer_HostStartsAndGrpcReturnsDisabledDevice()
@@ -71,6 +75,72 @@ namespace ControlEntradaSalida.Tests
                 {
                     var stop = host.StopAsync("Stage14Integration").GetAwaiter().GetResult();
                     Assert.True(stop.Success, "Host should stop cleanly: " + stop.Message);
+                }
+            }
+        }
+
+        [TestCase]
+        public static void Stage14Integration_RealDevice_LoginAndStatusSmoke()
+        {
+            if (!string.Equals(Environment.GetEnvironmentVariable(RealDeviceVariable), "1", StringComparison.Ordinal))
+            {
+                Console.WriteLine("[SKIP] Set " + RealDeviceVariable + "=1 to run the real device smoke test.");
+                return;
+            }
+
+            var runDirectory = Environment.GetEnvironmentVariable(RunDirectoryVariable);
+            if (string.IsNullOrWhiteSpace(runDirectory))
+            {
+                runDirectory = Path.GetDirectoryName(typeof(ControlDoorHost).Assembly.Location);
+            }
+
+            Assert.True(Directory.Exists(runDirectory), "Run directory does not exist: " + runDirectory);
+            Assert.True(File.Exists(Path.Combine(runDirectory, "HCNetSDK.dll")), "HCNetSDK.dll must exist in the run directory before real device testing.");
+            Assert.True(Directory.Exists(Path.Combine(runDirectory, "HCNetSDKCom")), "HCNetSDKCom must exist in the run directory before real device testing.");
+            var dllDirectoryConfigured = false;
+            try
+            {
+                Assert.True(SetDllDirectory(runDirectory), "Failed to add run directory to native DLL search path: " + runDirectory);
+                dllDirectoryConfigured = true;
+
+                var deviceId = ReadInt(RealDeviceIdVariable, 9001);
+                var port = ReadConfiguredGrpcPort(runDirectory);
+                var timeoutAt = DateTime.UtcNow.AddSeconds(ReadInt("CONTROLDOOR_STAGE14_REAL_DEVICE_TIMEOUT_SECONDS", 45));
+                string lastResponse = string.Empty;
+
+                using (var host = new ControlDoorHost(runDirectory))
+                {
+                    var start = host.StartAsync().GetAwaiter().GetResult();
+                    Assert.True(start.Success, "Host should start for real device smoke test: " + start.Message);
+
+                    try
+                    {
+                        while (DateTime.UtcNow < timeoutAt)
+                        {
+                            System.Threading.Thread.Sleep(3000);
+                            lastResponse = CallGetDeviceStatus(port, "{\"deviceId\":" + deviceId + ",\"includeDisabled\":true,\"refresh\":true}");
+                            Console.WriteLine("[REAL_DEVICE_STATUS] " + lastResponse);
+                            if (lastResponse.IndexOf(@"""isConnected"":true", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                lastResponse.IndexOf(@"""status"":""Online""", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                return;
+                            }
+                        }
+
+                        throw new InvalidOperationException("Real device did not become Online before timeout. Last response: " + lastResponse);
+                    }
+                    finally
+                    {
+                        var stop = host.StopAsync("Stage14RealDeviceSmoke").GetAwaiter().GetResult();
+                        Assert.True(stop.Success, "Host should stop cleanly: " + stop.Message);
+                    }
+                }
+            }
+            finally
+            {
+                if (dllDirectoryConfigured)
+                {
+                    SetDllDirectory(null);
                 }
             }
         }
@@ -185,5 +255,25 @@ namespace ControlEntradaSalida.Tests
         {
             return (value ?? string.Empty).Replace(@"\", @"\\").Replace(@"""", @"\""");
         }
+
+        private static int ReadInt(string name, int defaultValue)
+        {
+            int value;
+            return int.TryParse(Environment.GetEnvironmentVariable(name), out value) ? value : defaultValue;
+        }
+
+        private static int ReadConfiguredGrpcPort(string runDirectory)
+        {
+            var path = Path.Combine(runDirectory, "Configuration", "appsettings.json");
+            Assert.True(File.Exists(path), "Configuration file does not exist: " + path);
+            var json = File.ReadAllText(path, Encoding.UTF8);
+            var body = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+            var service = body["Service"] as Dictionary<string, object>;
+            Assert.NotNull(service, "Service config section is required.");
+            return Convert.ToInt32(service["GrpcListenPort"]);
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool SetDllDirectory(string lpPathName);
     }
 }
