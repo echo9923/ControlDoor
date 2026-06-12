@@ -1,6 +1,9 @@
+using System.IO;
 using System.Linq;
+using ControlDoor.Configuration;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 
 namespace ControlEntradaSalida.Tests
 {
@@ -147,6 +150,56 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(DeviceConnectionStatus.Failed, snapshot.Status);
                 Assert.Equal("FAILED", snapshot.LastErrorCode);
             }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_SuccessfulLoginAlarmAndDisconnect_WriteLifecycleSuccessLogs()
+        {
+            var runDirectory = TestWorkspace.Create();
+            using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" })))
+            using (var fixture = new Stage4Fixture(logger))
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                var login = fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-log-success");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var disconnect = fixture.Lifecycle.DisconnectDevice(1, "req-log-disconnect");
+
+                var text = File.ReadAllText(logger.CurrentLogPath);
+                Assert.True(login.Success);
+                Assert.True(disconnect.Success);
+                Assert.Contains("message=\"设备登录成功。\"", text);
+                Assert.Contains("message=\"设备布防成功。\"", text);
+                Assert.Contains("message=\"设备撤防成功。\"", text);
+                Assert.Contains("message=\"设备登出成功。\"", text);
+                Assert.Contains("component=\"DeviceLifecycle\"", text);
+                Assert.Contains("deviceId=\"1\"", text);
+                Assert.Contains("requestId=\"req-log-success\"", text);
+                Assert.Contains("operationName=\"DeviceLogin\"", text);
+                Assert.Contains("operationName=\"DeviceArmAlarm\"", text);
+                Assert.Contains("operationName=\"ManualDisconnect\"", text);
+                Assert.Contains("userId=", text);
+                Assert.Contains("alarmHandle=", text);
+                Assert.False(text.Contains("password"));
+                Assert.False(text.Contains("12345"));
+            }
+        }
+
+        private static void WaitUntil(System.Func<bool> condition, string message)
+        {
+            var deadline = System.DateTime.UtcNow.AddSeconds(2);
+            while (System.DateTime.UtcNow < deadline)
+            {
+                if (condition())
+                {
+                    return;
+                }
+
+                System.Threading.Thread.Sleep(20);
+            }
+
+            Assert.True(condition(), message);
         }
     }
 }

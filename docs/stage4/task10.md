@@ -191,8 +191,8 @@ Remove-Item Env:\CONTROLDOOR_STAGE14_CONNECTION_STRING
 | 2026-06-12 | 首次真实设备冒烟 | 未通过；测试进程工作目录不在 ControlDoor 运行目录，`DllImport("HCNetSDK.dll")` 未能命中运行目录 DLL，报 `0x8007007E`。 |
 | 2026-06-12 | `Stage14Integration_RealDevice_LoginAndStatusSmoke` | 通过；测试在启动 Host 前调用 `SetDllDirectory(runDirectory)`，真实 `ControlDoorHost` 连接 Docker SQL Server 后加载设备 `9001`，`GetDeviceStatus refresh=true` 返回 `isConnected=true`、`status=Online`、`lastErrorCode=null`。 |
 | 2026-06-12 | 数据库回写检查 | 通过；`dbo.devices.device_id = 9001` 的 `last_used_time` 更新为 `2026-06-12 02:20:22`，联调结束后已将 `status` 切回 `0`，避免后续启动自动登录真实设备。 |
-| 2026-06-12 | 日志检查 | 通过；日志确认 Host 启动、数据库健康检查、`dbo.devices` 加载、`UpdateDeviceLastUsedTime`、后台任务停止和 Host 停止成功。当前阶段日志对登录/布防成功的细粒度记录较少，后续可在生命周期任务中补充更明确的成功日志。 |
-| 2026-06-12 | 全量测试 runner | 通过；集成测试默认跳过，`Total: 275, Failed: 0`。 |
+| 2026-06-12 | 日志检查 | 通过；日志确认 Host 启动、数据库健康检查、`dbo.devices` 加载、`UpdateDeviceLastUsedTime`、后台任务停止和 Host 停止成功。已补充生命周期成功日志，后续真实设备联调可直接观察 `设备登录成功。`、`设备布防成功。`、`设备撤防成功。` 和 `设备登出成功。`。 |
+| 2026-06-12 | 全量测试 runner | 通过；集成测试默认跳过，`Total: 276, Failed: 0`。 |
 
 真实设备冒烟测试默认跳过，只有显式设置环境变量才会运行：
 

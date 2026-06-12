@@ -3,12 +3,13 @@ using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Workers;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 
 namespace ControlEntradaSalida.Tests
 {
     internal sealed class Stage4Fixture : IDisposable
     {
-        public Stage4Fixture()
+        public Stage4Fixture(ServiceLogger logger = null)
         {
             Registry = new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = 2 });
             Dispatcher = new DeviceSdkDispatcher(Registry, workerCount: 2, queueCapacityPerWorker: 50, defaultTaskTimeoutMilliseconds: 5000);
@@ -27,7 +28,7 @@ namespace ControlEntradaSalida.Tests
                 FailureThreshold = 3,
                 AlarmEnabled = true
             };
-            Lifecycle = new DeviceLifecycleService(Registry, Dispatcher, DelayedScheduler, Repository, Gateway, Options);
+            Lifecycle = new DeviceLifecycleService(Registry, Dispatcher, DelayedScheduler, Repository, Gateway, Options, logger);
         }
 
         public DeviceRuntimeRegistry Registry { get; }

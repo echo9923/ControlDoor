@@ -377,6 +377,15 @@ namespace ControlDoor.Devices.Management
 
                     repository.UpdateLastUsedTime(deviceId);
                     ClearHealthFailures(deviceId);
+                    LogLifecycleSuccess(context, "设备登录成功。", started, fields =>
+                    {
+                        fields.Extra["userId"] = login.UserId.ToString();
+                        fields.Extra["serialNumber"] = serial;
+                        fields.Extra["ipAddress"] = connection.IpAddress;
+                        fields.Extra["port"] = connection.Port.ToString();
+                        fields.Extra["alarmEnabled"] = options.AlarmEnabled.ToString();
+                    });
+
                     if (options.AlarmEnabled)
                     {
                         SubmitArmAlarm(deviceId, wait: false, requestId: requestId);
@@ -495,6 +504,12 @@ namespace ControlDoor.Devices.Management
                         return DeviceTaskResult.FromTask(context.Task, false, register.Code, register.Message, DeviceConnectionStatus.Online, started, DateTime.Now);
                     }
 
+                    LogLifecycleSuccess(context, "设备布防成功。", started, fields =>
+                    {
+                        fields.Extra["userId"] = snapshot.SdkUserId.Value.ToString();
+                        fields.Extra["alarmHandle"] = alarm.AlarmHandle.ToString();
+                    });
+
                     return DeviceTaskResult.FromTask(context.Task, true, "OK", "布防成功。", DeviceConnectionStatus.Online, started, DateTime.Now);
                 }
                 catch (Exception ex)
@@ -529,6 +544,10 @@ namespace ControlDoor.Devices.Management
                     try
                     {
                         await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = snapshot.AlarmHandle.Value }, context.CancellationToken).ConfigureAwait(false);
+                        LogLifecycleSuccess(context, "设备撤防成功。", started, fields =>
+                        {
+                            fields.Extra["alarmHandle"] = snapshot.AlarmHandle.Value.ToString();
+                        });
                     }
                     catch (Exception ex)
                     {
@@ -545,6 +564,11 @@ namespace ControlDoor.Devices.Management
                     try
                     {
                         await gateway.LogoutAsync(new LogoutRequest { UserId = snapshot.SdkUserId.Value }, context.CancellationToken).ConfigureAwait(false);
+                        LogLifecycleSuccess(context, "设备登出成功。", started, fields =>
+                        {
+                            fields.Extra["userId"] = snapshot.SdkUserId.Value.ToString();
+                            fields.Extra["finalStatus"] = finalStatus.ToString();
+                        });
                     }
                     catch (Exception ex)
                     {
@@ -614,6 +638,28 @@ namespace ControlDoor.Devices.Management
         private void CancelDelayedReconnect(int deviceId)
         {
             delayedScheduler?.CancelByTaskKey("stage4:reconnect:" + deviceId, "manual operation");
+        }
+
+        private void LogLifecycleSuccess(DeviceTaskContext context, string message, DateTime startedAt, Action<LogFields> configure = null)
+        {
+            if (logger == null || context == null || context.Task == null)
+            {
+                return;
+            }
+
+            var now = DateTime.Now;
+            var fields = new LogFields
+            {
+                DeviceId = context.Task.DeviceId,
+                OperationName = context.Task.OperationName,
+                RequestId = string.IsNullOrWhiteSpace(context.Task.RequestId) ? context.RequestContext?.RequestId : context.Task.RequestId,
+                TraceId = context.RequestContext?.TraceId,
+                ElapsedMs = Math.Max(0, (long)(now - startedAt).TotalMilliseconds)
+            };
+            fields.Extra["taskId"] = context.Task.TaskId;
+            fields.Extra["taskType"] = context.Task.TaskType.ToString();
+            configure?.Invoke(fields);
+            logger.Info("DeviceLifecycle", message, fields);
         }
 
         private DeviceOperationResult FromTaskResult(DeviceTaskResult result)
