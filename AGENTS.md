@@ -37,6 +37,7 @@
 - `docs/stage4/task07.md`：`AddDevice` 实施方案，适用于实现新增设备入库、运行时注册和可选立即连接。
 - `docs/stage4/task08.md`：`DeleteDevice`、`DisconnectDevice`、`ReconnectDevice` 实施方案，适用于实现设备删除、手动断开和手动重连。
 - `docs/stage4/task09.md`：阶段 4 测试与验收方案，适用于验证设备生命周期、设备管理 gRPC、数据库兼容和 mock SDK 集成。
+- `docs/stage4/task10.md`：阶段 1-4 联调测试方案，适用于使用 Docker 数据库验证服务启动、gRPC、设备生命周期基础闭环，并指导真实设备冒烟联调。
 - `docs/stage5/task01.md`：阶段 5 边界与任务总览，适用于确认权限、人员、人脸同步的实施范围和顺序。
 - `docs/stage5/task02.md`：权限同步 `SyncPermissions` 方案，适用于实现权限请求解析、在线设备下发和人员权限同步状态更新。
 - `docs/stage5/task03.md`：人员与人脸同步 `SyncPersons` 方案，适用于实现人员基础信息、人脸图片校验、人员先于人脸的设备下发流程。
