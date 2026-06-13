@@ -33,6 +33,61 @@ function Test-FileOrDirectory {
     return Add-Result $RelativePath (Test-Path -LiteralPath $path -PathType Leaf) "File: $path"
 }
 
+function Remove-JsonComments {
+    param(
+        [string]$JsonText
+    )
+
+    $builder = New-Object System.Text.StringBuilder
+    $inString = $false
+    $i = 0
+    while ($i -lt $JsonText.Length) {
+        $current = $JsonText[$i]
+        if ($inString) {
+            [void]$builder.Append($current)
+            if ($current -eq '\' -and ($i + 1) -lt $JsonText.Length) {
+                [void]$builder.Append($JsonText[$i + 1])
+                $i += 2
+                continue
+            }
+            if ($current -eq '"') {
+                $inString = $false
+            }
+            $i++
+            continue
+        }
+
+        if ($current -eq '"') {
+            $inString = $true
+            [void]$builder.Append($current)
+            $i++
+            continue
+        }
+
+        if ($current -eq '/' -and ($i + 1) -lt $JsonText.Length -and $JsonText[$i + 1] -eq '/') {
+            $i += 2
+            while ($i -lt $JsonText.Length -and $JsonText[$i] -ne "`n" -and $JsonText[$i] -ne "`r") {
+                $i++
+            }
+            continue
+        }
+
+        if ($current -eq '/' -and ($i + 1) -lt $JsonText.Length -and $JsonText[$i + 1] -eq '*') {
+            $i += 2
+            while (($i + 1) -lt $JsonText.Length -and -not ($JsonText[$i] -eq '*' -and $JsonText[$i + 1] -eq '/')) {
+                $i++
+            }
+            $i += 2
+            continue
+        }
+
+        [void]$builder.Append($current)
+        $i++
+    }
+
+    return $builder.ToString()
+}
+
 $script:Root = [System.IO.Path]::GetFullPath($PackageRoot)
 $results = New-Object System.Collections.Generic.List[object]
 
@@ -94,7 +149,8 @@ if (-not $sqlTypesFound) {
 $appsettings = Join-Path $script:Root "Configuration\appsettings.json"
 if (Test-Path -LiteralPath $appsettings -PathType Leaf) {
     try {
-        $json = Get-Content -LiteralPath $appsettings -Raw -Encoding UTF8 | ConvertFrom-Json
+        $rawJson = Get-Content -LiteralPath $appsettings -Raw -Encoding UTF8
+        $json = Remove-JsonComments $rawJson | ConvertFrom-Json
         $requiredGroups = @(
             "Service",
             "Database",
