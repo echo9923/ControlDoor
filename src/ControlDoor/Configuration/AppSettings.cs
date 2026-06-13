@@ -15,6 +15,8 @@ namespace ControlDoor.Configuration
 
         public DeviceConnectionOptions DeviceConnection { get; set; } = new DeviceConnectionOptions();
 
+        public HikvisionSdkOptions HikvisionSdk { get; set; } = new HikvisionSdkOptions();
+
         public DeviceOperationRetryOptions DeviceOperationRetry { get; set; } = new DeviceOperationRetryOptions();
 
         public FaceEventLoggingOptions FaceEventLogging { get; set; } = new FaceEventLoggingOptions();
@@ -30,6 +32,7 @@ namespace ControlDoor.Configuration
             Logging = Logging ?? new LoggingOptions();
             DeviceSdkDispatcher = DeviceSdkDispatcher ?? new DeviceSdkDispatcherOptions();
             DeviceConnection = DeviceConnection ?? new DeviceConnectionOptions();
+            HikvisionSdk = HikvisionSdk ?? new HikvisionSdkOptions();
             DeviceOperationRetry = DeviceOperationRetry ?? new DeviceOperationRetryOptions();
             FaceEventLogging = FaceEventLogging ?? new FaceEventLoggingOptions();
             FaceEnrollment = FaceEnrollment ?? new FaceEnrollmentOptions();
@@ -94,6 +97,21 @@ namespace ControlDoor.Configuration
         public int ReconnectBaseDelayMs { get; set; } = 5000;
 
         public int ReconnectMaxDelayMs { get; set; } = 300000;
+    }
+
+    public sealed class HikvisionSdkOptions
+    {
+        public string Platform { get; set; } = "x64";
+
+        public string DllDirectory { get; set; } = "sdk\\Hikvision";
+
+        public bool EnableSdkLog { get; set; } = true;
+
+        public string SdkLogDirectory { get; set; } = "logs\\sdk";
+
+        public bool RequireSdkLog { get; set; }
+
+        public bool ValidateNativeInit { get; set; }
     }
 
     public sealed class DeviceOperationRetryOptions

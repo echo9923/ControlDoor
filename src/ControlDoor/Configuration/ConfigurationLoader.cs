@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace ControlDoor.Configuration
@@ -50,6 +51,7 @@ namespace ControlDoor.Configuration
                 // 避免 JavaScriptSerializer 把注释当作非法字符导致配置加载失败。
                 // 剥离时正确处理字符串字面量与转义，确保连接串、URL 中的 // 不被误删。
                 json = StripComments(json);
+                json = NormalizeStage8Aliases(json);
                 var serializer = new JavaScriptSerializer();
                 settings = serializer.Deserialize<AppSettings>(json) ?? new AppSettings();
             }
@@ -67,6 +69,18 @@ namespace ControlDoor.Configuration
             }
 
             return ConfigurationLoadResult.Succeeded(validation.Settings, configPath, validation.Warnings);
+        }
+
+        private static string NormalizeStage8Aliases(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return json;
+            }
+
+            json = Regex.Replace(json, "\"DeviceRuntime\"\\s*:", "\"DeviceSdkDispatcher\":", RegexOptions.IgnoreCase);
+            json = Regex.Replace(json, "\"DeviceLifecycle\"\\s*:", "\"DeviceConnection\":", RegexOptions.IgnoreCase);
+            return json;
         }
 
         // 剥离 JSON 文本中的 // 单行注释和 /* */ 多行注释。

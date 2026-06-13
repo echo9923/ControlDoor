@@ -103,6 +103,8 @@
 | 数据库可连 | validate 能连接测试或目标数据库。 |
 | 端口可用 | validate 检查 gRPC 端口未占用。 |
 
+当前仓库提供 `tools\test-service-package.ps1 -PackageRoot 门禁publish\ServicePackage` 作为 L5 发布包结构检查入口。脚本检查 `ControlDoor.exe`、`ControlDoor.exe.config`、`Configuration/appsettings.json`、`logs`、`snapshots`、`docs`、三份现场文档、`HCNetSDK.dll` 和 `SqlServerTypes` 的放置，并验证配置模板包含阶段 8 固定的必要分组。
+
 ## 不做的事
 
 | 不做内容 | 原因 |
