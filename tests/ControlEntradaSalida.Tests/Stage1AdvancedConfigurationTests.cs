@@ -82,6 +82,7 @@ namespace ControlEntradaSalida.Tests
                 Logging = null,
                 DeviceSdkDispatcher = null,
                 DeviceConnection = null,
+                HikvisionSdk = null,
                 DeviceOperationRetry = null,
                 FaceEventLogging = null,
                 FaceEnrollment = null,
@@ -95,6 +96,7 @@ namespace ControlEntradaSalida.Tests
             Assert.NotNull(result.Settings.Service);
             Assert.NotNull(result.Settings.Logging);
             Assert.NotNull(result.Settings.DeviceSdkDispatcher);
+            Assert.NotNull(result.Settings.HikvisionSdk);
             Assert.NotNull(result.Settings.FaceEventLogging);
             Assert.False(result.Settings.CameraAlarmDoorInterlock.Enabled);
         }

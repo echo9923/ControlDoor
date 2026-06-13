@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using ControlDoor.Configuration;
 using ControlDoor.Database;
 using ControlDoor.Observability;
 using ControlDoor.Runtime.Health.Checks;
@@ -59,6 +60,35 @@ namespace ControlDoor.Runtime.Health
                 new DllPresenceHealthCheck("海康 SDK DLL", "HCNetSDK.dll", "sdk\\Hikvision", "sdk\\Hikvision\\HCNetSDK.dll"),
                 new DllPresenceHealthCheck("SqlServerTypes DLL", "SqlServerTypes", "sdk\\SqlServerTypes")
             });
+        }
+
+        public static HealthCheckService CreateStage8(string runDirectory, AppSettings settings, IDatabaseClient database)
+        {
+            settings = settings ?? new AppSettings();
+            settings.EnsureGroups();
+
+            return new HealthCheckService(new IHealthCheck[]
+            {
+                new RunDirectoryHealthCheck(),
+                new ConfigurationFileHealthCheck(),
+                new DirectoryHealthCheck("日志目录", settings.Logging.LogDirectory, required: true),
+                new DirectoryHealthCheck("SDK 日志目录", settings.HikvisionSdk.SdkLogDirectory, required: settings.HikvisionSdk.RequireSdkLog),
+                new DirectoryHealthCheck("抓拍目录", settings.FaceEventLogging.SnapshotRootDirectory, required: settings.FaceEventLogging.Enabled),
+                new PortHealthCheck(),
+                new DatabaseHealthCheckItem(database),
+                new DllPresenceHealthCheck("Hikvision SDK DLL", required: true, "HCNetSDK.dll", CombineRelative(settings.HikvisionSdk.DllDirectory, "HCNetSDK.dll"), "sdk\\Hikvision\\HCNetSDK.dll"),
+                new DllPresenceHealthCheck("SqlServerTypes DLL", required: true, "SqlServerTypes", "sdk\\SqlServerTypes")
+            });
+        }
+
+        private static string CombineRelative(string directory, string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                return fileName;
+            }
+
+            return System.IO.Path.Combine(directory, fileName);
         }
     }
 }

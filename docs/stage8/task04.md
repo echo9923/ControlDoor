@@ -103,6 +103,8 @@
 | 抓拍 | 抓拍目录状态。 |
 | 结论 | Passed / Warning / Failed。 |
 
+当前实现的 `ControlDoor.exe --validate-config` 使用阶段 8 严格检查：只加载运行目录 `Configuration/appsettings.json`，输出运行目录、配置路径、gRPC 端口、日志策略、SDK DLL 目录、SDK 平台、抓拍目录和数据库超时；随后检查配置文件、日志目录、SDK 日志目录、抓拍目录、端口、数据库核心表、`HCNetSDK.dll` 和 `SqlServerTypes`。验证模式只做运行前检查，不启动 gRPC 服务、设备 worker 或设备下发操作。
+
 ## 测试
 
 | 测试 | 验证 |

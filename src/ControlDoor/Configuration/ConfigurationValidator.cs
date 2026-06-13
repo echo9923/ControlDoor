@@ -116,6 +116,38 @@ namespace ControlDoor.Configuration
                 "DeviceConnection.LogoutTimeoutMs",
                 warnings);
 
+            if (!string.Equals(settings.HikvisionSdk.Platform, "x86", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(settings.HikvisionSdk.Platform, "x64", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(settings.HikvisionSdk.Platform, "AnyCPU", StringComparison.OrdinalIgnoreCase))
+            {
+                warnings.Add("HikvisionSdk.Platform 非法，已回退为 x64。");
+                settings.HikvisionSdk.Platform = "x64";
+            }
+            else if (string.Equals(settings.HikvisionSdk.Platform, "x86", StringComparison.OrdinalIgnoreCase))
+            {
+                settings.HikvisionSdk.Platform = "x86";
+            }
+            else if (string.Equals(settings.HikvisionSdk.Platform, "AnyCPU", StringComparison.OrdinalIgnoreCase))
+            {
+                settings.HikvisionSdk.Platform = "AnyCPU";
+            }
+            else
+            {
+                settings.HikvisionSdk.Platform = "x64";
+            }
+
+            settings.HikvisionSdk.DllDirectory = StringOrDefault(
+                settings.HikvisionSdk.DllDirectory,
+                "sdk\\Hikvision",
+                "HikvisionSdk.DllDirectory",
+                warnings);
+
+            settings.HikvisionSdk.SdkLogDirectory = StringOrDefault(
+                settings.HikvisionSdk.SdkLogDirectory,
+                "logs\\sdk",
+                "HikvisionSdk.SdkLogDirectory",
+                warnings);
+
             settings.DeviceOperationRetry.ScanIntervalSeconds = MinimumOrDefault(
                 settings.DeviceOperationRetry.ScanIntervalSeconds,
                 5,

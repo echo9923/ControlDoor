@@ -3,6 +3,7 @@ using System.IO;
 using System.ServiceProcess;
 using System.Threading;
 using ControlDoor.Configuration;
+using ControlDoor.Database;
 using ControlDoor.Host;
 using ControlDoor.Observability;
 using ControlDoor.Runtime.Health;
@@ -85,19 +86,28 @@ namespace ControlDoor
             {
                 Console.WriteLine("gRPC 端口: " + result.Settings.Service.GrpcListenPort);
                 Console.WriteLine("日志目录: " + result.Settings.Logging.LogDirectory);
+                Console.WriteLine("SDK DLL 目录: " + result.Settings.HikvisionSdk.DllDirectory);
+                Console.WriteLine("SDK 平台: " + result.Settings.HikvisionSdk.Platform);
+                Console.WriteLine("抓拍目录: " + result.Settings.FaceEventLogging.SnapshotRootDirectory);
                 Console.WriteLine("数据库命令超时: " + result.Settings.Database.CommandTimeoutSeconds + " 秒");
                 Console.WriteLine("设备 worker 数: " + result.Settings.DeviceSdkDispatcher.WorkerCount);
+                Console.WriteLine("日志策略: payload=" + result.Settings.Logging.EnableGrpcPayloadLogging +
+                    ", mode=" + result.Settings.Logging.GrpcPayloadLogMode +
+                    ", credentials=" + result.Settings.Logging.IncludeCredentialFields +
+                    ", faceBase64=" + result.Settings.Logging.IncludeFaceImageBase64 +
+                    ", sdkTrace=" + result.Settings.Logging.EnableSdkTrace);
 
                 try
                 {
                     using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, result.Settings.Logging, mirrorToConsole: false)))
+                    using (var database = new SqlServerDatabase(result.Settings.Database, logger))
                     {
                         logger.Info("ValidateConfig", "配置验证模式已完成配置加载。");
                         Console.WriteLine("日志检查: OK");
                         Console.WriteLine("日志文件: " + logger.CurrentLogPath);
 
                         var summary = HealthCheckService
-                            .CreateStage1(runDirectory)
+                            .CreateStage8(runDirectory, result.Settings, database)
                             .Run(new HealthCheckContext(runDirectory, result.Settings, logger, CancellationToken.None));
                         WriteHealthSummary(summary);
                         if (!summary.Success)
