@@ -57,6 +57,8 @@
 
 当前文档仓库中未必已经存在最终 `.sln/.csproj` 和发布脚本文件。阶段 8 固定的是实施时必须满足的命令和产物要求；具体工程文件落地后，应按本阶段文档执行并把实际脚本补齐。
 
+当前实现仓库已经具备 `ControlEntradaSalida.sln`、`src/ControlDoor/ControlDoor.csproj`、`src/ControlDoor/Configuration/appsettings.json` 和 `ControlDoor.exe --validate-config` 入口。阶段 8 的后续任务以这些实际文件为实施对象：测试矩阵落到现有自定义测试运行器，发布包结构落到 `门禁publish/ServicePackage/`，服务运维落到固定服务名 `ControlDoor` 和非交互 PowerShell 脚本。
+
 ## 阶段完成标准
 
 | 标准 | 说明 |
