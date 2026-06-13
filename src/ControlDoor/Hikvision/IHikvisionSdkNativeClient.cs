@@ -14,7 +14,7 @@ namespace ControlDoor.Hikvision
 
         bool SetMessageCallback(HikvisionAlarmNativeCallback callback);
 
-        int SetupAlarm(int userId, int level, int alarmInfoType);
+        int SetupAlarm(int userId, int level, int alarmInfoType, int deployType);
 
         bool CloseAlarm(int alarmHandle);
 

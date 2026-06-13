@@ -496,7 +496,11 @@ namespace ControlDoor.Devices.Management
 
                 try
                 {
-                    var alarm = await gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = snapshot.SdkUserId.Value }, context.CancellationToken).ConfigureAwait(false);
+                    var alarm = await gateway.SetAlarmAsync(new AlarmSetupRequest
+                    {
+                        UserId = snapshot.SdkUserId.Value,
+                        DeployType = options.AlarmDeployType
+                    }, context.CancellationToken).ConfigureAwait(false);
                     var register = context.Registry.RegisterAlarmHandle(deviceId, alarm.AlarmHandle, DateTime.Now);
                     if (!register.Success)
                     {
@@ -508,6 +512,7 @@ namespace ControlDoor.Devices.Management
                     {
                         fields.Extra["userId"] = snapshot.SdkUserId.Value.ToString();
                         fields.Extra["alarmHandle"] = alarm.AlarmHandle.ToString();
+                        fields.Extra["alarmDeployType"] = options.AlarmDeployType.ToString();
                     });
 
                     return DeviceTaskResult.FromTask(context.Task, true, "OK", "布防成功。", DeviceConnectionStatus.Online, started, DateTime.Now);

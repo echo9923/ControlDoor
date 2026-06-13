@@ -713,10 +713,11 @@ namespace ControlEntradaSalida.Tests
             var gateway = new HikvisionSdkWrapper(native);
             var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
 
-            var alarm = gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+            var alarm = gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId, DeployType = 0 }).GetAwaiter().GetResult();
 
             Assert.Equal(77, alarm.AlarmHandle);
             Assert.True(native.CallbackRegistered);
+            Assert.Equal(0, native.LastAlarmDeployType);
         }
 
         [TestCase]
@@ -1036,8 +1037,11 @@ namespace ControlEntradaSalida.Tests
                 return true;
             }
 
-            public int SetupAlarm(int userId, int level, int alarmInfoType)
+            public int LastAlarmDeployType { get; private set; }
+
+            public int SetupAlarm(int userId, int level, int alarmInfoType, int deployType)
             {
+                LastAlarmDeployType = deployType;
                 return 77;
             }
 

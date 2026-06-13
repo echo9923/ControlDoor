@@ -14,6 +14,7 @@ namespace ControlDoor.FaceEvents
         private readonly DeviceRuntimeRegistry registry;
         private readonly IRawAcsAlarmEventSink sink;
         private readonly FaceEventLoggingOptions options;
+        private readonly OfflineAcsEventPolicy offlinePolicy;
         private readonly ServiceLogger logger;
         private IHikvisionGateway gateway;
         private bool disposed;
@@ -27,6 +28,7 @@ namespace ControlDoor.FaceEvents
             this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
             this.sink = sink ?? throw new ArgumentNullException(nameof(sink));
             this.options = options ?? new FaceEventLoggingOptions();
+            offlinePolicy = new OfflineAcsEventPolicy(this.options);
             this.logger = logger;
         }
 
@@ -92,6 +94,22 @@ namespace ControlDoor.FaceEvents
 
                 var snapshot = lookup.Snapshot;
                 var currentFlag = ResolveCurrentEventFlag(data);
+                string ignoreReason;
+                if (offlinePolicy.ShouldIgnore(snapshot, snapshot == null ? data.DeviceIpAddress : snapshot.IpAddress, currentFlag, out ignoreReason))
+                {
+                    logger?.Warn("AcsAlarmEventRouter", "ACS alarm ignored by stage 7 policy.", new LogFields
+                    {
+                        DeviceId = snapshot == null ? (int?)null : snapshot.DeviceId,
+                        ErrorCode = ignoreReason,
+                        Extra =
+                        {
+                            ["deviceIp"] = snapshot == null ? (data.DeviceIpAddress ?? string.Empty) : snapshot.IpAddress,
+                            ["byCurrentEvent"] = currentFlag.HasValue ? currentFlag.Value.ToString() : string.Empty
+                        }
+                    });
+                    return FaceEventEnqueueResult.Rejected(ignoreReason, "ACS alarm ignored by stage 7 policy", 0, 0);
+                }
+
                 var source = currentFlag == 2 ? AcsAlarmEventSource.OfflineUpload : AcsAlarmEventSource.Realtime;
                 var rawEvent = new RawAcsAlarmEvent
                 {

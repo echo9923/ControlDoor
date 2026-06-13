@@ -9,6 +9,7 @@ using ControlDoor.Database;
 using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Workers;
+using ControlDoor.FaceEvents;
 using ControlDoor.GrpcApi;
 using ControlDoor.Hikvision;
 using ControlDoor.Observability;
@@ -37,6 +38,8 @@ namespace ControlDoor.Host
         private DeviceOperationRetryManager retryManager;
         private AccessControlGrpcService accessControlGrpcService;
         private PermissionSyncGrpcService permissionSyncGrpcService;
+        private FaceEventIngestionService faceEventIngestionService;
+        private AcsAlarmEventRouter acsAlarmEventRouter;
 
         public ControlDoorHost()
             : this(RuntimePaths.GetRunDirectory())
@@ -141,7 +144,8 @@ namespace ControlDoor.Host
                 HealthCheckIntervalMs = settings.DeviceConnection.StatusCheckIntervalMs,
                 ReconnectBaseDelayMs = settings.DeviceConnection.ReconnectBaseDelayMs,
                 ReconnectMaxDelayMs = settings.DeviceConnection.ReconnectMaxDelayMs,
-                MaxReconnectAttempts = settings.DeviceOperationRetry.MaxRetryAttempts
+                MaxReconnectAttempts = settings.DeviceOperationRetry.MaxRetryAttempts,
+                AlarmDeployType = settings.FaceEventLogging.AlarmDeployType
             };
             var deviceRepository = new SqlDeviceRepository(database);
             deviceLifecycle = new DeviceLifecycleService(deviceRegistry, deviceDispatcher, delayedScheduler, deviceRepository, hikvisionGateway, deviceOptions, logger);
@@ -160,11 +164,27 @@ namespace ControlDoor.Host
                 retryStore,
                 new SystemUserSyncStatusWriter(database),
                 new EnrollmentTaskStore());
+            if (settings.FaceEventLogging.Enabled)
+            {
+                var snapshotStorage = new SnapshotStorage(runDirectory, settings.FaceEventLogging, logger);
+                var faceRepository = new FaceEventRepository(database, snapshotStorage);
+                faceEventIngestionService = new FaceEventIngestionService(
+                    settings.FaceEventLogging,
+                    new AcsFaceEventProcessor(new AcsEventParser(), faceRepository, logger),
+                    logger);
+                acsAlarmEventRouter = new AcsAlarmEventRouter(deviceRegistry, faceEventIngestionService, settings.FaceEventLogging, logger);
+                acsAlarmEventRouter.Attach(hikvisionGateway);
+            }
 
             backgroundTaskHost = new BackgroundTaskHost(logger);
             backgroundTaskHost.Register(delayedScheduler, startOrder: 10, stopOrder: 80, isCritical: false);
             backgroundTaskHost.Register(new DeviceHealthCheckBackgroundTask(deviceLifecycle, deviceOptions), startOrder: 20, stopOrder: 70, isCritical: false);
             backgroundTaskHost.Register(new GrpcServerBackgroundTask(settings.Service.GrpcListenPort, accessControlGrpcService, permissionSyncGrpcService), startOrder: 30, stopOrder: 60, isCritical: true);
+            if (faceEventIngestionService != null)
+            {
+                backgroundTaskHost.Register(faceEventIngestionService, startOrder: 35, stopOrder: 55, isCritical: false);
+            }
+
             backgroundTaskHost.Register(retryManager, startOrder: 40, stopOrder: 50, isCritical: false);
             backgroundTaskHost.Register(new NoopBackgroundTask("Stage1Bootstrap"), startOrder: 0, stopOrder: 100, isCritical: false);
             var backgroundResult = backgroundTaskHost.StartAsync(cancellationToken).GetAwaiter().GetResult();
@@ -230,6 +250,8 @@ namespace ControlDoor.Host
             deviceLifecycle?.StopAllDevicesBestEffort();
             backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
             deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+            acsAlarmEventRouter?.Dispose();
+            faceEventIngestionService?.Dispose();
             database?.Dispose();
 
             lock (gate)
@@ -257,6 +279,8 @@ namespace ControlDoor.Host
 
             deviceLifecycle?.Dispose();
             hikvisionGateway?.Dispose();
+            acsAlarmEventRouter?.Dispose();
+            faceEventIngestionService?.Dispose();
             backgroundTaskHost?.Dispose();
             deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(100)).GetAwaiter().GetResult();
             database?.Dispose();

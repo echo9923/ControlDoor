@@ -6,6 +6,7 @@ namespace ControlDoor.Hikvision
         {
             Level = 1;
             AlarmInfoType = 1;
+            DeployType = 0;
         }
 
         public int UserId { get; set; }
@@ -13,6 +14,8 @@ namespace ControlDoor.Hikvision
         public int Level { get; set; }
 
         public int AlarmInfoType { get; set; }
+
+        public int DeployType { get; set; }
 
         public AlarmCallbackDelegate Callback { get; set; }
     }

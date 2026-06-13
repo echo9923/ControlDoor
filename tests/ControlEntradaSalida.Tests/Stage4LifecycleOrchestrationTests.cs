@@ -32,6 +32,27 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceLifecycle_AlarmDeployType_UsesClientDeployTypeZero()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.AlarmDeployType = 0;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                System.Threading.Thread.Sleep(100);
+                var request = fixture.Gateway.Calls
+                    .Where(call => call.MethodName == "SetAlarmAsync")
+                    .Select(call => call.Request as AlarmSetupRequest)
+                    .FirstOrDefault();
+
+                Assert.NotNull(request);
+                Assert.Equal(0, request.DeployType);
+            }
+        }
+
+        [TestCase]
         public static void DeviceLifecycle_LoginFailure_MarksOfflineAndSchedulesReconnect()
         {
             using (var fixture = new Stage4Fixture())

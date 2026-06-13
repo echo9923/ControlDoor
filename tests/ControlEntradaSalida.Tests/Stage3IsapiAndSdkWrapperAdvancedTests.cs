@@ -434,6 +434,8 @@ namespace ControlEntradaSalida.Tests
 
         public int SetupAlarmCallCount { get; private set; }
 
+        public int LastAlarmDeployType { get; private set; }
+
         public int CleanupCallCount { get; private set; }
 
         public int StdXmlCallCount { get; private set; }
@@ -485,9 +487,10 @@ namespace ControlEntradaSalida.Tests
             return SetCallbackResult;
         }
 
-        public int SetupAlarm(int userId, int level, int alarmInfoType)
+        public int SetupAlarm(int userId, int level, int alarmInfoType, int deployType)
         {
             SetupAlarmCallCount++;
+            LastAlarmDeployType = deployType;
             return AlarmHandle;
         }
 

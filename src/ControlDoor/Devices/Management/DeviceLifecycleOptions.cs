@@ -19,5 +19,7 @@ namespace ControlDoor.Devices.Management
         public int FailureThreshold { get; set; } = 3;
 
         public bool AlarmEnabled { get; set; } = true;
+
+        public int AlarmDeployType { get; set; }
     }
 }

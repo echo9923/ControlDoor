@@ -178,6 +178,19 @@ namespace ControlDoor.Configuration
                 warnings);
 
             settings.FaceEventLogging.ExcludedDeviceIds = settings.FaceEventLogging.ExcludedDeviceIds ?? new List<int>();
+            settings.FaceEventLogging.ExcludedDeviceIps = settings.FaceEventLogging.ExcludedDeviceIps ?? new List<string>();
+            if (settings.FaceEventLogging.AlarmDeployType != 0)
+            {
+                warnings.Add("FaceEventLogging.AlarmDeployType 非法，阶段 7 已回退为 0。");
+                settings.FaceEventLogging.AlarmDeployType = 0;
+            }
+
+            settings.FaceEventLogging.QueueCapacity = MinimumOrDefault(
+                settings.FaceEventLogging.QueueCapacity,
+                1,
+                2000,
+                "FaceEventLogging.QueueCapacity",
+                warnings);
 
             settings.FaceEnrollment.MaxFaceImageBytes = MinimumOrDefault(
                 settings.FaceEnrollment.MaxFaceImageBytes,

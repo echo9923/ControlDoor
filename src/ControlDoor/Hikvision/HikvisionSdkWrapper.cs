@@ -97,7 +97,7 @@ namespace ControlDoor.Hikvision
                     ThrowLastError("SetAlarmCallback");
                 }
 
-                var handle = nativeClient.SetupAlarm(request.UserId, request.Level, request.AlarmInfoType);
+                var handle = nativeClient.SetupAlarm(request.UserId, request.Level, request.AlarmInfoType, request.DeployType);
                 if (handle < 0)
                 {
                     ThrowLastError("SetAlarm");

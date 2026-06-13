@@ -47,13 +47,14 @@ namespace ControlDoor.Hikvision
             return NativeMethods.NET_DVR_SetDVRMessageCallBack_V50(0, callbackReference, IntPtr.Zero);
         }
 
-        public int SetupAlarm(int userId, int level, int alarmInfoType)
+        public int SetupAlarm(int userId, int level, int alarmInfoType, int deployType)
         {
             var setup = new NativeMethods.NET_DVR_SETUPALARM_PARAM
             {
                 dwSize = Marshal.SizeOf(typeof(NativeMethods.NET_DVR_SETUPALARM_PARAM)),
                 byLevel = (byte)level,
-                byAlarmInfoType = (byte)alarmInfoType
+                byAlarmInfoType = (byte)alarmInfoType,
+                byDeployType = (byte)deployType
             };
             return NativeMethods.NET_DVR_SetupAlarmChan_V41(userId, ref setup);
         }
