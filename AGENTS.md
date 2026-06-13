@@ -65,6 +65,9 @@
 - `docs/stage8/task04.md`：配置模板与运行前检查方案，适用于实现 `Configuration/appsettings.json` 模板和 `--validate-config` 检查项。
 - `docs/stage8/task05.md`：Windows Service 安装、启动、停止和卸载方案，适用于现场服务部署、运行状态检查和服务生命周期验证。
 - `docs/stage8/task06.md`：现场联调、排障、回滚与最终验收方案，适用于真实设备联调、问题定位、服务包回滚和验收资料整理。
+- `docs/stage8/package-docs/部署说明.md`：发布包部署说明模板，适用于现场安装前确认发布包结构、服务脚本和回滚步骤。
+- `docs/stage8/package-docs/运行前检查.md`：发布包运行前检查模板，适用于现场执行 `ControlDoor.exe --validate-config` 并核对配置、数据库、端口、目录和 SDK 依赖。
+- `docs/stage8/package-docs/联调记录模板.md`：现场联调记录模板，适用于记录设备、权限、人脸、离线补偿、ACS 事件、抓拍、回滚和最终验收结果。
 - `docs/stage9/task01.md`：阶段 9 边界与任务总览，适用于确认摄像头 AIOP 报警联动门禁常闭窗口的实施范围和关键语义。
 - `docs/stage9/task02.md`：AIOP 回调识别与载荷解析方案，适用于实现 `0x4021 / COMM_UPLOAD_AIOP_VIDEO` 识别、来源匹配和 JSON/JPEG 摘要解析。
 - `docs/stage9/task03.md`：配置映射与目标解析方案，适用于实现 `CameraAlarmDoorInterlock.Mappings` 的摄像头、门禁设备和门号映射。

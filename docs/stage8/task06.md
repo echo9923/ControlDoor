@@ -84,6 +84,8 @@
 | 服务日志 | 启动、设备、gRPC、补偿、事件、停止日志。 |
 | 问题记录 | 未解决问题、临时规避、后续任务。 |
 
+当前仓库提供发布包文档模板：`docs/stage8/package-docs/部署说明.md`、`docs/stage8/package-docs/运行前检查.md`、`docs/stage8/package-docs/联调记录模板.md`。打包时复制到 `ServicePackage/docs/`，并由 `tools\test-service-package.ps1` 检查是否存在。
+
 ## 最终验收标准
 
 | 标准 | 说明 |
