@@ -25,7 +25,7 @@
 | 4 | `msbuild ControlEntradaSalida.sln /p:Configuration=Release` | Release 构建验证。 |
 | 5 | `dotnet test tests\ControlEntradaSalida.Tests\ControlEntradaSalida.Tests.csproj --verbosity minimal` | 单元与契约测试。 |
 | 6 | `dotnet test tests\ControlEntradaSalida.IntegrationTests\ControlEntradaSalida.IntegrationTests.csproj --verbosity minimal` | mock 集成与数据库兼容测试。 |
-| 7 | 发布包检查脚本或人工清单 | 验证 `门禁publish\ServicePackage`。 |
+| 7 | `tools\test-service-package.ps1 -PackageRoot 门禁publish\ServicePackage` | 验证发布包结构、配置模板、说明文档和 SDK DLL 放置。 |
 | 8 | `ControlDoor.exe --validate-config` | 发布包运行前检查。 |
 | 9 | L6 手动联调 | 仅在现场设备配置和白名单开启后执行。 |
 
