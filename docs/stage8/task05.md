@@ -41,13 +41,13 @@
 推荐发布包提供脚本：
 
 ```text
-install-service.ps1
-uninstall-service.ps1
-start-service.ps1
-stop-service.ps1
+tools\service\install-service.ps1
+tools\service\uninstall-service.ps1
+tools\service\start-service.ps1
+tools\service\stop-service.ps1
 ```
 
-如果暂不提供脚本，部署说明必须给出等价命令。
+当前仓库已提供上述非交互 PowerShell 脚本。安装和启动脚本默认先执行 `ControlDoor.exe --validate-config`；服务名、显示名固定为 `ControlDoor`；卸载脚本只移除 Windows Service，保留配置、日志、抓拍和数据库数据。
 
 ## 启动流程
 
