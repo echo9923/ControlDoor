@@ -42,6 +42,11 @@ namespace ControlDoor.FaceEvents
 
         public FaceEventEnqueueResult TryEnqueue(RawAcsAlarmEvent alarmEvent)
         {
+            if (disposed)
+            {
+                return FaceEventEnqueueResult.Rejected("STOPPED", "face event queue is disposed", 0, capacity);
+            }
+
             if (alarmEvent == null)
             {
                 return FaceEventEnqueueResult.Rejected("INVALID_ARGUMENT", "alarmEvent is required", Count, capacity);
@@ -99,7 +104,7 @@ namespace ControlDoor.FaceEvents
             }
             catch (ObjectDisposedException)
             {
-                return FaceEventEnqueueResult.Rejected("STOPPED", "face event queue is disposed", Count, capacity);
+                return FaceEventEnqueueResult.Rejected("STOPPED", "face event queue is disposed", 0, capacity);
             }
         }
 
