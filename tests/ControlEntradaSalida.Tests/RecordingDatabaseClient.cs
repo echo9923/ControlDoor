@@ -10,7 +10,13 @@ namespace ControlEntradaSalida.Tests
 
         public IList<IReadOnlyDictionary<string, object>> QueryRows { get; } = new List<IReadOnlyDictionary<string, object>>();
 
+        public IDictionary<string, IList<IReadOnlyDictionary<string, object>>> QueryRowsByOperation { get; } = new Dictionary<string, IList<IReadOnlyDictionary<string, object>>>();
+
         public string FailOperationName { get; set; }
+
+        public int? FailSqlErrorNumber { get; set; }
+
+        public bool FailCanRetry { get; set; }
 
         public int? RowsAffected { get; set; }
 
@@ -32,7 +38,8 @@ namespace ControlEntradaSalida.Tests
         public IReadOnlyList<IReadOnlyDictionary<string, object>> ExecuteQuery(string operationName, string commandText, params DatabaseParameter[] parameters)
         {
             Record(operationName, commandText, parameters);
-            return QueryRows.ToList();
+            IList<IReadOnlyDictionary<string, object>> rows;
+            return QueryRowsByOperation.TryGetValue(operationName, out rows) ? rows.ToList() : QueryRows.ToList();
         }
 
         public void Dispose()
@@ -54,7 +61,9 @@ namespace ControlEntradaSalida.Tests
                 record.Error = new DatabaseError
                 {
                     OperationName = operationName,
-                    Message = "forced failure"
+                    Message = "forced failure",
+                    SqlErrorNumber = FailSqlErrorNumber,
+                    CanRetry = FailCanRetry
                 };
             }
 
