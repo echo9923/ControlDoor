@@ -10,7 +10,7 @@
 | SDK 生命周期与登录 | `NET_DVR_Init`、`NET_DVR_Login_V40`、`NET_DVR_Logout_V30`、`NET_DVR_Cleanup` | 初始化 SDK、登录门禁/摄像头、释放登录句柄和 SDK 资源 | `ControlEntradaSalidaService.cs`、`DeviceConnectionManager.cs`、`Common.cs` |
 | 设备状态/能力查询 | `NET_DVR_GetDeviceAbility`、`NET_DVR_GetDVRConfig` | 校验在线、读取门禁工作状态、读取设备时间 | `DeviceStatusEngine.cs` |
 | 人员/权限/人脸同步 | `NET_DVR_STDXMLConfig`、`NET_DVR_StartRemoteConfig`、`NET_DVR_SendWithRecvRemoteConfig`、`NET_DVR_StopRemoteConfig`、`HCNetSDK_Facial.NET_DVR_*` | 下发人员权限、删除人员/人脸、上传人脸、查询人脸、采集人脸 | `Common.cs`、`PermissionRefreshManager.cs` |
-| 报警与事件 | `NET_DVR_SetDVRMessageCallBack_V50`、`NET_DVR_SetupAlarmChan_V41`、`NET_DVR_CloseAlarmChan_V30`、`NET_DVR_GetNextRemoteConfig`、`NET_DVR_ControlGateway` | ACS 人脸认证事件入库、历史事件补偿、AIOP 报警联动门禁常闭/恢复 | `FaceEventService.cs`、`CameraDoorInterlockService.cs`、`DoorControlService.cs` |
+| 报警与事件 | `NET_DVR_SetDVRMessageCallBack_V50`、`NET_DVR_SetupAlarmChan_V41`、`NET_DVR_CloseAlarmChan_V30`、`NET_DVR_ControlGateway` | ACS 人脸认证事件入库、设备离线事件上传补偿、AIOP 报警联动门禁常闭/恢复 | `FaceEventService.cs`、`CameraDoorInterlockService.cs`、`DoorControlService.cs` |
 
 
 ## 2. SDK 生命周期与登录
@@ -113,7 +113,7 @@
 | 接口 | 用途 | 当前使用方式 |
 | --- | --- | --- |
 | `NET_DVR_GetLastError()` | 获取最近一次 SDK 调用失败错误码 | 登录、状态查询、ISAPI、布防、远程配置、门控制、人脸采集失败后调用 |
-| `NET_DVR_GetErrorMsg(ref int err)` | 将错误码转为 SDK 错误描述 | 历史事件补偿失败诊断日志中使用 |
+| `NET_DVR_GetErrorMsg(ref int err)` | 将错误码转为 SDK 错误描述 | 登录、状态、布防和设备操作失败诊断日志中使用 |
 
 设备写操作的离线补偿判断会识别部分可重试错误码：`1`、`7`、`8`、`9`、`10`、`12`、`13`、`15`、`20`。这些错误通常被视为登录失效、连接失败、收发失败、超时、设备忙或资源问题。
 
@@ -404,7 +404,6 @@
 | 场景 | 命令 | 输入结构/内容 | 后续读取/发送 | 文件 |
 | --- | --- | --- | --- | --- |
 | 上传人脸 | `NET_DVR_FACE_DATA_RECORD` | ISAPI URL 字符串指针 | `NET_DVR_SendWithRecvRemoteConfig` 发送 `NET_DVR_JSON_DATA_CFG` | `PermissionRefreshManager.cs` |
-| 历史 ACS 事件补偿 | `NET_DVR_GET_ACS_EVENT` | `NET_DVR_ACS_EVENT_COND` | `NET_DVR_GetNextRemoteConfig` 读取 `NET_DVR_ACS_EVENT_CFG` | `FaceEventService.cs` |
 | 人脸采集 | `HCNetSDK_Facial.NET_DVR_CAPTURE_FACE_INFO` | `NET_DVR_CAPTURE_FACE_COND` | `HCNetSDK_Facial.NET_DVR_GetNextRemoteConfig` 读取 `NET_DVR_CAPTURE_FACE_CFG` | `PermissionRefreshManager.cs` |
 
 共同规则：
@@ -424,43 +423,7 @@
 | 成功状态 | `NET_SDK_CONFIG_STATUS_SUCCESS`、`NET_SDK_CONFIG_STATUS_FINISH` |
 | 可重试状态 | `NEEDWAIT`、`EXCEPTION`；`FAILED` 在响应为空或属于传输类错误时可重试 |
 
-### 6.3 `NET_DVR_GetNextRemoteConfig` 读取历史 ACS 事件
-
-| 项目 | 内容 |
-| --- | --- |
-| 命令来源 | `NET_DVR_StartRemoteConfig(..., NET_DVR_GET_ACS_EVENT, ...)` |
-| 输入条件 | `NET_DVR_ACS_EVENT_COND` |
-| 输出结构 | `NET_DVR_ACS_EVENT_CFG` |
-| 生产调用 | `FaceEventService.FetchHistory()` |
-
-历史补偿查询条件：
-
-- `dwMajor = MAJOR_EVENT`
-- `dwMinor = 0`
-- `struStartTime`：断点时间或当前时间向前 `CompensationLookbackMinutes`
-- `struEndTime`：补偿 fence 时间或当前时间
-- `dwBeginSerialNo`：断点流水号 + 1；没有断点时为 0
-- `byPicEnable = 1`
-- `byTimeType = 0`
-- `bySearchType = 1`
-- `dwIOTChannelNo = 1`
-
-兼容降级策略：
-
-1. 如果带 `BeginSerialNo` 启动失败，改为 `dwBeginSerialNo = 0` 重试。
-2. 如果带图片失败，改为 `byPicEnable = 0` 重试。
-3. 如果 `dwMajor = MAJOR_EVENT` 失败，改为 `dwMajor = 0` 重试。
-4. 最后退回 `bySearchType = 0`、`dwIOTChannelNo = 0` 重试。
-
-读取循环处理：
-
-- `NET_SDK_CONFIG_STATUS_SUCCESS`：还原 `NET_DVR_ACS_EVENT_CFG`，过滤非人脸认证事件，构建入库记录。
-- `NET_SDK_CONFIG_STATUS_FINISH`：补偿结束。
-- `NET_SDK_CONFIG_STATUS_NEEDWAIT`：等待约 `200 ms` 后继续。
-- `NET_SDK_CONFIG_STATUS_FAILED`：记录错误码，可继续短暂重试。
-- `NET_SDK_CONFIG_STATUS_EXCEPTION` 或未知状态：记录并终止补偿。
-
-### 6.4 `HCNetSDK_Facial.NET_DVR_*` 人脸采集
+### 6.3 `HCNetSDK_Facial.NET_DVR_*` 人脸采集
 
 | 接口 | 用途 |
 | --- | --- |
@@ -515,10 +478,8 @@
 
 - 创建 `NET_DVR_SETUPALARM_PARAM` 并调用 `Init()`。
 - `byLevel = 1`。
-- `byDeployType` 由配置 `FaceEvent.AlarmDeployType` 决定：
-  - `0`：客户端布防，依赖设备离线事件上传。
-  - `1`：实时布防，历史事件通过主动拉取补偿。
-  - 非 `0/1` 值回退为 `0`。
+- `byDeployType` 固定使用 `0`：客户端布防，依赖设备离线事件上传。
+- 如保留 `FaceEvent.AlarmDeployType` 配置，仅允许 `0`；非 `0` 值应回退为 `0` 或在配置校验中提示。
 - 布防前若设备已有 `AlarmHandle >= 0`，先调用 `NET_DVR_CloseAlarmChan_V30(previousAlarmHandle)`。
 - 布防成功后写回 `device.AlarmHandle`。
 
@@ -551,14 +512,14 @@
 2. 根据 `bufferLength` 判断使用 `NET_DVR_ACS_ALARM_INFO` 或 `NET_DVR_ACS_ALARM_INFO_V1`。
 3. 过滤非人脸认证事件：只保留 `IsFaceVerifyMinor(dwMinor)` 返回 true 的事件。
 4. 通过 `alarmer.sDeviceIP` 反查运行时设备；必要时用 `lUserID` 反查。
-5. 对 `byCurrentEvent == 2` 的离线事件，结合 `OfflineCompensationEnabled` 和 `AlarmDeployType` 判断是否忽略。
+5. 对 `byCurrentEvent == 2` 的离线事件，结合 `OfflineCompensationEnabled` 判断是否接收；阶段 7 固定客户端布防，不启用主动拉取历史事件。
 6. 构建 `FaceEventRecord`：
    - 员工编号：优先扩展字段 `byEmployeeNo`，兼容 `dwEmployeeNo`
    - 时间：SDK 时间结构转本地时间
    - 事件类型：根据 minor 判断通过/失败
    - 流水号：`dwSerialNo`
    - 图片：从回调图片指针复制，或识别 URL 形式
-7. 如果设备正在历史补偿，实时事件先进入补偿缓冲；否则直接入队落库。
+7. 普通实时事件和离线上传事件统一入队落库。
 8. 更新设备 `LastSerialNo` 和 `LastFaceEventTime`。
 
 ### 7.5 `COMM_UPLOAD_AIOP_VIDEO` / `0x4021` 回调解析
@@ -796,9 +757,8 @@ ISAPI JSON 响应成功规则：
 | `NET_DVR_GetDeviceAbility` | `DeviceStatusEngine` | 查询 ACS 能力/验证连接 |
 | `NET_DVR_GetDVRConfig` | `DeviceStatusEngine` | 获取设备时间和 ACS 工作状态 |
 | `NET_DVR_STDXMLConfig` | `Common.ExecuteStdXmlConfig()` | SDK 转发 ISAPI |
-| `NET_DVR_StartRemoteConfig` | `PermissionRefreshManager`、`FaceEventService` | 上传人脸/历史事件补偿 |
+| `NET_DVR_StartRemoteConfig` | `PermissionRefreshManager` | 上传人脸 |
 | `NET_DVR_SendWithRecvRemoteConfig` | `PermissionRefreshManager.UploadFaceToDeviceInternal()` | 发送人脸 JSON 与图片 |
-| `NET_DVR_GetNextRemoteConfig` | `FaceEventService.FetchHistory()` | 拉取历史 ACS 事件 |
 | `NET_DVR_StopRemoteConfig` | `PermissionRefreshManager`、`FaceEventService` | 停止远程配置 |
 | `NET_DVR_SetDVRMessageCallBack_V50` | `FaceEventService.Start()` | 注册报警回调 |
 | `NET_DVR_SetupAlarmChan_V41` | `FaceEventService.SetupAlarm()` | 报警布防 |

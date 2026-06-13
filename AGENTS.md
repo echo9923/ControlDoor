@@ -52,13 +52,13 @@
 - `docs/stage6/task05.md`：补偿结果回写方案，适用于实现成功清除 pending、失败退避、终态标记和权限完成标记。
 - `docs/stage6/task06.md`：补偿清理、配置、日志和运维观测方案，适用于实现终态清理、配置校验、运行日志和现场排查。
 - `docs/stage6/task07.md`：阶段 6 测试与验收方案，适用于验证离线补偿的数据库兼容、mock 设备执行、退避终态和契约兼容。
-- `docs/stage7/task01.md`：阶段 7 边界与任务总览，适用于确认 ACS 人脸事件入库、历史补偿和 AIOP 联动边界。
+- `docs/stage7/task01.md`：阶段 7 边界与任务总览，适用于确认 ACS 人脸事件入库、离线事件上传补偿和 AIOP 联动边界。
 - `docs/stage7/task02.md`：ACS 回调接收与事件队列方案，适用于实现 `COMM_ALARM_ACS` 原始事件复制、设备反查和后台队列投递。
 - `docs/stage7/task03.md`：ACS 事件解析与标准模型方案，适用于实现员工、时间、流水、方向、认证结果和 raw payload 映射。
 - `docs/stage7/task04.md`：抓拍图片保存与 raw payload 方案，适用于实现抓拍目录、文件命名、路径入库和失败降级。
 - `docs/stage7/task05.md`：`attendance_gate_v2` 入库与防重复方案，适用于实现事件字段映射、唯一流水防重和重复事件处理。
-- `docs/stage7/task06.md`：`face_event_checkpoint` 与历史补偿方案，适用于实现设备恢复后的历史事件查询、批次处理和断点前移。
-- `docs/stage7/task07.md`：实时缓冲、配置、测试与验收方案，适用于验证阶段 7 事件链路、历史补偿、排除设备和真实设备联调。
+- `docs/stage7/task06.md`：客户端布防与离线事件上传补偿方案，适用于实现 `byDeployType=0`、`byCurrentEvent=2` 识别和设备离线事件上传入库。
+- `docs/stage7/task07.md`：队列缓冲、配置、测试与验收方案，适用于验证阶段 7 事件链路、离线事件上传补偿、排除设备和真实设备联调。
 - `docs/stage8/task01.md`：阶段 8 边界与任务总览，适用于确认测试、发布、运维阶段的交付范围和完成标准。
 - `docs/stage8/task02.md`：自动化测试矩阵与执行顺序方案，适用于规划单元、契约、mock 集成、数据库兼容、发布包和现场联调测试。
 - `docs/stage8/task03.md`：构建、产物和发布包结构方案，适用于固定构建命令、发布目录、第三方 DLL 和配置模板要求。

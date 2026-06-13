@@ -24,7 +24,7 @@
 | `AuthResult` | 认证结果，用于 `process_message` 或 raw payload。 |
 | `PictureBytes` | 抓拍图片。 |
 | `RawPayload` | 原始结构摘要或 JSON。 |
-| `Source` | `Realtime` 或 `History`。 |
+| `Source` | `Realtime` 或 `OfflineUpload`。 |
 
 ## 字段来源
 
@@ -38,6 +38,7 @@
 | `DeviceSn` | 设备序列号优先，其次设备 IP。 |
 | `CardNo` | ACS 事件卡号字段。 |
 | `PictureBytes` | ACS 报警图片指针复制内容。 |
+| `Source` | `byCurrentEvent == 2` 时为 `OfflineUpload`，否则为 `Realtime`。 |
 | `RawPayload` | 解析出的关键字段 JSON 或原始摘要。 |
 
 具体结构字段名和偏移必须在编码时以本地 SDK 文档、`HCNetSDK.h` 和 C# 示例为准。本任务固定解析边界和落库语义，不替代头文件确认。
@@ -56,7 +57,7 @@
 
 ## EventId 生成规则
 
-优先使用设备提供的稳定业务流水，保证历史补偿和实时回调能得到同一个 `id`。
+优先使用设备提供的稳定业务流水，保证离线上传事件和实时回调能得到同一个 `id`。
 
 兜底生成规则必须满足：
 
@@ -84,12 +85,13 @@
 
 | 字段 | 说明 |
 | --- | --- |
-| `source` | `Realtime` / `History`。 |
+| `source` | `Realtime` / `OfflineUpload`。 |
 | `deviceId` | 设备 ID。 |
 | `deviceIp` | 设备 IP。 |
 | `eventType` | 事件类型。 |
 | `authResult` | 认证结果。 |
 | `sdkCommand` | 命令号。 |
+| `byCurrentEvent` | ACS 扩展字段原值。 |
 | `eventIdGenerated` | 是否使用兜底 ID。 |
 
 是否记录更多原始字段由日志和 payload 配置控制。
@@ -100,7 +102,7 @@
 | --- | --- |
 | 不改变表字段映射 | 现有表结构冻结。 |
 | 不依赖 AIOP JSON | ACS 和 AIOP 是不同事件来源。 |
-| 不因昵称缺失失败 | 历史记录仍应可追踪员工编号。 |
+| 不因昵称缺失失败 | 事件记录仍应可追踪员工编号。 |
 | 不在解析阶段写文件或写库 | 后续任务负责。 |
 
 ## 测试

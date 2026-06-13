@@ -87,7 +87,7 @@
 | `HikvisionSdk` | 平台、DLL 路径、SDK 日志。 |
 | `DeviceLifecycle` | 登录、重连、状态检测配置。 |
 | `DeviceOperationRetry` | 补偿扫描和退避配置。 |
-| `FaceEventLogging` | 事件入库、抓拍目录、历史补偿。 |
+| `FaceEventLogging` | 事件入库、抓拍目录、离线事件上传补偿。 |
 | `FaceEnrollment` | 人脸大小和采集任务保留。 |
 | `CameraAlarmDoorInterlock` | 后续阶段兼容配置，可默认关闭。 |
 

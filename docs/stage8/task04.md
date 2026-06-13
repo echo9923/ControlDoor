@@ -25,7 +25,7 @@
 | `HikvisionSdk` | DLL 路径、平台、SDK 日志目录。 |
 | `DeviceLifecycle` | 登录超时、状态检测、重连策略。 |
 | `DeviceOperationRetry` | 扫描间隔、最大次数、保留天数。 |
-| `FaceEventLogging` | 抓拍目录、事件开关、历史补偿。 |
+| `FaceEventLogging` | 抓拍目录、事件开关、离线事件上传补偿。 |
 | `FaceEnrollment` | 图片大小限制和任务保留。 |
 | `CameraAlarmDoorInterlock` | 后续联动配置，默认关闭。 |
 
@@ -54,7 +54,7 @@
 | `dbo.system_users` | 必须可读。 |
 | `dbo.attendance_gate_v2` | 阶段 7 启用时必须可读写检查。 |
 | `dbo.device_operation_retry_states` | 阶段 6 启用时必须可读写检查。 |
-| `dbo.face_event_checkpoint` | 阶段 7 启用时必须可读写检查。 |
+| `dbo.face_event_checkpoint` | 阶段 7 不读写；如现场旧库存在，仅做结构不变检查。 |
 
 读写检查应使用低风险方式，例如事务内插入测试再回滚，或只做权限探测；不得改变现场数据。
 

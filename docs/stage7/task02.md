@@ -21,7 +21,7 @@ SDK 回调提供的核心信息：
 | 规则 | 说明 |
 | --- | --- |
 | 只复制 | 复制报警结构原始字节、图片字节和来源信息。 |
-| 不写库 | 不访问 `attendance_gate_v2` 或 `face_event_checkpoint`。 |
+| 不写库 | 不访问 `attendance_gate_v2`。 |
 | 不写文件 | 不保存抓拍图片。 |
 | 不阻塞 | 队列满时按降级策略处理，不能长时间等待。 |
 | 不抛异常 | 捕获所有异常并记录，避免影响 SDK 回调链路。 |
@@ -52,6 +52,8 @@ SDK 回调提供的核心信息：
 | `DeviceSerialNo` | 序列号或 IP。 |
 | `AlarmInfoBytes` | 复制后的 ACS 报警结构字节。 |
 | `PictureBytes` | 复制后的抓拍图片字节，可为空。 |
+| `CurrentEventFlag` | `byCurrentEvent` 原值；`2` 表示设备上传的离线事件。 |
+| `Source` | `Realtime` 或 `OfflineUpload`。 |
 | `RawSummary` | 摘要日志信息。 |
 | `RequestId` | 回调链路 ID。 |
 

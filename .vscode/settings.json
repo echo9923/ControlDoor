@@ -1,0 +1,8 @@
+{
+  // 业务配置文件 appsettings.json 含中文注释（// 与 /* */）。
+  // 运行时由 ConfigurationLoader.StripComments 剥离注释后再交给 JavaScriptSerializer 解析，
+  // 注释不影响配置加载；这里将其识别为 JSONC，避免编辑器把注释报为语法错误（code 521）。
+  "files.associations": {
+    "**/Configuration/appsettings.json": "jsonc"
+  }
+}
