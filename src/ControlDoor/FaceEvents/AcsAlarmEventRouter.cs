@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ControlDoor.Configuration;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Hikvision;
@@ -113,6 +114,16 @@ namespace ControlDoor.FaceEvents
                 foreach (var item in data.Values)
                 {
                     rawEvent.Values[item.Key] = item.Value;
+                }
+
+                AddIfNotEmpty(rawEvent.Values, "employeeId", data.EmployeeId);
+                AddIfNotEmpty(rawEvent.Values, "cardNo", data.CardNumber);
+                AddIfNotEmpty(rawEvent.Values, "direction", data.Direction);
+                rawEvent.Values["doorIndex"] = data.DoorIndex.ToString();
+                rawEvent.Values["success"] = data.Success.ToString();
+                if (data.EventTime.HasValue)
+                {
+                    rawEvent.Values["eventTime"] = data.EventTime.Value.ToString("O");
                 }
 
                 var result = sink.TryEnqueue(rawEvent);
@@ -232,6 +243,14 @@ namespace ControlDoor.FaceEvents
             var copy = new byte[source.Length];
             Buffer.BlockCopy(source, 0, copy, 0, source.Length);
             return copy;
+        }
+
+        private static void AddIfNotEmpty(IDictionary<string, string> values, string key, string value)
+        {
+            if (!string.IsNullOrWhiteSpace(value) && !values.ContainsKey(key))
+            {
+                values[key] = value;
+            }
         }
     }
 }
