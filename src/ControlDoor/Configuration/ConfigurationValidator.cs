@@ -123,6 +123,26 @@ namespace ControlDoor.Configuration
                 "DeviceOperationRetry.ScanIntervalSeconds",
                 warnings);
 
+            settings.DeviceOperationRetry.InitialRetryDelaySeconds = MinimumOrDefault(
+                settings.DeviceOperationRetry.InitialRetryDelaySeconds,
+                1,
+                60,
+                "DeviceOperationRetry.InitialRetryDelaySeconds",
+                warnings);
+
+            settings.DeviceOperationRetry.MaxRetryDelaySeconds = MinimumOrDefault(
+                settings.DeviceOperationRetry.MaxRetryDelaySeconds,
+                1,
+                3600,
+                "DeviceOperationRetry.MaxRetryDelaySeconds",
+                warnings);
+
+            if (settings.DeviceOperationRetry.MaxRetryDelaySeconds < settings.DeviceOperationRetry.InitialRetryDelaySeconds)
+            {
+                warnings.Add("DeviceOperationRetry.MaxRetryDelaySeconds 小于 InitialRetryDelaySeconds，已回退为 3600。");
+                settings.DeviceOperationRetry.MaxRetryDelaySeconds = 3600;
+            }
+
             settings.DeviceOperationRetry.MaxRetryAttempts = MinimumOrDefault(
                 settings.DeviceOperationRetry.MaxRetryAttempts,
                 1,
@@ -130,10 +150,24 @@ namespace ControlDoor.Configuration
                 "DeviceOperationRetry.MaxRetryAttempts",
                 warnings);
 
+            settings.DeviceOperationRetry.FailureRetentionDays = MinimumOrDefault(
+                settings.DeviceOperationRetry.FailureRetentionDays,
+                1,
+                settings.DeviceOperationRetry.TerminalRetentionDays > 0 ? settings.DeviceOperationRetry.TerminalRetentionDays : 7,
+                "DeviceOperationRetry.FailureRetentionDays",
+                warnings);
+
+            settings.DeviceOperationRetry.BatchSize = MinimumOrDefault(
+                settings.DeviceOperationRetry.BatchSize,
+                1,
+                100,
+                "DeviceOperationRetry.BatchSize",
+                warnings);
+
             settings.DeviceOperationRetry.TerminalRetentionDays = MinimumOrDefault(
                 settings.DeviceOperationRetry.TerminalRetentionDays,
                 1,
-                30,
+                settings.DeviceOperationRetry.FailureRetentionDays,
                 "DeviceOperationRetry.TerminalRetentionDays",
                 warnings);
 

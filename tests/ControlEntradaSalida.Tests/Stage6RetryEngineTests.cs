@@ -1,0 +1,543 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using ControlDoor.Configuration;
+using ControlDoor.Database;
+using ControlDoor.Devices.Runtime;
+using ControlDoor.Hikvision;
+using ControlDoor.Permissions;
+
+namespace ControlEntradaSalida.Tests
+{
+    public static class Stage6RetryEngineTests
+    {
+        [TestCase]
+        public static void RetryStateMerger_DeletePerson_ClearsConflictingPendingAndResetsAttempt()
+        {
+            var existing = new DeviceOperationRetryState
+            {
+                Id = 9,
+                DeviceId = 1,
+                EmployeeId = "10001",
+                PermissionPending = true,
+                PermissionLevel = 3,
+                PermissionSyncCompletionBlocked = true,
+                PersonPending = true,
+                PersonPayloadJson = "{}",
+                FacePending = true,
+                FacePayloadJson = "{}",
+                DeleteFacePending = true,
+                AttemptCount = 4
+            };
+
+            var result = new RetryStateMerger().Merge(existing, new DeviceOperationRetryIntent
+            {
+                DeviceId = 1,
+                EmployeeId = "10001",
+                Operation = "DeletePerson",
+                CreatedAt = new DateTime(2026, 1, 1)
+            }, new DateTime(2026, 1, 2), retryImmediatelyOnNewIntent: true);
+
+            Assert.True(result.ConflictReset);
+            Assert.Equal(0, result.State.AttemptCount);
+            Assert.False(result.State.PermissionPending);
+            Assert.False(result.State.PermissionSyncCompletionBlocked);
+            Assert.False(result.State.PersonPending);
+            Assert.False(result.State.FacePending);
+            Assert.False(result.State.DeleteFacePending);
+            Assert.True(result.State.DeletePersonPending);
+            Assert.Equal(null, result.State.PersonPayloadJson);
+            Assert.Equal(null, result.State.FacePayloadJson);
+        }
+
+        [TestCase]
+        public static void RetryStateMerger_TerminalStateNewIntent_ReactivatesAndResetsAttempt()
+        {
+            var existing = new DeviceOperationRetryState
+            {
+                Id = 10,
+                DeviceId = 1,
+                EmployeeId = "10001",
+                DeletePersonPending = true,
+                AttemptCount = 10,
+                ExhaustedAt = new DateTime(2026, 1, 1)
+            };
+
+            var result = new RetryStateMerger().Merge(existing, new DeviceOperationRetryIntent
+            {
+                DeviceId = 1,
+                EmployeeId = "10001",
+                Operation = "SyncPerson",
+                PayloadJson = @"{""employee_id"":""10001"",""name"":""张三""}"
+            }, new DateTime(2026, 1, 2), retryImmediatelyOnNewIntent: true);
+
+            Assert.True(result.ReactivatedTerminal);
+            Assert.Equal(0, result.State.AttemptCount);
+            Assert.Equal(null, result.State.ExhaustedAt);
+            Assert.True(result.State.PersonPending);
+            Assert.False(result.State.DeletePersonPending);
+        }
+
+        [TestCase]
+        public static void RetryBackoffCalculator_UsesExponentialDelayWithCap()
+        {
+            var calculator = new RetryBackoffCalculator(new DeviceOperationRetryOptions
+            {
+                InitialRetryDelaySeconds = 60,
+                MaxRetryDelaySeconds = 300
+            });
+
+            Assert.Equal(TimeSpan.FromSeconds(60), calculator.CalculateDelay(1));
+            Assert.Equal(TimeSpan.FromSeconds(120), calculator.CalculateDelay(2));
+            Assert.Equal(TimeSpan.FromSeconds(240), calculator.CalculateDelay(3));
+            Assert.Equal(TimeSpan.FromSeconds(300), calculator.CalculateDelay(4));
+        }
+
+        [TestCase]
+        public static void RetryCommandPlanner_UsesFixedOperationOrder()
+        {
+            var state = new DeviceOperationRetryState
+            {
+                DeviceId = 1,
+                EmployeeId = "10001",
+                PermissionPending = true,
+                PersonPending = true,
+                FacePending = true,
+                DeleteFacePending = true
+            };
+
+            var plan = new RetryCommandPlanner().Plan(state);
+            var names = plan.Steps.Select(item => item.OperationName).ToList();
+
+            Assert.Equal("DeleteFace", names[0]);
+            Assert.Equal("SyncPerson", names[1]);
+            Assert.Equal("SyncPermission", names[2]);
+            Assert.Equal("UploadFace", names[3]);
+        }
+
+        [TestCase]
+        public static void RetryCommandPlanner_DeletePersonSuppressesOtherOperations()
+        {
+            var state = new DeviceOperationRetryState
+            {
+                DeviceId = 1,
+                EmployeeId = "10001",
+                PermissionPending = true,
+                PersonPending = true,
+                FacePending = true,
+                DeletePersonPending = true
+            };
+
+            var plan = new RetryCommandPlanner().Plan(state);
+
+            Assert.Equal(1, plan.Steps.Count);
+            Assert.Equal("DeletePerson", plan.Steps[0].OperationName);
+        }
+
+        [TestCase]
+        public static void RetryOptionsValidator_InvalidValues_FallBackToStage6Defaults()
+        {
+            var settings = new AppSettings
+            {
+                Database = new DatabaseOptions { ConnectionString = "Server=.;Database=test;" },
+                DeviceOperationRetry = new DeviceOperationRetryOptions
+                {
+                    ScanIntervalSeconds = 1,
+                    InitialRetryDelaySeconds = 0,
+                    MaxRetryDelaySeconds = 1,
+                    MaxRetryAttempts = 0,
+                    FailureRetentionDays = 0,
+                    BatchSize = 0
+                }
+            };
+
+            var result = new ConfigurationValidator().Validate(settings);
+
+            Assert.True(result.Success);
+            Assert.Equal(30, result.Settings.DeviceOperationRetry.ScanIntervalSeconds);
+            Assert.Equal(60, result.Settings.DeviceOperationRetry.InitialRetryDelaySeconds);
+            Assert.Equal(3600, result.Settings.DeviceOperationRetry.MaxRetryDelaySeconds);
+            Assert.Equal(10, result.Settings.DeviceOperationRetry.MaxRetryAttempts);
+            Assert.Equal(30, result.Settings.DeviceOperationRetry.FailureRetentionDays);
+            Assert.Equal(100, result.Settings.DeviceOperationRetry.BatchSize);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_UpsertIntent_UsesTransactionalUpsertAndMergedState()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database, new DeviceOperationRetryOptions { InitialRetryDelaySeconds = 60 });
+
+            var result = store.UpsertIntent(new DeviceOperationRetryIntent
+            {
+                DeviceId = 1,
+                EmployeeId = "10001",
+                Operation = "SyncPermission",
+                PermissionLevel = 7,
+                PayloadJson = @"{""permission_code"":7}",
+                LastError = "offline",
+                CreatedAt = new DateTime(2026, 1, 1, 8, 0, 0)
+            });
+
+            Assert.True(result.Success);
+            var command = database.Commands.Single(item => item.OperationName == "DeviceOperationRetryStore.UpsertIntent");
+            Assert.Contains("BEGIN TRANSACTION", command.CommandText);
+            Assert.Contains("COMMIT TRANSACTION", command.CommandText);
+            Assert.Contains("UPDLOCK, HOLDLOCK", command.CommandText);
+            Assert.Contains("INSERT INTO dbo.device_operation_retry_states", command.CommandText);
+            Assert.Contains("UPDATE dbo.device_operation_retry_states", command.CommandText);
+            Assert.Contains("permission_sync_completion_blocked", command.CommandText);
+            Assert.Contains("@operation=SyncPermission", command.CommandText);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_MarkOperationSuccess_GuardsAgainstStalePayload()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database);
+            var state = Row(
+                id: 8,
+                deviceId: 1,
+                employeeId: "10001",
+                personPending: true,
+                personPayload: @"{""employee_id"":""10001"",""name"":""v1""}",
+                facePending: true,
+                facePayload: @"{""employee_id"":""10001"",""face_image_base64"":""v1""}");
+
+            store.MarkOperationSuccess(DeviceOperationRetryState.FromRow(state), RetryOperation.Person);
+            store.MarkOperationSuccess(DeviceOperationRetryState.FromRow(state), RetryOperation.Face);
+
+            var personSql = database.Commands.First(item => item.CommandText.Contains("person_pending = 0")).CommandText;
+            var faceSql = database.Commands.First(item => item.CommandText.Contains("face_pending = 0")).CommandText;
+            Assert.Contains("person_payload = @personPayload", personSql);
+            Assert.Contains("@personPayload={\"employee_id\":\"10001\",\"name\":\"v1\"}", personSql);
+            Assert.Contains("face_payload = @facePayload", faceSql);
+            Assert.Contains("@facePayload={\"employee_id\":\"10001\",\"face_image_base64\":\"v1\"}", faceSql);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_PermissionSuccess_UpdatesUserOnlyWhenStateRowChanged()
+        {
+            var staleDatabase = new RecordingDatabaseClient { RowsAffected = 0 };
+            var staleUserWriter = new RecordingUserSyncStatusWriter();
+            var staleStore = new DeviceOperationRetryStore(staleDatabase, userSyncWriter: staleUserWriter);
+            var state = DeviceOperationRetryState.FromRow(Row(id: 9, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+
+            staleStore.MarkOperationSuccess(state, RetryOperation.Permission);
+
+            var staleSql = staleDatabase.Commands.Single().CommandText;
+            Assert.Contains("permission_level = @permissionLevel", staleSql);
+            Assert.False(staleUserWriter.PermissionLevels.ContainsKey("10001"));
+
+            var updatedDatabase = new RecordingDatabaseClient { RowsAffected = 1 };
+            var updatedUserWriter = new RecordingUserSyncStatusWriter();
+            var updatedStore = new DeviceOperationRetryStore(updatedDatabase, userSyncWriter: updatedUserWriter);
+
+            updatedStore.MarkOperationSuccess(state, RetryOperation.Permission);
+
+            Assert.Equal(7, updatedUserWriter.PermissionLevels["10001"]);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_LoadDueStates_UsesDueUnterminalPendingFilter()
+        {
+            var database = new RecordingDatabaseClient();
+            database.QueryRows.Add(Row(id: 1, deviceId: 1, employeeId: "10001", permissionPending: true));
+            var store = new DeviceOperationRetryStore(database, new DeviceOperationRetryOptions { BatchSize = 50 });
+
+            var states = store.LoadDueStates(new DateTime(2026, 1, 1));
+
+            Assert.Equal(1, states.Count);
+            var sql = database.Commands.Last().CommandText;
+            Assert.Contains("exhausted_at IS NULL", sql);
+            Assert.Contains("next_retry_at IS NULL OR next_retry_at <= @now", sql);
+            Assert.Contains("permission_pending = 1", sql);
+            Assert.Contains("@batchSize=50", sql);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_OnlinePermission_SubmitsRetryTaskAndDeletesCompletedState()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Database.QueryRows.Add(Row(id: 1, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-online").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Due);
+                Assert.Equal(1, result.Submitted);
+                Assert.Equal(1, result.Succeeded);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.MarkOperationSuccess"));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_OfflineDevice_DefersWithoutSubmittingTask()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOfflineDevice();
+                fixture.Database.QueryRows.Add(Row(id: 2, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-offline").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.OfflineDeferred);
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeferOffline"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_PersonSuccessFaceFailure_ClearsPersonAndSchedulesFaceRetry()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureTimeout("UploadFaceAsync");
+                fixture.Database.QueryRows.Add(Row(
+                    id: 3,
+                    deviceId: 1,
+                    employeeId: "10001",
+                    personPending: true,
+                    personPayload: @"{""employee_id"":""10001"",""name"":""张三""}",
+                    facePending: true,
+                    facePayload: @"{""employee_id"":""10001"",""face_image_base64"":""" + Stage5TestData.JpegBase64() + @"""}"));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-partial").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Submitted);
+                Assert.Equal(1, result.Failed);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "UpsertPersonAsync"));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "UploadFaceAsync"));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.MarkOperationSuccess" && item.CommandText.Contains("person_pending = 0")));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.ScheduleRetry"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_DeletePersonSuccess_DeletesStateWithoutOtherOperations()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Database.QueryRows.Add(Row(
+                    id: 4,
+                    deviceId: 1,
+                    employeeId: "10001",
+                    deletePersonPending: true,
+                    permissionPending: true,
+                    personPending: true,
+                    facePending: true));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-delete-person").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Succeeded);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "UploadFaceAsync"));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_DeviceDisabled_MarksTerminalFailure()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddDisabledDevice();
+                fixture.Database.QueryRows.Add(Row(id: 5, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-disabled").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Terminal);
+                Assert.True(fixture.Database.Commands.Any(item =>
+                    item.OperationName == "DeviceOperationRetryStore.MarkTerminalFailure" &&
+                    item.CommandText.Contains("@lastError=DEVICE_DISABLED")));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_RetryableFailureAtMaxAttempts_MarksTerminal()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureTimeout("UploadFaceAsync");
+                fixture.Database.QueryRows.Add(Row(
+                    id: 6,
+                    deviceId: 1,
+                    employeeId: "10001",
+                    facePending: true,
+                    facePayload: @"{""employee_id"":""10001"",""face_image_base64"":""" + Stage5TestData.JpegBase64() + @"""}",
+                    attemptCount: 2));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-exhausted").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Terminal);
+                Assert.Equal(0, result.Failed);
+                Assert.True(fixture.Database.Commands.Any(item =>
+                    item.OperationName == "DeviceOperationRetryStore.MarkTerminalFailure" &&
+                    item.CommandText.Contains("@lastError=RETRY_EXHAUSTED")));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_QueueFullFailure_SchedulesRetryWithoutTerminal()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database, new DeviceOperationRetryOptions
+            {
+                InitialRetryDelaySeconds = 5,
+                MaxRetryDelaySeconds = 30,
+                MaxRetryAttempts = 3
+            });
+            var state = DeviceOperationRetryState.FromRow(Row(id: 7, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+            var result = new RetryExecutionResult(
+                state,
+                Enumerable.Empty<RetryOperation>(),
+                RetryOperation.Permission,
+                false,
+                "QUEUE_FULL",
+                "Worker queue is full.",
+                null);
+
+            store.ApplyExecutionResult(result, new DateTime(2026, 1, 1, 10, 0, 0));
+
+            Assert.True(database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.ScheduleRetry"));
+            Assert.False(database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.MarkTerminalFailure"));
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_CleanupExpiredFailures_DeletesOnlyTerminalRows()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database, new DeviceOperationRetryOptions { FailureRetentionDays = 7, BatchSize = 12 });
+
+            store.CleanupExpiredFailures(new DateTime(2026, 1, 10), 12);
+
+            var sql = database.Commands.Last().CommandText;
+            Assert.Contains("exhausted_at IS NOT NULL", sql);
+            Assert.Contains("exhausted_at < @cutoff", sql);
+            Assert.Contains("TOP (@batchSize)", sql);
+            Assert.Contains("@batchSize=12", sql);
+        }
+
+        private static IReadOnlyDictionary<string, object> Row(
+            long id,
+            int deviceId,
+            string employeeId,
+            int? permissionLevel = null,
+            bool permissionPending = false,
+            bool personPending = false,
+            string personPayload = null,
+            bool facePending = false,
+            string facePayload = null,
+            bool deletePersonPending = false,
+            bool deleteFacePending = false,
+            int attemptCount = 0)
+        {
+            return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["id"] = id,
+                ["device_id"] = deviceId,
+                ["employee_id"] = employeeId,
+                ["permission_level"] = permissionLevel,
+                ["permission_pending"] = permissionPending,
+                ["permission_sync_completion_blocked"] = permissionPending,
+                ["person_payload"] = personPayload,
+                ["person_pending"] = personPending,
+                ["face_payload"] = facePayload,
+                ["face_pending"] = facePending,
+                ["delete_person_pending"] = deletePersonPending,
+                ["delete_face_pending"] = deleteFacePending,
+                ["attempt_count"] = attemptCount,
+                ["next_retry_at"] = new DateTime(2026, 1, 1),
+                ["last_error"] = null,
+                ["last_attempt_at"] = null,
+                ["exhausted_at"] = null,
+                ["created_at"] = new DateTime(2026, 1, 1),
+                ["updated_at"] = new DateTime(2026, 1, 1)
+            };
+        }
+    }
+
+    internal sealed class Stage6Fixture : IDisposable
+    {
+        private readonly Stage4Fixture inner = new Stage4Fixture();
+
+        public Stage6Fixture()
+        {
+            Database = new RecordingDatabaseClient();
+            Options = new DeviceOperationRetryOptions
+            {
+                ScanIntervalSeconds = 30,
+                InitialRetryDelaySeconds = 1,
+                MaxRetryDelaySeconds = 5,
+                MaxRetryAttempts = 3,
+                FailureRetentionDays = 7,
+                BatchSize = 100
+            };
+            Store = new DeviceOperationRetryStore(Database, Options);
+            Manager = new DeviceOperationRetryManager(
+                Store,
+                inner.Registry,
+                new RetryExecutionCoordinator(inner.Dispatcher, inner.Gateway),
+                Options);
+        }
+
+        public RecordingDatabaseClient Database { get; }
+
+        public DeviceOperationRetryOptions Options { get; }
+
+        public DeviceOperationRetryStore Store { get; }
+
+        public DeviceOperationRetryManager Manager { get; }
+
+        public MockHikvisionGateway Gateway => inner.Gateway;
+
+        public void AddOnlineDevice()
+        {
+            inner.AddRecord(1);
+            inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+            var login = inner.Lifecycle.SubmitLogin(1, wait: true, requestId: "stage6-login");
+            Assert.True(login.Success, login.Message);
+            inner.Registry.UpdateCapabilities(1, new ControlDoor.Devices.Runtime.DeviceCapabilities
+            {
+                Known = true,
+                SupportsFaceConfig = true,
+                SupportsPersonConfig = true,
+                SupportsAcs = true
+            }, DateTime.Now);
+        }
+
+        public void AddOfflineDevice()
+        {
+            inner.AddRecord(1);
+            inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+        }
+
+        public void AddDisabledDevice()
+        {
+            inner.Registry.Register(new DeviceRuntimeCreationOptions
+            {
+                DeviceId = 1,
+                DeviceName = "停用设备",
+                IpAddress = "192.168.1.65",
+                Port = 8000,
+                Username = "admin",
+                Password = "12345",
+                Enabled = false,
+                CreatedAt = DateTime.Now
+            });
+        }
+
+        public void Dispose()
+        {
+            inner.Dispose();
+        }
+    }
+}

@@ -33,6 +33,8 @@ namespace ControlDoor.Host
         private DelayedDeviceTaskScheduler delayedScheduler;
         private DeviceLifecycleService deviceLifecycle;
         private IHikvisionGateway hikvisionGateway;
+        private DeviceOperationRetryStore retryStore;
+        private DeviceOperationRetryManager retryManager;
         private AccessControlGrpcService accessControlGrpcService;
         private PermissionSyncGrpcService permissionSyncGrpcService;
 
@@ -144,11 +146,18 @@ namespace ControlDoor.Host
             var deviceRepository = new SqlDeviceRepository(database);
             deviceLifecycle = new DeviceLifecycleService(deviceRegistry, deviceDispatcher, delayedScheduler, deviceRepository, hikvisionGateway, deviceOptions, logger);
             accessControlGrpcService = new AccessControlGrpcService(deviceLifecycle, deviceRepository, settings.Service.GrpcManagementApiKey);
+            retryStore = new DeviceOperationRetryStore(database, settings.DeviceOperationRetry, logger);
+            retryManager = new DeviceOperationRetryManager(
+                retryStore,
+                deviceRegistry,
+                new RetryExecutionCoordinator(deviceDispatcher, hikvisionGateway, logger),
+                settings.DeviceOperationRetry,
+                logger);
             permissionSyncGrpcService = new PermissionSyncGrpcService(
                 deviceRegistry,
                 deviceDispatcher,
                 hikvisionGateway,
-                new DeviceOperationRetryStore(database),
+                retryStore,
                 new SystemUserSyncStatusWriter(database),
                 new EnrollmentTaskStore());
 
@@ -156,6 +165,7 @@ namespace ControlDoor.Host
             backgroundTaskHost.Register(delayedScheduler, startOrder: 10, stopOrder: 80, isCritical: false);
             backgroundTaskHost.Register(new DeviceHealthCheckBackgroundTask(deviceLifecycle, deviceOptions), startOrder: 20, stopOrder: 70, isCritical: false);
             backgroundTaskHost.Register(new GrpcServerBackgroundTask(settings.Service.GrpcListenPort, accessControlGrpcService, permissionSyncGrpcService), startOrder: 30, stopOrder: 60, isCritical: true);
+            backgroundTaskHost.Register(retryManager, startOrder: 40, stopOrder: 50, isCritical: false);
             backgroundTaskHost.Register(new NoopBackgroundTask("Stage1Bootstrap"), startOrder: 0, stopOrder: 100, isCritical: false);
             var backgroundResult = backgroundTaskHost.StartAsync(cancellationToken).GetAwaiter().GetResult();
             if (!backgroundResult.Success)

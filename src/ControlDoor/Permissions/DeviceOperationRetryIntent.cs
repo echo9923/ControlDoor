@@ -15,6 +15,16 @@ namespace ControlDoor.Permissions
 
         public string PayloadJson { get; set; }
 
+        public string PersonPayloadJson { get; set; }
+
+        public string FacePayloadJson { get; set; }
+
+        public string ReasonCode { get; set; }
+
+        public string ReasonMessage { get; set; }
+
+        public string RequestId { get; set; }
+
         public string LastError { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.Now;

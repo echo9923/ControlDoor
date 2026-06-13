@@ -100,7 +100,17 @@ namespace ControlDoor.Configuration
     {
         public int ScanIntervalSeconds { get; set; } = 30;
 
+        public int InitialRetryDelaySeconds { get; set; } = 60;
+
+        public int MaxRetryDelaySeconds { get; set; } = 3600;
+
         public int MaxRetryAttempts { get; set; } = 10;
+
+        public int FailureRetentionDays { get; set; } = 7;
+
+        public int BatchSize { get; set; } = 100;
+
+        public bool RetryImmediatelyOnNewIntent { get; set; } = true;
 
         public int TerminalRetentionDays { get; set; } = 30;
     }

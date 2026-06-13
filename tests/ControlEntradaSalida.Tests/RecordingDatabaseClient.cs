@@ -12,6 +12,8 @@ namespace ControlEntradaSalida.Tests
 
         public string FailOperationName { get; set; }
 
+        public int? RowsAffected { get; set; }
+
         public DatabaseCommandRecord ExecuteScalar(string operationName, string commandText)
         {
             return Record(operationName, commandText);
@@ -43,7 +45,8 @@ namespace ControlEntradaSalida.Tests
             {
                 OperationName = operationName,
                 CommandText = AppendParameters(commandText, parameters),
-                CommandTimeoutSeconds = 30
+                CommandTimeoutSeconds = 30,
+                RowsAffected = RowsAffected
             };
 
             if (operationName == FailOperationName)

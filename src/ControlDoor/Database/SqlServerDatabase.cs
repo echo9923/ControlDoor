@@ -189,11 +189,41 @@ namespace ControlDoor.Database
             var forbidden = new[] { "INSERT", "UPDATE", "DELETE", "MERGE", "ALTER", "CREATE", "DROP", "TRUNCATE", "EXEC", "EXECUTE" };
             foreach (var keyword in forbidden)
             {
-                if (trimmed.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                if (ContainsSqlKeyword(trimmed, keyword))
                 {
                     throw new InvalidOperationException("阶段 1 禁止执行结构或数据变更 SQL: " + keyword);
                 }
             }
+        }
+
+        private static bool ContainsSqlKeyword(string commandText, string keyword)
+        {
+            var index = 0;
+            while (index < commandText.Length)
+            {
+                var found = commandText.IndexOf(keyword, index, StringComparison.OrdinalIgnoreCase);
+                if (found < 0)
+                {
+                    return false;
+                }
+
+                var before = found == 0 ? '\0' : commandText[found - 1];
+                var afterIndex = found + keyword.Length;
+                var after = afterIndex >= commandText.Length ? '\0' : commandText[afterIndex];
+                if (!IsIdentifierCharacter(before) && !IsIdentifierCharacter(after))
+                {
+                    return true;
+                }
+
+                index = found + keyword.Length;
+            }
+
+            return false;
+        }
+
+        private static bool IsIdentifierCharacter(char value)
+        {
+            return char.IsLetterOrDigit(value) || value == '_';
         }
 
         private static bool IsTransient(int number)
