@@ -123,6 +123,14 @@ namespace ControlDoor.Configuration
 
         public List<int> ExcludedDeviceIds { get; set; } = new List<int>();
 
+        public List<string> ExcludedDeviceIps { get; set; } = new List<string>();
+
+        public bool OfflineCompensationEnabled { get; set; } = true;
+
+        public int AlarmDeployType { get; set; }
+
+        public int QueueCapacity { get; set; } = 2000;
+
         public bool EnableHistoryCompensation { get; set; } = true;
     }
 

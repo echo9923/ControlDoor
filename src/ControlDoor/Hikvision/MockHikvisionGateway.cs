@@ -560,8 +560,10 @@ namespace ControlDoor.Hikvision
                 Success = data.Success,
                 EventTime = data.EventTime,
                 RawPayload = CopyBytes(data.RawPayload),
+                PictureBytes = CopyBytes(data.PictureBytes),
                 RawPayloadSummary = data.RawPayloadSummary
             };
+            copied.CurrentEventFlag = data.CurrentEventFlag;
             foreach (var value in data.Values)
             {
                 copied.Values[value.Key] = value.Value;

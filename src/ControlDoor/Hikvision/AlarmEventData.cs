@@ -8,6 +8,7 @@ namespace ControlDoor.Hikvision
         public AlarmEventData()
         {
             RawPayload = new byte[0];
+            PictureBytes = new byte[0];
             Values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
@@ -37,7 +38,11 @@ namespace ControlDoor.Hikvision
 
         public byte[] RawPayload { get; set; }
 
+        public byte[] PictureBytes { get; set; }
+
         public string RawPayloadSummary { get; set; }
+
+        public int? CurrentEventFlag { get; set; }
 
         public IDictionary<string, string> Values { get; private set; }
     }

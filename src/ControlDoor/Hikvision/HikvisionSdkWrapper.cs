@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Observability;
@@ -565,6 +566,8 @@ namespace ControlDoor.Hikvision
                     RawPayloadSummary = "length=" + payload.Length,
                     EventTime = DateTime.Now
                 };
+                CopyAlarmer(alarmer, data);
+                CopyAcsAlarmInfo(command, alarmInfo, alarmInfoLength, data);
 
                 callback?.Invoke(data);
                 RaiseManagedAlarm(data);
@@ -574,6 +577,77 @@ namespace ControlDoor.Hikvision
             {
                 return true;
             }
+        }
+
+        private static void CopyAlarmer(IntPtr alarmer, AlarmEventData data)
+        {
+            if (alarmer == IntPtr.Zero || data == null)
+            {
+                return;
+            }
+
+            var source = (NET_DVR_ALARMER)Marshal.PtrToStructure(alarmer, typeof(NET_DVR_ALARMER));
+            if (source.byUserIDValid != 0)
+            {
+                data.UserId = source.lUserID;
+            }
+
+            if (source.byDeviceIPValid != 0)
+            {
+                data.DeviceIpAddress = GetAnsiString(source.sDeviceIP);
+            }
+
+            if (source.bySerialValid != 0)
+            {
+                data.DeviceSerialNumber = GetAnsiString(source.sSerialNumber);
+            }
+
+            if (!string.IsNullOrWhiteSpace(data.DeviceIpAddress))
+            {
+                data.Values["deviceIp"] = data.DeviceIpAddress;
+            }
+
+            if (!string.IsNullOrWhiteSpace(data.DeviceSerialNumber))
+            {
+                data.Values["serialNumber"] = data.DeviceSerialNumber;
+            }
+        }
+
+        private static void CopyAcsAlarmInfo(int command, IntPtr alarmInfo, int alarmInfoLength, AlarmEventData data)
+        {
+            if (command != 0x5002 || alarmInfo == IntPtr.Zero || data == null)
+            {
+                return;
+            }
+
+            var minimumSize = Marshal.SizeOf(typeof(NET_DVR_ACS_ALARM_INFO));
+            if (alarmInfoLength < minimumSize)
+            {
+                return;
+            }
+
+            var acs = (NET_DVR_ACS_ALARM_INFO)Marshal.PtrToStructure(alarmInfo, typeof(NET_DVR_ACS_ALARM_INFO));
+            data.EventTime = ToDateTime(acs.struTime) ?? data.EventTime;
+            data.PictureBytes = CopyPointerBytes(acs.pPicData, acs.dwPicDataLen);
+            data.RawPayloadSummary = "length=" + Math.Max(0, alarmInfoLength) +
+                "; major=" + acs.dwMajor +
+                "; minor=" + acs.dwMinor +
+                "; pic=" + (data.PictureBytes == null ? 0 : data.PictureBytes.Length);
+            data.CardNumber = GetAnsiString(acs.struAcsEventInfo.byCardNo);
+            if (acs.struAcsEventInfo.dwEmployeeNo > 0)
+            {
+                data.EmployeeId = acs.struAcsEventInfo.dwEmployeeNo.ToString();
+            }
+
+            data.DoorIndex = acs.struAcsEventInfo.dwDoorNo;
+            data.Success = IsSuccessMinor(acs.dwMinor);
+            data.Values["dwMajor"] = acs.dwMajor.ToString();
+            data.Values["dwMinor"] = acs.dwMinor.ToString();
+            data.Values["dwSerialNo"] = acs.struAcsEventInfo.dwSerialNo.ToString();
+            data.Values["dwDoorNo"] = acs.struAcsEventInfo.dwDoorNo.ToString();
+            data.Values["dwCardReaderNo"] = acs.struAcsEventInfo.dwCardReaderNo.ToString();
+            data.Values["dwEmployeeNo"] = acs.struAcsEventInfo.dwEmployeeNo.ToString();
+            data.Values["dwPicDataLen"] = acs.dwPicDataLen.ToString();
         }
 
         private void RaiseManagedAlarm(AlarmEventData data)
@@ -707,6 +781,227 @@ namespace ControlDoor.Hikvision
             catch
             {
             }
+        }
+
+        private static DateTime? ToDateTime(NET_DVR_TIME value)
+        {
+            try
+            {
+                if (value.dwYear < 1970 || value.dwMonth < 1 || value.dwMonth > 12 || value.dwDay < 1 || value.dwDay > 31)
+                {
+                    return null;
+                }
+
+                return new DateTime(value.dwYear, value.dwMonth, value.dwDay, value.dwHour, value.dwMinute, value.dwSecond);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool IsSuccessMinor(int minor)
+        {
+            return minor == 0x01 ||
+                minor == 0x26 ||
+                minor == 0x2E ||
+                minor == 0x3C ||
+                minor == 0x4B ||
+                minor == 0x4D ||
+                minor == 0x65;
+        }
+
+        private static byte[] CopyPointerBytes(IntPtr pointer, int length)
+        {
+            if (pointer == IntPtr.Zero || length <= 0)
+            {
+                return new byte[0];
+            }
+
+            var bytes = new byte[length];
+            Marshal.Copy(pointer, bytes, 0, length);
+            return bytes;
+        }
+
+        private static string GetAnsiString(byte[] value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            var length = Array.IndexOf(value, (byte)0);
+            if (length < 0)
+            {
+                length = value.Length;
+            }
+
+            return length <= 0 ? string.Empty : System.Text.Encoding.Default.GetString(value, 0, length).Trim();
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NET_DVR_ALARMER
+        {
+            public byte byUserIDValid;
+
+            public byte bySerialValid;
+
+            public byte byVersionValid;
+
+            public byte byDeviceNameValid;
+
+            public byte byMacAddrValid;
+
+            public byte byLinkPortValid;
+
+            public byte byDeviceIPValid;
+
+            public byte bySocketIPValid;
+
+            public int lUserID;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 48)]
+            public byte[] sSerialNumber;
+
+            public int dwDeviceVersion;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+            public byte[] sDeviceName;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
+            public byte[] byMacAddr;
+
+            public ushort wLinkPort;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            public byte[] sDeviceIP;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            public byte[] sSocketIP;
+
+            public byte byIpProtocol;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 11)]
+            public byte[] byRes2;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NET_DVR_TIME
+        {
+            public int dwYear;
+
+            public int dwMonth;
+
+            public int dwDay;
+
+            public int dwHour;
+
+            public int dwMinute;
+
+            public int dwSecond;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NET_DVR_IPADDR
+        {
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+            public byte[] sIpV4;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            public byte[] sIpV6;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NET_DVR_ACS_EVENT_INFO
+        {
+            public int dwSize;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+            public byte[] byCardNo;
+
+            public byte byCardType;
+
+            public byte byWhiteListNo;
+
+            public byte byReportChannel;
+
+            public byte byCardReaderKind;
+
+            public int dwCardReaderNo;
+
+            public int dwDoorNo;
+
+            public int dwVerifyNo;
+
+            public int dwAlarmInNo;
+
+            public int dwAlarmOutNo;
+
+            public int dwCaseSensorNo;
+
+            public int dwRs485No;
+
+            public int dwMultiCardGroupNo;
+
+            public ushort wAccessChannel;
+
+            public byte byDeviceNo;
+
+            public byte byDistractControlNo;
+
+            public int dwEmployeeNo;
+
+            public ushort wLocalControllerID;
+
+            public byte byInternetAccess;
+
+            public byte byType;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
+            public byte[] byMACAddr;
+
+            public byte bySwipeCardType;
+
+            public byte byRes2;
+
+            public int dwSerialNo;
+
+            public byte byChannelControllerID;
+
+            public byte byChannelControllerLampID;
+
+            public byte byChannelControllerIRAdaptorID;
+
+            public byte byChannelControllerIREmitterID;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] byRes;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NET_DVR_ACS_ALARM_INFO
+        {
+            public int dwSize;
+
+            public int dwMajor;
+
+            public int dwMinor;
+
+            public NET_DVR_TIME struTime;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+            public byte[] sNetUser;
+
+            public NET_DVR_IPADDR struRemoteHostAddr;
+
+            public NET_DVR_ACS_EVENT_INFO struAcsEventInfo;
+
+            public int dwPicDataLen;
+
+            public IntPtr pPicData;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 24)]
+            public byte[] byRes;
         }
     }
 }
