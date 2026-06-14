@@ -1,6 +1,15 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
+using ControlDoor.Configuration;
 using System.Web.Script.Serialization;
+using ControlDoor.Devices.Management;
+using ControlDoor.Devices.Runtime;
+using ControlDoor.Devices.Workers;
 using ControlDoor.GrpcApi;
+using ControlDoor.Hikvision;
 
 namespace ControlEntradaSalida.Tests
 {
@@ -40,7 +49,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void AccessControlGrpcService_GetDeviceStatus_IncludeDisabledControlsDatabaseOnlyDevices()
+        public static void AccessControlGrpcService_GetDeviceStatus_IncludeDisabledControlsJsonOnlyDevices()
         {
             using (var fixture = new Stage4Fixture())
             {
@@ -80,11 +89,228 @@ namespace ControlEntradaSalida.Tests
             {
                 var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
 
-                var response = Deserialize(service.AddDevice(@"{""device_id"":9,""device_name"":""北门"",""ip_address"":""10.0.4.9"",""password"":""12345"",""connectNow"":false}", new GrpcRequestContext { RequestId = "req-add" }));
+                var response = Deserialize(service.AddDevice(@"{""device_id"":9,""device_name"":""北门"",""ip_address"":""10.0.4.9"",""password"":""12345"",""types"":[""Acs"",""FaceCapture""],""connectNow"":false}", new GrpcRequestContext { RequestId = "req-add" }));
 
                 Assert.Equal(true, response["success"]);
                 Assert.Equal("OK", response["code"]);
                 Assert.True(fixture.Registry.TryGetByDeviceId(9).Found);
+                var record = fixture.Repository.GetByDeviceId(9);
+                Assert.True(record.Types.Contains(DeviceType.Acs));
+                Assert.True(record.Types.Contains(DeviceType.FaceCapture));
+                // types 仍在请求解析和持久化中保留，但响应不再输出该字段（对齐 main）。
+                var device = (Dictionary<string, object>)response["device"];
+                Assert.False(device.ContainsKey("types"));
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_PersistsToJsonDeviceList()
+        {
+            using (var fixture = JsonBackedFixture.Create("{\"devices\":[]}"))
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(@"{""deviceId"":101,""deviceName"":""JSON门禁"",""ipAddress"":""10.0.4.101"",""password"":""12345"",""types"":[""Acs""],""connectNow"":false}", new GrpcRequestContext { RequestId = "req-add-json" }));
+
+                Assert.Equal(true, response["success"]);
+                Assert.True(fixture.Registry.TryGetByDeviceId(101).Found);
+                var persistedJson = File.ReadAllText(fixture.DevicesFilePath, Encoding.UTF8);
+                Assert.Contains("\"deviceId\": 101", persistedJson);
+                Assert.Contains("\"ipAddress\": \"10.0.4.101\"", persistedJson);
+                Assert.Contains("\"types\"", persistedJson);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_DeleteDevice_RemovesFromJsonDeviceList()
+        {
+            using (var fixture = JsonBackedFixture.Create(
+                "{\"devices\":[{\"deviceId\":101,\"name\":\"JSON门禁\",\"types\":[\"Acs\"],\"ipAddress\":\"10.0.4.101\",\"port\":8000,\"username\":\"admin\",\"password\":\"12345\",\"enabled\":true}]}"))
+            {
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.DeleteDevice(@"{""deviceId"":101,""disconnectFirst"":false}", new GrpcRequestContext { RequestId = "req-delete-json" }));
+
+                Assert.Equal(true, response["success"]);
+                Assert.False(fixture.Registry.TryGetByDeviceId(101).Found);
+                var persistedJson = File.ReadAllText(fixture.DevicesFilePath, Encoding.UTF8);
+                Assert.False(persistedJson.Contains("\"deviceId\": 101"));
+                Assert.Equal(0, fixture.Repository.LoadAllDevices().Count);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_RequiresTypes()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(@"{""device_id"":9,""device_name"":""北门"",""ip_address"":""10.0.4.9"",""password"":""12345""}", new GrpcRequestContext { RequestId = "req-add-types" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("INVALID_ARGUMENT", response["code"]);
+                Assert.Contains("types 不能为空", (string)response["message"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_RejectsInvalidTypes()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(@"{""device_id"":9,""device_name"":""北门"",""ip_address"":""10.0.4.9"",""password"":""12345"",""types"":[""1""]}", new GrpcRequestContext { RequestId = "req-add-invalid-types" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("INVALID_ARGUMENT", response["code"]);
+                Assert.Contains("types 含非法值", (string)response["message"]);
+                Assert.False(fixture.Registry.TryGetByDeviceId(9).Found);
+            }
+        }
+
+        // ===== AddDevice 对齐 main 项目（必填校验 + port 字符串 + PARTIAL_SUCCESS + 隐藏 types）=====
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_MissingDeviceId_ReturnsInvalidArgument()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(
+                    @"{""device_name"":""北门"",""ip_address"":""10.0.4.9"",""password"":""12345"",""types"":[""Acs""]}",
+                    new GrpcRequestContext { RequestId = "req-add-no-id" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("INVALID_ARGUMENT", response["code"]);
+                Assert.Contains("deviceId", (string)response["message"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_MissingDeviceName_ReturnsInvalidArgument()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(
+                    @"{""device_id"":12,""ip_address"":""10.0.4.12"",""password"":""12345"",""types"":[""Acs""]}",
+                    new GrpcRequestContext { RequestId = "req-add-no-name" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("INVALID_ARGUMENT", response["code"]);
+                Assert.Contains("deviceName", (string)response["message"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_MissingIpAddress_ReturnsInvalidArgument()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(
+                    @"{""device_id"":13,""device_name"":""侧门"",""password"":""12345"",""types"":[""Acs""]}",
+                    new GrpcRequestContext { RequestId = "req-add-no-ip" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("INVALID_ARGUMENT", response["code"]);
+                Assert.Contains("ipAddress", (string)response["message"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_MissingPassword_ReturnsInvalidArgument()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(
+                    @"{""device_id"":14,""device_name"":""后门"",""ip_address"":""10.0.4.14"",""types"":[""Acs""]}",
+                    new GrpcRequestContext { RequestId = "req-add-no-pwd" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("INVALID_ARGUMENT", response["code"]);
+                Assert.Contains("password", (string)response["message"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_PortAsString_Accepted()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(
+                    @"{""device_id"":20,""device_name"":""port门"",""ip_address"":""10.0.4.20"",""port"":""8080"",""password"":""12345"",""types"":[""Acs""],""connectNow"":false}",
+                    new GrpcRequestContext { RequestId = "req-add-port-str" }));
+
+                Assert.Equal(true, response["success"]);
+                var device = (Dictionary<string, object>)response["device"];
+                // 响应 port 现在是字符串（对齐 main）
+                Assert.Equal("8080", device["port"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_InvalidPort_ReturnsInvalidArgument()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(
+                    @"{""device_id"":21,""device_name"":""badport"",""ip_address"":""10.0.4.21"",""port"":""abc"",""password"":""12345"",""types"":[""Acs""]}",
+                    new GrpcRequestContext { RequestId = "req-add-bad-port" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("INVALID_ARGUMENT", response["code"]);
+                Assert.Contains("port", (string)response["message"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_ResponseDoesNotContainTypes()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(
+                    @"{""device_id"":22,""device_name"":""types门"",""ip_address"":""10.0.4.22"",""password"":""12345"",""types"":[""Acs"",""Camera""],""connectNow"":false}",
+                    new GrpcRequestContext { RequestId = "req-add-no-types-resp" }));
+
+                Assert.Equal(true, response["success"]);
+                var device = (Dictionary<string, object>)response["device"];
+                Assert.False(device.ContainsKey("types"));
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AddDevice_ConnectNowFailure_ReturnsPartialSuccess()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                // 注入登录失败：ConfigureException 让 LoginAsync 抛 DeviceGatewayException。
+                fixture.Gateway.ConfigureException("LoginAsync", new DeviceGatewayException("Login", SdkError.FromCode(1)));
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.AddDevice(
+                    @"{""device_id"":30,""device_name"":""连不上"",""ip_address"":""10.0.4.30"",""password"":""12345"",""types"":[""Acs""],""connectNow"":true}",
+                    new GrpcRequestContext { RequestId = "req-add-connect-fail" }));
+
+                // 设备已入库但连接失败：success=true, code=PARTIAL_SUCCESS, connected=false
+                Assert.Equal(true, response["success"]);
+                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
+                Assert.Equal(false, response["connected"]);
+                Assert.True(fixture.Registry.TryGetByDeviceId(30).Found);
             }
         }
 
@@ -134,6 +360,87 @@ namespace ControlEntradaSalida.Tests
         private static System.Collections.Generic.Dictionary<string, object> Deserialize(string json)
         {
             return new JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string, object>>(json);
+        }
+
+        private sealed class JsonBackedFixture : System.IDisposable
+        {
+            private JsonBackedFixture(
+                string runDirectory,
+                JsonDeviceRepository repository,
+                DeviceRuntimeRegistry registry,
+                DeviceSdkDispatcher dispatcher,
+                DelayedDeviceTaskScheduler delayedScheduler,
+                MockHikvisionGateway gateway,
+                DeviceLifecycleService lifecycle)
+            {
+                RunDirectory = runDirectory;
+                Repository = repository;
+                Registry = registry;
+                Dispatcher = dispatcher;
+                DelayedScheduler = delayedScheduler;
+                Gateway = gateway;
+                Lifecycle = lifecycle;
+                DevicesFilePath = Path.Combine(runDirectory, "Configuration", "devices.json");
+            }
+
+            public string RunDirectory { get; }
+
+            public string DevicesFilePath { get; }
+
+            public JsonDeviceRepository Repository { get; }
+
+            public DeviceRuntimeRegistry Registry { get; }
+
+            public DeviceSdkDispatcher Dispatcher { get; }
+
+            public DelayedDeviceTaskScheduler DelayedScheduler { get; }
+
+            public MockHikvisionGateway Gateway { get; }
+
+            public DeviceLifecycleService Lifecycle { get; }
+
+            public static JsonBackedFixture Create(string devicesJson)
+            {
+                var runDirectory = TestWorkspace.Create();
+                var configurationDirectory = Path.Combine(runDirectory, "Configuration");
+                Directory.CreateDirectory(configurationDirectory);
+                File.WriteAllText(Path.Combine(configurationDirectory, "devices.json"), devicesJson, Encoding.UTF8);
+
+                var repository = new JsonDeviceRepository(
+                    runDirectory,
+                    new DeviceStoreOptions
+                    {
+                        FilePath = "Configuration\\devices.json",
+                        BackupOnWrite = true,
+                        Items = new List<DeviceStoreItem>()
+                    });
+                var registry = new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = 2 });
+                var dispatcher = new DeviceSdkDispatcher(registry, workerCount: 2, queueCapacityPerWorker: 50, defaultTaskTimeoutMilliseconds: 5000);
+                var delayedScheduler = new DelayedDeviceTaskScheduler(dispatcher, new DelayedDeviceTaskSchedulerOptions { WakeupMaxSleepMilliseconds = 10 });
+                var gateway = new MockHikvisionGateway();
+                var options = new DeviceLifecycleOptions
+                {
+                    LoginTimeoutMs = 5000,
+                    LogoutTimeoutMs = 5000,
+                    HealthCheckIntervalMs = 1000,
+                    HealthCheckTimeoutMs = 5000,
+                    ReconnectBaseDelayMs = 10,
+                    ReconnectMaxDelayMs = 100,
+                    MaxReconnectAttempts = 3,
+                    FailureThreshold = 3,
+                    AlarmEnabled = true
+                };
+                var lifecycle = new DeviceLifecycleService(registry, dispatcher, delayedScheduler, repository, gateway, options);
+
+                return new JsonBackedFixture(runDirectory, repository, registry, dispatcher, delayedScheduler, gateway, lifecycle);
+            }
+
+            public void Dispose()
+            {
+                Dispatcher.StopAsync(System.TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+                Gateway.Dispose();
+                Lifecycle.Dispose();
+            }
         }
     }
 }

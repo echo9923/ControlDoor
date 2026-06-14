@@ -97,16 +97,60 @@ namespace ControlDoor.GrpcApi
                 return Error(context, "INVALID_ARGUMENT", ex.Message);
             }
 
+            IList<DeviceType> types;
+            try
+            {
+                types = ParseDeviceTypes(request.GetStringList("types", "deviceTypes", "device_types"));
+            }
+            catch (ArgumentException ex)
+            {
+                return Error(context, "INVALID_ARGUMENT", ex.Message);
+            }
+
+            // 必填字段校验（对齐 ControlEntradaSalida-main）：deviceId/deviceName/ipAddress/password 缺失或空白即拒绝。
+            var deviceId = request.GetInt("deviceId", "device_id");
+            if (!deviceId.HasValue || deviceId.Value <= 0)
+            {
+                return Error(context, "INVALID_ARGUMENT", "缺少或非法的 deviceId。");
+            }
+
+            var deviceName = request.GetString("deviceName", "device_name");
+            if (string.IsNullOrWhiteSpace(deviceName))
+            {
+                return Error(context, "INVALID_ARGUMENT", "缺少 deviceName。");
+            }
+
+            var ipAddress = request.GetString("ipAddress", "ip_address");
+            if (string.IsNullOrWhiteSpace(ipAddress))
+            {
+                return Error(context, "INVALID_ARGUMENT", "缺少 ipAddress。");
+            }
+
+            // port 接受字符串（对齐 main），校验 1-65535。
+            var portString = request.GetString("port") ?? "8000";
+            if (!ushort.TryParse(portString, out ushort parsedPort) || parsedPort == 0)
+            {
+                return Error(context, "INVALID_ARGUMENT", "port 必须为 1-65535 的数字。");
+            }
+
+            var username = request.GetString("username") ?? "admin";
+            var password = request.GetString("password");
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                return Error(context, "INVALID_ARGUMENT", "缺少 password。");
+            }
+
             var record = new DeviceRecord
             {
-                DeviceId = request.GetInt("deviceId", "device_id") ?? 0,
-                DeviceName = request.GetString("deviceName", "device_name") ?? string.Empty,
-                IpAddress = request.GetString("ipAddress", "ip_address") ?? string.Empty,
-                Port = request.GetInt("port") ?? 8000,
-                Username = request.GetString("username") ?? "admin",
-                Password = request.GetString("password") ?? string.Empty,
+                DeviceId = deviceId.Value,
+                DeviceName = deviceName.Trim(),
+                IpAddress = ipAddress.Trim(),
+                Port = (int)parsedPort,
+                Username = username?.Trim() ?? "admin",
+                Password = password,
                 Description = request.GetString("description") ?? string.Empty,
-                Enabled = request.GetBool("enabled") ?? true
+                Enabled = request.GetBool("enabled") ?? true,
+                Types = types
             };
             var connectNow = request.GetBool("connectNow") ?? false;
             var add = lifecycle.RegisterDevice(record, persist: true);
@@ -115,16 +159,27 @@ namespace ControlDoor.GrpcApi
                 return Error(context, add.Code, add.Message);
             }
 
+            // connectNow=true 时同步等待登录结果，对齐 main：连接失败返回 PARTIAL_SUCCESS（设备已入库）。
             var connected = false;
-            var connectionMessage = connectNow ? "已请求立即连接。" : "未请求立即连接。";
+            string connectionMessage;
             if (record.Enabled && connectNow)
             {
-                var login = lifecycle.SubmitLogin(record.DeviceId, wait: false, requestId: context.RequestId);
-                connected = login.Snapshot != null && login.Snapshot.IsConnected;
-                connectionMessage = login.Message;
+                var login = lifecycle.SubmitLogin(record.DeviceId, wait: true, requestId: context.RequestId);
+                connected = login.Success;
+                connectionMessage = connected ? "连接成功。" : ("连接失败：" + login.Message);
+            }
+            else
+            {
+                connectionMessage = connectNow ? "设备未启用，跳过连接。" : "未请求立即连接。";
             }
 
-            return JsonResponse.Create(context.RequestId, true, "OK", "新增设备成功。", new Dictionary<string, object>
+            var success = !connectNow || connected;
+            var code = success ? "OK" : "PARTIAL_SUCCESS";
+            var message = success
+                ? (connectNow ? "新增并连接成功。" : "新增成功。")
+                : "新增成功，但连接失败。";
+
+            return JsonResponse.Create(context.RequestId, true, code, message, new Dictionary<string, object>
             {
                 ["device"] = ToDeviceStatus(lifecycle.Registry.TryGetByDeviceId(record.DeviceId).Snapshot),
                 ["connectNow"] = connectNow,
@@ -338,13 +393,12 @@ namespace ControlDoor.GrpcApi
                 ["deviceId"] = snapshot.DeviceId,
                 ["deviceName"] = snapshot.DeviceName,
                 ["ipAddress"] = snapshot.IpAddress,
-                ["port"] = snapshot.Port,
+                ["port"] = snapshot.Port.ToString(),
                 ["enabled"] = snapshot.Enabled,
                 ["isConnected"] = snapshot.IsConnected,
                 ["status"] = snapshot.Status.ToString(),
                 ["statusMessage"] = snapshot.StatusMessage,
                 ["lastChecked"] = FormatDate(snapshot.LastCheckedAt),
-                ["lastUsed"] = FormatDate(snapshot.LastUsedAt),
                 ["lastErrorCode"] = snapshot.LastErrorCode,
                 ["lastErrorMessage"] = snapshot.LastErrorMessage
             };
@@ -368,16 +422,66 @@ namespace ControlDoor.GrpcApi
                 null,
                 null,
                 null,
-                record.LastUsedAt,
                 null,
                 ReconnectState.New(),
                 DateTime.Now,
-                null);
+                null,
+                record.Types);
         }
 
         private static string FormatDate(DateTime? value)
         {
             return value.HasValue ? value.Value.ToString("yyyy-MM-ddTHH:mm:ss") : null;
+        }
+
+        private static IList<DeviceType> ParseDeviceTypes(IList<string> values)
+        {
+            var result = new List<DeviceType>();
+            if (values == null)
+            {
+                return result;
+            }
+
+            foreach (var value in values)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                var parsed = ParseDeviceTypeLiteral(value.Trim());
+                if (!parsed.HasValue)
+                {
+                    throw new ArgumentException("types 含非法值 \"" + value + "\"（合法值: Acs / FaceCapture / Camera）。");
+                }
+
+                if (!result.Contains(parsed.Value))
+                {
+                    result.Add(parsed.Value);
+                }
+            }
+
+            return result;
+        }
+
+        private static DeviceType? ParseDeviceTypeLiteral(string value)
+        {
+            if (string.Equals(value, "Acs", StringComparison.OrdinalIgnoreCase))
+            {
+                return DeviceType.Acs;
+            }
+
+            if (string.Equals(value, "FaceCapture", StringComparison.OrdinalIgnoreCase))
+            {
+                return DeviceType.FaceCapture;
+            }
+
+            if (string.Equals(value, "Camera", StringComparison.OrdinalIgnoreCase))
+            {
+                return DeviceType.Camera;
+            }
+
+            return null;
         }
 
         private sealed class AuthResult
