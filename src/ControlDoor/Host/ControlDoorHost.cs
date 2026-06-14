@@ -170,7 +170,7 @@ namespace ControlDoor.Host
             if (settings.FaceEventLogging.Enabled)
             {
                 var snapshotStorage = new SnapshotStorage(runDirectory, settings.FaceEventLogging, logger);
-                var faceRepository = new FaceEventRepository(database, snapshotStorage);
+                var faceRepository = new FaceEventRepository(database, snapshotStorage, settings.Database.ConnectionString);
                 faceEventIngestionService = new FaceEventIngestionService(
                     settings.FaceEventLogging,
                     new AcsFaceEventProcessor(new AcsEventParser(), faceRepository, logger),

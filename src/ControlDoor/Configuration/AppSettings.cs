@@ -150,6 +150,10 @@ namespace ControlDoor.Configuration
         public int QueueCapacity { get; set; } = 2000;
 
         public bool EnableHistoryCompensation { get; set; } = true;
+
+        public int BatchSize { get; set; } = 50;
+
+        public int FlushIntervalMs { get; set; } = 500;
     }
 
     public sealed class FaceEnrollmentOptions

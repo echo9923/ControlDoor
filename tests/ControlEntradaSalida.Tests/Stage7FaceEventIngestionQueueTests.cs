@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using ControlDoor.Configuration;
 using ControlDoor.FaceEvents;
@@ -70,7 +71,8 @@ namespace ControlEntradaSalida.Tests
         public static void FaceEventIngestionService_WorkerSurvivesProcessorException()
         {
             var processor = new ThrowingThenRecordingProcessor();
-            var service = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 10 }, processor);
+            // BatchSize=1 强制每条独立成批，确保第一条抛异常不会把第二条拖进同一批，恢复原"逐条"语义。
+            var service = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 10, BatchSize = 1, FlushIntervalMs = 50 }, processor);
             var context = new BackgroundTaskContext("stage7-queue-test", CancellationToken.None, null);
             service.StartAsync(context).GetAwaiter().GetResult();
             try
@@ -142,6 +144,18 @@ namespace ControlEntradaSalida.Tests
 
                 SuccessCount++;
                 return FaceEventProcessResult.Ok("INSERTED", "ok");
+            }
+
+            public IReadOnlyList<FaceEventBatchItemResult> ProcessBatch(IReadOnlyList<RawAcsAlarmEvent> rawEvents)
+            {
+                // 复用单条 Process 的"第一条抛异常"语义，保证 worker 异常存活测试在新攒批路径下仍有效。
+                var results = new List<FaceEventBatchItemResult>(rawEvents.Count);
+                foreach (var rawEvent in rawEvents)
+                {
+                    var result = Process(rawEvent);
+                    results.Add(FaceEventBatchItemResult.Ok(0, result.Code, result.Message));
+                }
+                return results;
             }
         }
     }
