@@ -127,6 +127,14 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void GateControlCommand_UsesHikvisionGatewayControlValues()
+        {
+            Assert.Equal(0, (int)GateControlCommand.Restore);
+            Assert.Equal(1, (int)GateControlCommand.Open);
+            Assert.Equal(3, (int)GateControlCommand.AlwaysClose);
+        }
+
+        [TestCase]
         public static void IsapiMethod_ContainsAllHttpVerbsUsedByStage3()
         {
             Assert.True(Enum.IsDefined(typeof(IsapiMethod), IsapiMethod.Get));

@@ -2,8 +2,8 @@ namespace ControlDoor.Hikvision
 {
     public enum GateControlCommand
     {
+        Restore = 0,
         Open = 1,
-        Restore = 2,
         AlwaysClose = 3
     }
 }

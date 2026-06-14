@@ -71,6 +71,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(result.Success, result.Message);
                 var request = (GateControlRequest)inner.Gateway.Calls.Single(c => c.MethodName == "ControlGatewayAsync").Request;
                 Assert.Equal(GateControlCommand.Restore, request.Command);
+                Assert.Equal(0, (int)request.Command);
             }
         }
 
