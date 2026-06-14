@@ -511,6 +511,8 @@ namespace ControlDoor.Hikvision
                 nativeClient.Cleanup();
                 initialized = false;
             }
+
+            isapiClient?.Dispose();
         }
 
         internal void RaiseManagedAlarmForTest(AlarmEventData data)

@@ -119,6 +119,105 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void IsapiClient_ReusesHttpClientAcrossRequests()
+        {
+            int handlerCreateCount = 0;
+            var handler = new Stage3RecordingHttpHandler(new HttpResponseMessage(HttpStatusCode.OK));
+            var client = new HikvisionIsapiClient(() =>
+            {
+                handlerCreateCount++;
+                return handler;
+            });
+
+            for (int i = 0; i < 3; i++)
+            {
+                client.SendAsync(new IsapiRequest
+                {
+                    BaseAddress = "http://device",
+                    Path = "/ISAPI/System/status"
+                }).GetAwaiter().GetResult();
+            }
+
+            Assert.Equal(3, handler.Requests.Count);
+            Assert.Equal(1, handlerCreateCount);
+        }
+
+        [TestCase]
+        public static void IsapiClient_Dispose_PreventsFurtherUse()
+        {
+            var handler = new Stage3RecordingHttpHandler(new HttpResponseMessage(HttpStatusCode.OK));
+            var client = new HikvisionIsapiClient(() => handler);
+            client.Dispose();
+
+            var ex = Stage3TestReflection.Expect<ObjectDisposedException>(() => client.SendAsync(new IsapiRequest
+            {
+                BaseAddress = "http://device",
+                Path = "/ISAPI/System/status"
+            }).GetAwaiter().GetResult());
+
+            Assert.Equal(typeof(HikvisionIsapiClient).Name, ex.ObjectName);
+            Assert.Equal(0, handler.Requests.Count);
+        }
+
+        [TestCase]
+        public static void IsapiClient_DigestRetry_CachesDigestClientPerDeviceAndAccount()
+        {
+            // 验证 Digest client 按 (设备, 账号) 缓存：
+            // - 匿名 client 全局单例（首次请求时创建一次）
+            // - 同一 (设备, 账号) 的 Digest client 只创建一次
+            // - 换设备时才创建新的 Digest client
+            // mock 对每次 SendAsync 的首次请求（匿名路径）返回 401，触发 Digest 重试；重试返回 200。
+            int factoryCallCount = 0;
+            int requestSeq = 0;
+            var handler = new Stage3RecordingHttpHandler((request, token) =>
+            {
+                // 每次完整的 SendAsync 会触发 2 次 handler 调用（匿名 401 + 重试 200）。
+                // 用自增计数器区分：奇数=匿名首次（401），偶数=重试（200）。
+                requestSeq++;
+                var status = requestSeq % 2 == 1 ? HttpStatusCode.Unauthorized : HttpStatusCode.OK;
+                return Task.FromResult(new HttpResponseMessage(status)
+                {
+                    Content = new StringContent("{}")
+                });
+            });
+            var client = new HikvisionIsapiClient(() =>
+            {
+                factoryCallCount++;
+                return handler;
+            });
+
+            // 首次请求（device-a）：匿名 client 新建（factory=1）→401→Digest client 新建（factory=2）
+            client.SendAsync(new IsapiRequest
+            {
+                BaseAddress = "http://device-a",
+                Path = "/ISAPI/System/status",
+                UserName = "admin",
+                Password = "secret"
+            }).GetAwaiter().GetResult();
+            Assert.Equal(2, factoryCallCount);
+
+            // 第二次请求（同一 device-a/账号）：匿名单例命中缓存 + Digest client 命中缓存，factory 不变
+            client.SendAsync(new IsapiRequest
+            {
+                BaseAddress = "http://device-a",
+                Path = "/ISAPI/System/status",
+                UserName = "admin",
+                Password = "secret"
+            }).GetAwaiter().GetResult();
+            Assert.Equal(2, factoryCallCount);
+
+            // 第三次请求（device-b）：匿名单例命中缓存 + Digest client 新建（factory=3）
+            client.SendAsync(new IsapiRequest
+            {
+                BaseAddress = "http://device-b",
+                Path = "/ISAPI/System/status",
+                UserName = "admin",
+                Password = "secret"
+            }).GetAwaiter().GetResult();
+            Assert.Equal(3, factoryCallCount);
+        }
+
+        [TestCase]
         public static void SdkWrapper_InitFailure_ThrowsUnifiedError()
         {
             var native = new Stage3FakeNativeClient { InitResult = false, LastError = 3 };
