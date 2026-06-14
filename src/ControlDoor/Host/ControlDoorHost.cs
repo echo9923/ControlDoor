@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Configuration;
+using ControlDoor.CameraDoorInterlock;
 using ControlDoor.Database;
 using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
@@ -40,6 +41,8 @@ namespace ControlDoor.Host
         private PermissionSyncGrpcService permissionSyncGrpcService;
         private FaceEventIngestionService faceEventIngestionService;
         private AcsAlarmEventRouter acsAlarmEventRouter;
+        private CameraDoorInterlockService cameraDoorInterlockService;
+        private AiopAlarmEventRouter aiopAlarmEventRouter;
 
         public ControlDoorHost()
             : this(RuntimePaths.GetRunDirectory())
@@ -176,6 +179,22 @@ namespace ControlDoor.Host
                 acsAlarmEventRouter.Attach(hikvisionGateway);
             }
 
+            if (settings.CameraAlarmDoorInterlock.Enabled)
+            {
+                var interlockResolver = new InterlockMappingResolver(settings.CameraAlarmDoorInterlock, deviceRegistry, logger);
+                cameraDoorInterlockService = new CameraDoorInterlockService(
+                    settings.CameraAlarmDoorInterlock,
+                    interlockResolver,
+                    new AiopVideoPayloadParser(),
+                    new CameraAlarmWindowManager(settings.CameraAlarmDoorInterlock.WindowSeconds),
+                    new DoorTargetStateManager(),
+                    new DoorControlTaskFactory(hikvisionGateway, logger),
+                    deviceDispatcher,
+                    logger: logger);
+                aiopAlarmEventRouter = new AiopAlarmEventRouter(deviceRegistry, cameraDoorInterlockService, settings.CameraAlarmDoorInterlock, interlockResolver, logger);
+                aiopAlarmEventRouter.Attach(hikvisionGateway);
+            }
+
             backgroundTaskHost = new BackgroundTaskHost(logger);
             backgroundTaskHost.Register(delayedScheduler, startOrder: 10, stopOrder: 80, isCritical: false);
             backgroundTaskHost.Register(new DeviceHealthCheckBackgroundTask(deviceLifecycle, deviceOptions), startOrder: 20, stopOrder: 70, isCritical: false);
@@ -184,7 +203,10 @@ namespace ControlDoor.Host
             {
                 backgroundTaskHost.Register(faceEventIngestionService, startOrder: 35, stopOrder: 55, isCritical: false);
             }
-
+            if (cameraDoorInterlockService != null)
+            {
+                backgroundTaskHost.Register(cameraDoorInterlockService, startOrder: 36, stopOrder: 54, isCritical: false);
+            }
             backgroundTaskHost.Register(retryManager, startOrder: 40, stopOrder: 50, isCritical: false);
             backgroundTaskHost.Register(new NoopBackgroundTask("Stage1Bootstrap"), startOrder: 0, stopOrder: 100, isCritical: false);
             var backgroundResult = backgroundTaskHost.StartAsync(cancellationToken).GetAwaiter().GetResult();
@@ -248,9 +270,11 @@ namespace ControlDoor.Host
 
             logger?.Info("Host", "ControlDoor Host 正在停止。", new LogFields { Extra = { ["reason"] = reason ?? string.Empty } });
             deviceLifecycle?.StopAllDevicesBestEffort();
+            aiopAlarmEventRouter?.Dispose();
             backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
             deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
             acsAlarmEventRouter?.Dispose();
+            cameraDoorInterlockService?.Dispose();
             faceEventIngestionService?.Dispose();
             database?.Dispose();
 
@@ -280,6 +304,8 @@ namespace ControlDoor.Host
             deviceLifecycle?.Dispose();
             hikvisionGateway?.Dispose();
             acsAlarmEventRouter?.Dispose();
+            aiopAlarmEventRouter?.Dispose();
+            cameraDoorInterlockService?.Dispose();
             faceEventIngestionService?.Dispose();
             backgroundTaskHost?.Dispose();
             deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(100)).GetAwaiter().GetResult();

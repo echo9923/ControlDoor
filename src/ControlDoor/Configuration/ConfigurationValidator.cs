@@ -245,7 +245,7 @@ namespace ControlDoor.Configuration
                 "FaceEnrollment.TaskRetentionMinutes",
                 warnings);
 
-            settings.CameraAlarmDoorInterlock.Mappings = settings.CameraAlarmDoorInterlock.Mappings ?? new List<CameraAlarmDoorInterlockMapping>();
+            ValidateCameraAlarmDoorInterlock(settings, warnings);
 
             return new ConfigurationValidationResult(settings, errors, warnings);
         }
@@ -281,6 +281,109 @@ namespace ControlDoor.Configuration
             }
 
             return value.Trim();
+        }
+
+        private static void ValidateCameraAlarmDoorInterlock(AppSettings settings, ICollection<string> warnings)
+        {
+            var section = settings.CameraAlarmDoorInterlock;
+            section.Mappings = section.Mappings ?? new List<CameraAlarmDoorInterlockMapping>();
+
+            section.WindowSeconds = MinimumOrDefault(section.WindowSeconds, 1, 5, "CameraAlarmDoorInterlock.WindowSeconds", warnings);
+            section.RestoreRetryIntervalMs = MinimumOrDefault(section.RestoreRetryIntervalMs, 100, 1000, "CameraAlarmDoorInterlock.RestoreRetryIntervalMs", warnings);
+            section.DoorControlSdkLockTimeoutMs = MinimumOrDefault(section.DoorControlSdkLockTimeoutMs, 1000, 5000, "CameraAlarmDoorInterlock.DoorControlSdkLockTimeoutMs", warnings);
+
+            for (var i = 0; i < section.Mappings.Count; i++)
+            {
+                var mapping = section.Mappings[i];
+                if (mapping == null)
+                {
+                    continue;
+                }
+
+                if (mapping.Camera == null)
+                {
+                    mapping.Camera = new InterlockCamera();
+                }
+
+                if (mapping.DoorDevice == null)
+                {
+                    mapping.DoorDevice = new InterlockDoorDevice();
+                }
+
+                mapping.DoorNos = mapping.DoorNos ?? new List<int>();
+
+                if (!mapping.Enabled)
+                {
+                    continue;
+                }
+
+                var cameraHasIp = !string.IsNullOrWhiteSpace(mapping.Camera.Ip);
+                var cameraHasId = mapping.Camera.Id > 0;
+                if (!cameraHasIp && !cameraHasId)
+                {
+                    warnings.Add("CameraAlarmDoorInterlock.Mappings[" + i + "].Camera 缺少有效 IP 或 Id，该映射将被忽略。");
+                    mapping.Enabled = false;
+                    continue;
+                }
+
+                var doorHasIp = !string.IsNullOrWhiteSpace(mapping.DoorDevice.Ip);
+                var doorHasId = mapping.DoorDevice.Id > 0;
+                if (!doorHasIp && !doorHasId)
+                {
+                    warnings.Add("CameraAlarmDoorInterlock.Mappings[" + i + "].DoorDevice 缺少有效 IP 或 Id，该映射将被忽略。");
+                    mapping.Enabled = false;
+                    continue;
+                }
+
+                if (mapping.Camera.Ip != null)
+                {
+                    mapping.Camera.Ip = mapping.Camera.Ip.Trim();
+                }
+
+                if (mapping.DoorDevice.Ip != null)
+                {
+                    mapping.DoorDevice.Ip = mapping.DoorDevice.Ip.Trim();
+                }
+
+                if (mapping.DoorNos.Count == 0)
+                {
+                    mapping.DoorNos = new List<int> { 1 };
+                    continue;
+                }
+
+                var validDoorNos = new List<int>();
+                foreach (var doorNo in mapping.DoorNos)
+                {
+                    if (doorNo > 0)
+                    {
+                        validDoorNos.Add(doorNo);
+                    }
+                    else
+                    {
+                        warnings.Add("CameraAlarmDoorInterlock.Mappings[" + i + "].DoorNos 含非正整数门号 " + doorNo + "，已剔除。");
+                    }
+                }
+
+                mapping.DoorNos = validDoorNos.Count > 0 ? validDoorNos : new List<int> { 1 };
+            }
+
+            if (section.Enabled)
+            {
+                var hasValidMapping = false;
+                foreach (var mapping in section.Mappings)
+                {
+                    if (mapping != null && mapping.Enabled && mapping.DoorNos.Count > 0)
+                    {
+                        hasValidMapping = true;
+                        break;
+                    }
+                }
+
+                if (!hasValidMapping)
+                {
+                    warnings.Add("CameraAlarmDoorInterlock.Enabled=true 但无有效映射，阶段 9 模块将自禁用。");
+                }
+            }
         }
     }
 }

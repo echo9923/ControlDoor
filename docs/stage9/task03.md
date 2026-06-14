@@ -13,8 +13,7 @@
 | `Enabled` | `false` | 是否启用阶段 9。 |
 | `WindowSeconds` | `5` | 常闭窗口秒数。 |
 | `DoorControlSdkLockTimeoutMs` | `5000` | 兼容配置，设备通道模型中不作为互斥等待参数。 |
-| `RestoreRetryAttempts` | `3` | 恢复失败重试次数。 |
-| `RestoreRetryIntervalMs` | `1000` | 恢复失败重试间隔。 |
+| `RestoreRetryIntervalMs` | `1000` | 恢复失败重试间隔。恢复任务对可重试错误持续重试，无最大次数。 |
 | `Mappings` | `[]` | 摄像头到门禁目标映射。 |
 
 ## 映射模型
@@ -45,8 +44,7 @@
 | 配置 | 规则 |
 | --- | --- |
 | `WindowSeconds` | 小于 1 使用默认值。 |
-| `RestoreRetryAttempts` | 小于 0 使用默认值；0 表示不重试。 |
-| `RestoreRetryIntervalMs` | 小于 100 使用默认值。 |
+| `RestoreRetryIntervalMs` | 小于 100 使用默认值。恢复任务对可重试错误持续重试，无最大次数限制。 |
 | `Mappings` | 启用时不能为空。 |
 | 摄像头标识 | `Camera.Ip` 和 `Camera.Id` 至少一个有效。 |
 | 门禁标识 | `DoorDevice.Ip` 和 `DoorDevice.Id` 至少一个有效。 |

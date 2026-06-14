@@ -165,17 +165,39 @@ namespace ControlDoor.Configuration
     {
         public bool Enabled { get; set; }
 
+        public int WindowSeconds { get; set; } = 5;
+
+        public int DoorControlSdkLockTimeoutMs { get; set; } = 5000;
+
+        public int RestoreRetryIntervalMs { get; set; } = 1000;
+
         public List<CameraAlarmDoorInterlockMapping> Mappings { get; set; } = new List<CameraAlarmDoorInterlockMapping>();
     }
 
     public sealed class CameraAlarmDoorInterlockMapping
     {
-        public string CameraIpAddress { get; set; } = string.Empty;
+        public InterlockCamera Camera { get; set; } = new InterlockCamera();
 
-        public int DoorDeviceId { get; set; }
+        public InterlockDoorDevice DoorDevice { get; set; } = new InterlockDoorDevice();
 
-        public int DoorNo { get; set; } = 1;
+        public List<int> DoorNos { get; set; } = new List<int>();
 
-        public int CloseSeconds { get; set; } = 5;
+        public bool Enabled { get; set; } = true;
+
+        public string Remark { get; set; } = string.Empty;
+    }
+
+    public sealed class InterlockCamera
+    {
+        public int Id { get; set; }
+
+        public string Ip { get; set; } = string.Empty;
+    }
+
+    public sealed class InterlockDoorDevice
+    {
+        public int Id { get; set; }
+
+        public string Ip { get; set; } = string.Empty;
     }
 }

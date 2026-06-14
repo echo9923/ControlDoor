@@ -313,6 +313,11 @@ namespace ControlDoor.Hikvision
         private static class NativeMethods
         {
             public const uint NET_DVR_FACE_DATA_RECORD = 2551;
+            public const uint NET_DVR_CAPTURE_FACE_INFO = 2510;
+            public const int NET_SDK_GET_NEXT_STATUS_SUCCESS = 1000;
+            public const int NET_SDK_GET_NEXT_STATUS_NEED_WAIT = 1001;
+            public const int NET_SDK_GET_NEXT_STATUS_FINISH = 1002;
+            public const int NET_SDK_GET_NEXT_STATUS_FAILED = 1003;
 
             [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
             public static extern bool NET_DVR_Init();

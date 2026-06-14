@@ -14,7 +14,7 @@
 | `CameraAlarmWindowManagerTests` | 首次窗口、重复报警不续期、新窗口开启。 |
 | `DoorTargetStateManagerTests` | 多摄像头共享门、活动集合、恢复条件。 |
 | `DoorControlTaskFactoryTests` | 常闭/恢复命令、优先级、门号、TaskKey。 |
-| `RestoreRetryPolicyTests` | 恢复失败重试次数和间隔。 |
+| `RestoreRetryPolicyTests` | 恢复失败对可重试错误持续重试、不可重试错误转终态。 |
 
 ## Mock SDK 集成测试
 
@@ -28,7 +28,7 @@
 | 窗口结束 | 投递恢复任务。 |
 | 一个摄像头多门 | 全部门目标常闭并恢复。 |
 | 两摄像头共享门 | 最后一个窗口结束才恢复。 |
-| 恢复失败 | 延迟重试，不阻塞 worker。 |
+| 恢复失败 | 可重试错误持续重试，不可重试错误转终态，不阻塞 worker。 |
 | 服务停止 | 活动门目标 best-effort 恢复。 |
 
 ## 配置测试
@@ -39,7 +39,8 @@
 | `Mappings` 为空且启用 | 模块不可用并记录错误。 |
 | `DoorNos` 缺失 | 默认 `[1]`。 |
 | `WindowSeconds` 非法 | 回退默认值。 |
-| `RestoreRetryAttempts = 0` | 恢复失败不重试。 |
+| 恢复失败可重试错误 | 持续重试直至成功，无最大次数。 |
+| 恢复失败不可重试错误 | 转终态并记录 Error 日志。 |
 | 摄像头 IP 和 ID 同时存在 | 优先 IP。 |
 | 门禁 IP 和 ID 同时存在 | 优先 IP。 |
 
