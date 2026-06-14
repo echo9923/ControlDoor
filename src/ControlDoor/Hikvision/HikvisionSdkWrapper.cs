@@ -843,16 +843,15 @@ namespace ControlDoor.Hikvision
             }
         }
 
+        // Success 语义对齐 main：人脸验证失败(0x4C)记 failure，其余人脸验证类事件记 success。
+        // 非 face-verify 类事件已在 AcsAlarmEventRouter 过滤，不会走到这里。
         private static bool IsSuccessMinor(int minor)
         {
-            return minor == 0x01 ||
-                minor == 0x26 ||
-                minor == 0x2E ||
-                minor == 0x3C ||
-                minor == 0x4B ||
-                minor == 0x4D ||
-                minor == 0x65;
+            return minor != MinorFaceVerifyFail;
         }
+
+        private const int MinorFaceVerifyPass = 0x4B;
+        private const int MinorFaceVerifyFail = 0x4C;
 
         private static byte[] CopyPointerBytes(IntPtr pointer, int length)
         {

@@ -74,6 +74,20 @@ namespace ControlDoor.FaceEvents
                 return FaceEventEnqueueResult.Rejected("IGNORED_NON_ACS", "non-ACS alarm ignored", 0, 0);
             }
 
+            // 纯人脸门禁：只入人脸验证类事件（人脸通过 0x4B / 人脸失败 0x4C / 人脸+指纹密码卡组合验证 0x3C~0x44）。
+            // 其它事件（纯刷卡、纯密码、门未关、胁迫报警等）一律不入队，与 main 项目语义一致。
+            if (!IsFaceVerifyMinor(data))
+            {
+                logger?.Debug("AcsAlarmEventRouter", "Non-face-verify ACS alarm ignored.", new LogFields
+                {
+                    Extra =
+                    {
+                        ["dwMinor"] = data.Values.ContainsKey("dwMinor") ? data.Values["dwMinor"] : string.Empty
+                    }
+                });
+                return FaceEventEnqueueResult.Rejected("IGNORED_NON_FACE_VERIFY", "non face-verify ACS alarm ignored", 0, 0);
+            }
+
             try
             {
                 var receivedAt = DateTime.Now;
@@ -216,6 +230,42 @@ namespace ControlDoor.FaceEvents
             return data.Command == CommAlarmAcs ||
                 string.Equals(data.EventType, "COMM_ALARM_ACS", StringComparison.OrdinalIgnoreCase);
         }
+
+        // 人脸验证类 minor 范围（与 ControlEntradaSalida-main 的 IsFaceVerifyMinor 对齐）：
+        //   0x4B 人脸验证通过、0x4C 人脸验证失败、0x3C~0x44 人脸+指纹/密码/卡组合验证系列。
+        // 其余 minor（纯刷卡 0x01、纯密码、门未关、胁迫报警等）一律不入库。
+        private static bool IsFaceVerifyMinor(AlarmEventData data)
+        {
+            string raw;
+            if (!data.Values.TryGetValue("dwMinor", out raw) || string.IsNullOrWhiteSpace(raw))
+            {
+                // dwMinor 缺失时保守放行，避免把格式异常的人脸事件误丢弃。
+                return true;
+            }
+
+            int minor;
+            if (!int.TryParse(raw, out minor))
+            {
+                return true;
+            }
+
+            return IsFaceVerifyMinor(minor);
+        }
+
+        private static bool IsFaceVerifyMinor(int minor)
+        {
+            if (minor == MinorFaceVerifyPass || minor == MinorFaceVerifyFail)
+            {
+                return true;
+            }
+
+            return minor >= MinorCombinedVerifyLow && minor <= MinorCombinedVerifyHigh;
+        }
+
+        private const int MinorFaceVerifyPass = 0x4B;    // 人脸验证通过
+        private const int MinorFaceVerifyFail = 0x4C;    // 人脸验证失败
+        private const int MinorCombinedVerifyLow = 0x3C; // 组合验证（人脸+指纹/密码/卡）范围下限
+        private const int MinorCombinedVerifyHigh = 0x44;// 组合验证范围上限
 
         private static int? ResolveCurrentEventFlag(AlarmEventData data)
         {
