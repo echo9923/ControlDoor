@@ -26,6 +26,8 @@ namespace ControlDoor.Hikvision
 
         int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody);
 
+        int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, out byte[] faceImage, out byte faceQuality, out int errorCode);
+
         int GetLastError();
 
         string GetErrorMessage(int errorCode);

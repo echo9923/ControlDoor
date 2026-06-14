@@ -44,6 +44,23 @@
 | 6 | 写入任务状态。 |
 | 7 | 向 stream 写出一帧成功或失败 JSON。 |
 
+### 底层采集 SDK
+
+采集走海康明眸专用接口 `NET_DVR_CAPTURE_FACE_INFO`（命令字 2510），不再使用通用 JPEG 抓拍近似：
+
+| 项目 | 规则 |
+| --- | --- |
+| SDK 命令字 | `NET_DVR_CAPTURE_FACE_INFO = 2510`（`NET_DVR_StartRemoteConfig`）。 |
+| 入参结构 | `NET_DVR_CAPTURE_FACE_COND`（`dwSize + byRes[128]`）。 |
+| 出参结构 | `NET_DVR_CAPTURE_FACE_CFG`（图片、质量分 `byFaceQuality1`、进度 `byCaptureProgress`、人脸模板与红外图保留字段）。 |
+| 采集方式 | `NET_DVR_GetNextRemoteConfig` 轮询，`byCaptureProgress==100` 且状态 `SUCCESS(1000)` 才取图。 |
+| 质量分 | 取设备真实 `byFaceQuality1`（1-100），不再硬编码。 |
+| 内存管理 | 只释放托管侧 `AllocHGlobal` 的条件结构；`pFacePicBuffer` 等 SDK 指针由 `NET_DVR_StopRemoteConfig` 释放。 |
+| 轮询参数 | 最多 100 次，每次 `NEED_WAIT(1001)` 间隔 100ms，累计约 10 秒超时。 |
+| 超时语义 | 循环跑满仍未采到人脸，`Wrapper` 抛 `FACE_CAPTURE_TIMEOUT`。 |
+| 实现分层 | `HikvisionSdkNativeClient.CaptureFace` 负责 P/Invoke 与轮询；`HikvisionSdkWrapper.CaptureFaceAsync` 负责状态码映射与异常包装。 |
+
+
 ## GetEnrollmentStatus
 
 | 字段 | 别名 | 必填 | 说明 |

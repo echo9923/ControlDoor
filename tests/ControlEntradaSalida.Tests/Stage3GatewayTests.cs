@@ -831,6 +831,64 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_CaptureFaceSuccess_ReturnsDeviceImageAndQuality()
+        {
+            var image = new byte[] { 0xFF, 0xD8, 0x10, 0x20, 0xFF, 0xD9 };
+            var native = new FakeNativeClient
+            {
+                FaceCaptureStatus = 1000,
+                FaceCaptureImage = image,
+                FaceCaptureQuality = 95
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+
+            var capture = gateway.CaptureFaceAsync(new CaptureRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+
+            Assert.Equal(login.UserId, native.LastFaceCaptureUserId);
+            Assert.Equal(100, native.LastFaceCaptureMaxAttempts);
+            Assert.Equal(100, native.LastFaceCaptureWaitIntervalMs);
+            Assert.True(capture.FaceDetected);
+            Assert.Equal(image.Length, capture.ImageBytes.Length);
+            Assert.True(SequenceEqual(image, capture.ImageBytes), "采集图片字节应与设备返回一致。");
+            Assert.Equal(95, capture.QualityScore);
+            Assert.Equal("image/jpeg", capture.ContentType);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_CaptureFacePollingTimeout_ThrowsFaceCaptureTimeout()
+        {
+            var native = new FakeNativeClient
+            {
+                FaceCaptureStatus = 1001,
+                FaceCaptureImage = null
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+
+            var ex = Expect<DeviceGatewayException>(() => gateway.CaptureFaceAsync(new CaptureRequest { UserId = login.UserId }).GetAwaiter().GetResult());
+
+            Assert.Equal("FACE_CAPTURE_TIMEOUT", ex.Error.Source);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_CaptureFaceFailed_ThrowsLastError()
+        {
+            var native = new FakeNativeClient
+            {
+                FaceCaptureStatus = 1003,
+                FaceCaptureImage = null,
+                LastError = 7
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+
+            var ex = Expect<DeviceGatewayException>(() => gateway.CaptureFaceAsync(new CaptureRequest { UserId = login.UserId }).GetAwaiter().GetResult());
+
+            Assert.Equal(7, ex.Error.Code);
+        }
+
+        [TestCase]
         public static void GatewayJson_SerializesDtoForIsapiBodies()
         {
             var json = Serialize(new PersonInfo { EmployeeId = "10001", Name = "张三" });
@@ -888,6 +946,29 @@ namespace ControlEntradaSalida.Tests
         private static byte[] JpegBytes()
         {
             return new byte[] { 0xFF, 0xD8, 0x10, 0x20, 0xFF, 0xD9 };
+        }
+
+        private static bool SequenceEqual(byte[] expected, byte[] actual)
+        {
+            if (expected == null && actual == null)
+            {
+                return true;
+            }
+
+            if (expected == null || actual == null || expected.Length != actual.Length)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < expected.Length; index++)
+            {
+                if (expected[index] != actual[index])
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static T Expect<T>(Action action)
@@ -977,6 +1058,20 @@ namespace ControlEntradaSalida.Tests
             public int FaceUploadStatus { get; set; } = 1000;
 
             public string FaceUploadResponse { get; set; } = @"{""statusCode"":1}";
+
+            public int FaceCaptureStatus { get; set; } = 1000;
+
+            public byte[] FaceCaptureImage { get; set; } = new byte[] { 0xFF, 0xD8, 0x01, 0x02, 0xFF, 0xD9 };
+
+            public byte FaceCaptureQuality { get; set; } = 95;
+
+            public int FaceCaptureErrorCode { get; set; }
+
+            public int LastFaceCaptureUserId { get; private set; }
+
+            public int LastFaceCaptureMaxAttempts { get; private set; }
+
+            public int LastFaceCaptureWaitIntervalMs { get; private set; }
 
             public bool InitCalled { get; private set; }
 
@@ -1077,6 +1172,19 @@ namespace ControlEntradaSalida.Tests
                 LastFaceUploadPictureBytes = pictureBytes == null ? null : (byte[])pictureBytes.Clone();
                 responseBody = FaceUploadResponse;
                 return FaceUploadStatus;
+            }
+
+            public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, out byte[] faceImage, out byte faceQuality, out int errorCode)
+            {
+                LastFaceCaptureUserId = userId;
+                LastFaceCaptureMaxAttempts = maxAttempts;
+                LastFaceCaptureWaitIntervalMs = waitIntervalMs;
+                faceImage = FaceCaptureStatus == 1000 && FaceCaptureImage != null
+                    ? (byte[])FaceCaptureImage.Clone()
+                    : null;
+                faceQuality = faceImage == null ? (byte)0 : FaceCaptureQuality;
+                errorCode = FaceCaptureErrorCode;
+                return FaceCaptureStatus;
             }
 
             public int GetLastError()

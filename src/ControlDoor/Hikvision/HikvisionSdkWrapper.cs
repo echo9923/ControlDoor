@@ -352,17 +352,58 @@ namespace ControlDoor.Hikvision
             });
         }
 
-        public async Task<FaceCaptureResult> CaptureFaceAsync(CaptureRequest request, CancellationToken cancellationToken = default)
+        public Task<FaceCaptureResult> CaptureFaceAsync(CaptureRequest request, CancellationToken cancellationToken = default)
         {
-            var picture = await CapturePictureAsync(request, cancellationToken).ConfigureAwait(false);
-            return new FaceCaptureResult
+            HikvisionGatewayValidator.RequireCapture(request);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Execute("CaptureFace", request, () =>
             {
-                ImageBytes = picture.ImageBytes,
-                ContentType = picture.ContentType,
-                CapturedAt = picture.CapturedAt,
-                FaceDetected = picture.ImageBytes != null && picture.ImageBytes.Length > 0,
-                QualityScore = picture.ImageBytes != null && picture.ImageBytes.Length > 0 ? 80 : 0
-            };
+                EnsureInitialized();
+                // 100 次 × 100ms = 10s 采集超时，与明眸设备采集窗口一致。
+                const int maxAttempts = 100;
+                const int waitIntervalMs = 100;
+
+                byte[] faceImage;
+                byte faceQuality;
+                int errorCode;
+                var status = nativeClient.CaptureFace(
+                    request.UserId, maxAttempts, waitIntervalMs,
+                    out faceImage, out faceQuality, out errorCode);
+
+                if (status == NetSdkConfigStatusSuccess)
+                {
+                    if (faceImage == null || faceImage.Length == 0)
+                    {
+                        throw new DeviceGatewayException("CaptureFace",
+                            SdkError.FromCode(NetSdkConfigStatusFailed, "采集完成但未检测到有效人脸。", "FACE_CAPTURE_NO_FACE"));
+                    }
+
+                    return new FaceCaptureResult
+                    {
+                        ImageBytes = faceImage,
+                        ContentType = "image/jpeg",
+                        CapturedAt = DateTime.Now,
+                        FaceDetected = true,
+                        QualityScore = faceQuality
+                    };
+                }
+
+                if (status == NetSdkConfigStatusFailed)
+                {
+                    ThrowLastError("CaptureFace");
+                }
+
+                if (status == NetSdkConfigStatusFinish)
+                {
+                    throw new DeviceGatewayException("CaptureFace",
+                        SdkError.FromCode(NetSdkConfigStatusFailed, "人脸采集完成但未检测到有效人脸。", "FACE_CAPTURE_NO_FACE"));
+                }
+
+                // NEED_WAIT 跑满循环视为超时（设备未在窗口内采到人脸）。
+                throw new DeviceGatewayException("CaptureFace",
+                    SdkError.FromCode(NetSdkConfigStatusFailed, "人脸采集超时，请确保人脸正对设备摄像头。", "FACE_CAPTURE_TIMEOUT"));
+            });
         }
 
         public async Task<EventQueryResponse> QueryEventRecordAsync(EventQueryRequest request, CancellationToken cancellationToken = default)

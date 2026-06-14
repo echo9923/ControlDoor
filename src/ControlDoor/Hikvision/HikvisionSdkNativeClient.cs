@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace ControlDoor.Hikvision
 {
@@ -233,6 +234,103 @@ namespace ControlDoor.Hikvision
             }
         }
 
+        public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, out byte[] faceImage, out byte faceQuality, out int errorCode)
+        {
+            faceImage = null;
+            faceQuality = 0;
+            errorCode = 0;
+
+            var cond = new NativeMethods.NET_DVR_CAPTURE_FACE_COND();
+            cond.Init();
+            cond.dwSize = Marshal.SizeOf(typeof(NativeMethods.NET_DVR_CAPTURE_FACE_COND));
+
+            IntPtr condPtr = IntPtr.Zero;
+            var handle = -1;
+
+            try
+            {
+                condPtr = Marshal.AllocHGlobal(cond.dwSize);
+                Marshal.StructureToPtr(cond, condPtr, false);
+
+                handle = NativeMethods.NET_DVR_StartRemoteConfig(
+                    userId,
+                    NativeMethods.NET_DVR_CAPTURE_FACE_INFO,
+                    condPtr,
+                    cond.dwSize,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+
+                if (handle < 0)
+                {
+                    errorCode = NativeMethods.NET_DVR_GetLastError();
+                    return -1;
+                }
+
+                var cfgSize = Marshal.SizeOf(typeof(NativeMethods.NET_DVR_CAPTURE_FACE_CFG));
+                for (var attempt = 0; attempt < maxAttempts; attempt++)
+                {
+                    var faceCfg = new NativeMethods.NET_DVR_CAPTURE_FACE_CFG();
+                    faceCfg.Init();
+                    faceCfg.dwSize = cfgSize;
+
+                    var status = NativeMethods.NET_DVR_GetNextRemoteConfig(handle, ref faceCfg, cfgSize);
+
+                    if (status == NativeMethods.NET_SDK_GET_NEXT_STATUS_SUCCESS)
+                    {
+                        if (faceCfg.byCaptureProgress == 100)
+                        {
+                            if (faceCfg.dwFacePicSize > 0 && faceCfg.pFacePicBuffer != IntPtr.Zero)
+                            {
+                                faceImage = new byte[faceCfg.dwFacePicSize];
+                                Marshal.Copy(faceCfg.pFacePicBuffer, faceImage, 0, faceCfg.dwFacePicSize);
+                                faceQuality = faceCfg.byFaceQuality1;
+                                return NativeMethods.NET_SDK_GET_NEXT_STATUS_SUCCESS;
+                            }
+
+                            return NativeMethods.NET_SDK_GET_NEXT_STATUS_FINISH;
+                        }
+
+                        continue;
+                    }
+
+                    if (status == NativeMethods.NET_SDK_GET_NEXT_STATUS_NEED_WAIT)
+                    {
+                        Thread.Sleep(waitIntervalMs);
+                        continue;
+                    }
+
+                    if (status == NativeMethods.NET_SDK_GET_NEXT_STATUS_FINISH)
+                    {
+                        return NativeMethods.NET_SDK_GET_NEXT_STATUS_FINISH;
+                    }
+
+                    if (status == NativeMethods.NET_SDK_GET_NEXT_STATUS_FAILED)
+                    {
+                        errorCode = NativeMethods.NET_DVR_GetLastError();
+                        return NativeMethods.NET_SDK_GET_NEXT_STATUS_FAILED;
+                    }
+
+                    errorCode = NativeMethods.NET_DVR_GetLastError();
+                    return NativeMethods.NET_SDK_GET_NEXT_STATUS_FAILED;
+                }
+
+                // 循环跑满仍未拿到人脸，按超时处理（返回 NEED_WAIT 由上层判定）。
+                return NativeMethods.NET_SDK_GET_NEXT_STATUS_NEED_WAIT;
+            }
+            finally
+            {
+                if (handle >= 0)
+                {
+                    NativeMethods.NET_DVR_StopRemoteConfig(handle);
+                }
+
+                if (condPtr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(condPtr);
+                }
+            }
+        }
+
         public int GetLastError()
         {
             return NativeMethods.NET_DVR_GetLastError();
@@ -357,6 +455,9 @@ namespace ControlDoor.Hikvision
 
             [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
             public static extern int NET_DVR_SendWithRecvRemoteConfig(int handle, IntPtr inputBuffer, uint inputBufferSize, IntPtr outputBuffer, uint outputBufferSize, ref uint outputDataLength);
+
+            [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
+            public static extern int NET_DVR_GetNextRemoteConfig(int handle, ref NET_DVR_CAPTURE_FACE_CFG outputBuffer, int outputBufferSize);
 
             [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
             public static extern int NET_DVR_GetLastError();
@@ -591,6 +692,58 @@ namespace ControlDoor.Hikvision
 
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
                 public byte[] byRes;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            public struct NET_DVR_CAPTURE_FACE_COND
+            {
+                public int dwSize;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+                public byte[] byRes;
+
+                public void Init()
+                {
+                    byRes = new byte[128];
+                }
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            public struct NET_DVR_CAPTURE_FACE_CFG
+            {
+                public int dwSize;
+
+                public int dwFaceTemplate1Size;
+
+                public IntPtr pFaceTemplate1Buffer;
+
+                public int dwFaceTemplate2Size;
+
+                public IntPtr pFaceTemplate2Buffer;
+
+                public int dwFacePicSize;
+
+                public IntPtr pFacePicBuffer;
+
+                public byte byFaceQuality1;
+
+                public byte byFaceQuality2;
+
+                public byte byCaptureProgress;
+
+                public byte byRes1;
+
+                public int dwInfraredFacePicSize;
+
+                public IntPtr pInfraredFacePicBuffer;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 116)]
+                public byte[] byRes;
+
+                public void Init()
+                {
+                    byRes = new byte[116];
+                }
             }
         }
     }

@@ -432,6 +432,20 @@ namespace ControlEntradaSalida.Tests
 
         public string FaceUploadResponse { get; set; } = @"{""statusCode"":1}";
 
+        public int FaceCaptureStatus { get; set; } = 1000;
+
+        public byte[] FaceCaptureImage { get; set; } = new byte[] { 0xFF, 0xD8, 0x01, 0x02, 0xFF, 0xD9 };
+
+        public byte FaceCaptureQuality { get; set; } = 95;
+
+        public int FaceCaptureErrorCode { get; set; }
+
+        public int LastFaceCaptureUserId { get; private set; }
+
+        public int LastFaceCaptureMaxAttempts { get; private set; }
+
+        public int LastFaceCaptureWaitIntervalMs { get; private set; }
+
         public int SetupAlarmCallCount { get; private set; }
 
         public int LastAlarmDeployType { get; private set; }
@@ -528,6 +542,19 @@ namespace ControlEntradaSalida.Tests
             LastFaceUploadPictureBytes = pictureBytes == null ? null : (byte[])pictureBytes.Clone();
             responseBody = FaceUploadResponse;
             return FaceUploadStatus;
+        }
+
+        public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, out byte[] faceImage, out byte faceQuality, out int errorCode)
+        {
+            LastFaceCaptureUserId = userId;
+            LastFaceCaptureMaxAttempts = maxAttempts;
+            LastFaceCaptureWaitIntervalMs = waitIntervalMs;
+            faceImage = FaceCaptureStatus == 1000 && FaceCaptureImage != null
+                ? (byte[])FaceCaptureImage.Clone()
+                : null;
+            faceQuality = faceImage == null ? (byte)0 : FaceCaptureQuality;
+            errorCode = FaceCaptureErrorCode;
+            return FaceCaptureStatus;
         }
 
         public int GetLastError()
