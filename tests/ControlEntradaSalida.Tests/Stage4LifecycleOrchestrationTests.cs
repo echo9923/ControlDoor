@@ -93,6 +93,117 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceLifecycle_DisarmDeviceAlarm_ClearsAlarmWithoutLogout()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var userId = fixture.Registry.TryGetByDeviceId(1).Snapshot.SdkUserId.Value;
+
+                var disarm = fixture.Lifecycle.DisarmDeviceAlarm(1, "req-disarm");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(disarm.Success);
+                Assert.Equal(DeviceConnectionStatus.Online, snapshot.Status);
+                Assert.Equal(userId, snapshot.SdkUserId.Value);
+                Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "CloseAlarmAsync"));
+                Assert.Equal(0, fixture.Gateway.Calls.Count(call => call.MethodName == "LogoutAsync"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_DisarmDeviceAlarm_IsIdempotentWhenAlreadyDisarmed()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                fixture.Lifecycle.DisarmDeviceAlarm(1, "req-disarm-1");
+                var closeCount = fixture.Gateway.Calls.Count(call => call.MethodName == "CloseAlarmAsync");
+
+                var disarm = fixture.Lifecycle.DisarmDeviceAlarm(1, "req-disarm-2");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(disarm.Success);
+                Assert.Equal(DeviceConnectionStatus.Online, snapshot.Status);
+                Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.Equal(closeCount, fixture.Gateway.Calls.Count(call => call.MethodName == "CloseAlarmAsync"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_RearmDeviceAlarmForce_ClosesOldAlarmAndSetsNewAlarm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var oldHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
+
+                var rearm = fixture.Lifecycle.RearmDeviceAlarm(1, force: true, requestId: "req-rearm");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+                var closeIndex = FindFirstCallIndex(fixture, "CloseAlarmAsync");
+                var lastSetIndex = FindLastCallIndex(fixture, "SetAlarmAsync");
+
+                Assert.True(rearm.Success);
+                Assert.True(snapshot.AlarmHandle.HasValue);
+                Assert.False(snapshot.AlarmHandle.Value == oldHandle);
+                Assert.Equal(DeviceConnectionStatus.Online, snapshot.Status);
+                Assert.True(closeIndex >= 0);
+                Assert.True(lastSetIndex > closeIndex);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_RearmDeviceAlarmWithoutForce_KeepsExistingAlarm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var oldHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
+                var setCount = fixture.Gateway.Calls.Count(call => call.MethodName == "SetAlarmAsync");
+
+                var rearm = fixture.Lifecycle.RearmDeviceAlarm(1, force: false, requestId: "req-rearm");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(rearm.Success);
+                Assert.Equal(oldHandle, snapshot.AlarmHandle.Value);
+                Assert.Equal(setCount, fixture.Gateway.Calls.Count(call => call.MethodName == "SetAlarmAsync"));
+                Assert.Equal(0, fixture.Gateway.Calls.Count(call => call.MethodName == "CloseAlarmAsync"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_RearmDeviceAlarmOffline_ReturnsDeviceErrorWithoutLogin()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                var rearm = fixture.Lifecycle.RearmDeviceAlarm(1, force: true, requestId: "req-rearm-offline");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(rearm.Success);
+                Assert.Equal("DEVICE_ERROR", rearm.Code);
+                Assert.Equal(DeviceConnectionStatus.Loaded, snapshot.Status);
+                Assert.Equal(0, fixture.Gateway.Calls.Count(call => call.MethodName == "LoginAsync"));
+                Assert.Equal(0, fixture.Gateway.Calls.Count(call => call.MethodName == "SetAlarmAsync"));
+            }
+        }
+
+        [TestCase]
         public static void DeviceLifecycle_ReconnectForce_CleansOldSessionAndLogsInAgain()
         {
             using (var fixture = new Stage4Fixture())
@@ -254,6 +365,29 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceLifecycle_DisarmDeviceAlarm_CancelsPendingReArm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReArmBaseDelayMs = 10000;
+                fixture.Options.ReArmMaxDelayMs = 60000;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Gateway.ConfigureException("SetAlarmAsync", new DeviceGatewayException("Arm", SdkError.FromCode(7)));
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm") >= 1, "rearm was not scheduled.");
+
+                var beforeCancel = fixture.DelayedScheduler.GetSnapshot().CancelledDelayedTaskCount;
+                var disarm = fixture.Lifecycle.DisarmDeviceAlarm(1, "req-disarm");
+                var snapshot = fixture.DelayedScheduler.GetSnapshot();
+
+                Assert.True(disarm.Success);
+                Assert.Equal(DeviceConnectionStatus.Degraded, fixture.Registry.TryGetByDeviceId(1).Snapshot.Status);
+                Assert.True(snapshot.CancelledDelayedTaskCount > beforeCancel);
+            }
+        }
+
+        [TestCase]
         public static void DeviceLifecycle_SuccessfulLoginAlarmAndDisconnect_WriteLifecycleSuccessLogs()
         {
             var runDirectory = TestWorkspace.Create();
@@ -301,6 +435,34 @@ namespace ControlEntradaSalida.Tests
             }
 
             Assert.True(condition(), message);
+        }
+
+        private static int FindFirstCallIndex(Stage4Fixture fixture, string methodName)
+        {
+            var calls = fixture.Gateway.Calls.ToList();
+            for (var i = 0; i < calls.Count; i++)
+            {
+                if (calls[i].MethodName == methodName)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static int FindLastCallIndex(Stage4Fixture fixture, string methodName)
+        {
+            var calls = fixture.Gateway.Calls.ToList();
+            for (var i = calls.Count - 1; i >= 0; i--)
+            {
+                if (calls[i].MethodName == methodName)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private static ControlDoor.Devices.Management.DeviceRecord NewRecord(int deviceId, string ipAddress)

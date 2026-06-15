@@ -14,6 +14,8 @@ namespace ControlDoor.GrpcApi
         public const string DeleteDeviceFullName = "/device.AccessControlService/DeleteDevice";
         public const string DisconnectDeviceFullName = "/device.AccessControlService/DisconnectDevice";
         public const string ReconnectDeviceFullName = "/device.AccessControlService/ReconnectDevice";
+        public const string RearmDeviceAlarmFullName = "/device.AccessControlService/RearmDeviceAlarm";
+        public const string DisarmDeviceAlarmFullName = "/device.AccessControlService/DisarmDeviceAlarm";
 
         private readonly DeviceLifecycleService lifecycle;
         private readonly IDeviceRepository repository;
@@ -32,7 +34,9 @@ namespace ControlDoor.GrpcApi
             AddDeviceFullName,
             DeleteDeviceFullName,
             DisconnectDeviceFullName,
-            ReconnectDeviceFullName
+            ReconnectDeviceFullName,
+            RearmDeviceAlarmFullName,
+            DisarmDeviceAlarmFullName
         };
 
         public string GetDeviceStatus(string requestJson, GrpcRequestContext context = null)
@@ -279,6 +283,55 @@ namespace ControlDoor.GrpcApi
             });
         }
 
+        public string RearmDeviceAlarm(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            var auth = Authorize(context);
+            if (!auth.Success)
+            {
+                return Error(context, auth.Code, auth.Message);
+            }
+
+            var parsed = ParseDeviceIdRequest(requestJson, context);
+            if (!parsed.Success)
+            {
+                return Error(context, parsed.Code, parsed.Message);
+            }
+
+            var force = parsed.Request.GetBool("force") ?? true;
+            var result = lifecycle.RearmDeviceAlarm(parsed.DeviceId, force, context.RequestId);
+            if (!result.Success)
+            {
+                return Error(context, result.Code, result.Message);
+            }
+
+            return JsonResponse.Create(context.RequestId, true, "OK", "重新布防已处理。", ToAlarmOperationResponse(parsed.DeviceId, result.Message));
+        }
+
+        public string DisarmDeviceAlarm(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            var auth = Authorize(context);
+            if (!auth.Success)
+            {
+                return Error(context, auth.Code, auth.Message);
+            }
+
+            var parsed = ParseDeviceIdRequest(requestJson, context);
+            if (!parsed.Success)
+            {
+                return Error(context, parsed.Code, parsed.Message);
+            }
+
+            var result = lifecycle.DisarmDeviceAlarm(parsed.DeviceId, context.RequestId);
+            if (!result.Success)
+            {
+                return Error(context, result.Code, result.Message);
+            }
+
+            return JsonResponse.Create(context.RequestId, true, "OK", "断开布防已处理。", ToAlarmOperationResponse(parsed.DeviceId, result.Message));
+        }
+
         private SelectionResult SelectDevices(JsonObject request, bool includeDisabled)
         {
             var ids = request.GetIntList("deviceIds", "device_ids");
@@ -379,6 +432,20 @@ namespace ControlDoor.GrpcApi
         private static string Error(GrpcRequestContext context, string code, string message)
         {
             return JsonResponse.Create(context.RequestId, false, code, message, null, new List<string> { message ?? string.Empty });
+        }
+
+        private IDictionary<string, object> ToAlarmOperationResponse(int deviceId, string message)
+        {
+            var snapshot = lifecycle.Registry.TryGetByDeviceId(deviceId).Snapshot;
+            return new Dictionary<string, object>
+            {
+                ["deviceId"] = deviceId,
+                ["armed"] = snapshot != null && snapshot.AlarmHandle.HasValue,
+                ["alarmHandle"] = snapshot == null ? null : snapshot.AlarmHandle,
+                ["connected"] = snapshot != null && snapshot.IsConnected,
+                ["status"] = snapshot == null ? "Deleted" : snapshot.Status.ToString(),
+                ["message"] = message ?? string.Empty
+            };
         }
 
         private static IDictionary<string, object> ToDeviceStatus(DeviceRuntimeSnapshot snapshot)

@@ -501,6 +501,84 @@ x-api-key: 配置的APIKey
 | `connected` | 是否连接成功 |
 | `message` | 连接结果说明 |
 
+### 5.6 `RearmDeviceAlarm`
+
+| 项目 | 内容 |
+| --- | --- |
+| 完整方法名 | `/device.AccessControlService/RearmDeviceAlarm` |
+| 方法类型 | Unary |
+| 用途 | 对已在线设备重新建立报警布防通道，不登出、不重连、不修改设备清单 |
+
+```json
+{
+  "deviceId": 10,
+  "force": true
+}
+```
+
+请求字段：
+
+| 字段 | 别名 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `deviceId` | `device_id` | 是 | 设备 ID |
+| `force` | 无 | 否 | 是否强制重新布防，默认 true；为 false 且设备已有布防句柄时直接返回已布防状态 |
+
+处理语义：
+
+- 设备必须已在线且有有效 `SdkUserId`；未在线时返回 `DEVICE_ERROR`，不会自动登录或重连。
+- `force=true` 且已有布防句柄时，先关闭旧 `AlarmHandle`，再调用 SDK 重新布防。
+- 前置撤防失败时返回 SDK 错误，不继续新布防，避免远端重复布防通道。
+- 布防失败沿用阶段 4 ReArm 退避重试策略，设备连接会保持在线或降级。
+
+响应业务字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `deviceId` | 设备 ID |
+| `armed` | 执行后是否有有效布防句柄 |
+| `alarmHandle` | 当前布防句柄；未布防时为 null |
+| `connected` | 设备是否仍在线 |
+| `status` | 设备运行时状态 |
+| `message` | 处理说明 |
+
+### 5.7 `DisarmDeviceAlarm`
+
+| 项目 | 内容 |
+| --- | --- |
+| 完整方法名 | `/device.AccessControlService/DisarmDeviceAlarm` |
+| 方法类型 | Unary |
+| 用途 | 关闭指定设备的报警布防通道，不登出设备、不改变设备连接状态、不修改设备清单 |
+
+```json
+{
+  "deviceId": 10
+}
+```
+
+请求字段：
+
+| 字段 | 别名 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `deviceId` | `device_id` | 是 | 设备 ID |
+
+处理语义：
+
+- 设备没有 `AlarmHandle` 时幂等成功，返回“设备未布防，跳过撤防。”。
+- 设备已有 `AlarmHandle` 时调用 SDK 关闭报警通道；无论 SDK 成功或失败，都会清理本地 `AlarmHandle` 和反查索引。
+- 撤防会取消该设备挂起的 ReArm 延迟任务，避免人工撤防后被后台布防重试重新拉起。
+- 该接口只断开布防，不调用 `LogoutAsync`，设备保持原登录会话。
+
+响应业务字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `deviceId` | 设备 ID |
+| `armed` | 执行后是否有有效布防句柄 |
+| `alarmHandle` | 当前布防句柄；撤防后为 null |
+| `connected` | 设备是否仍在线 |
+| `status` | 设备运行时状态 |
+| `message` | 处理说明 |
+
 ## 6. 调用注意事项
 
 1. 当前 gRPC 使用明文传输，跨主机或跨网段部署时建议放在受控网络内，或在外层增加 TLS/网关。

@@ -18,7 +18,9 @@ namespace ControlEntradaSalida.Tests
                 ["AddDevice"] = AccessControlGrpcService.AddDeviceFullName,
                 ["DeleteDevice"] = AccessControlGrpcService.DeleteDeviceFullName,
                 ["DisconnectDevice"] = AccessControlGrpcService.DisconnectDeviceFullName,
-                ["ReconnectDevice"] = AccessControlGrpcService.ReconnectDeviceFullName
+                ["ReconnectDevice"] = AccessControlGrpcService.ReconnectDeviceFullName,
+                ["RearmDeviceAlarm"] = AccessControlGrpcService.RearmDeviceAlarmFullName,
+                ["DisarmDeviceAlarm"] = AccessControlGrpcService.DisarmDeviceAlarmFullName
             })
             {
                 var method = InvokePrivateMethod<Method<string, string>>(
@@ -86,6 +88,8 @@ namespace ControlEntradaSalida.Tests
                 AccessControlGrpcService.DeleteDeviceFullName,
                 AccessControlGrpcService.DisconnectDeviceFullName,
                 AccessControlGrpcService.ReconnectDeviceFullName,
+                AccessControlGrpcService.RearmDeviceAlarmFullName,
+                AccessControlGrpcService.DisarmDeviceAlarmFullName,
                 PermissionSyncGrpcService.SyncPermissionsFullName,
                 PermissionSyncGrpcService.SyncPersonsFullName,
                 PermissionSyncGrpcService.DeleteFacesFullName,

@@ -27,6 +27,8 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.DeleteDeviceFullName));
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.DisconnectDeviceFullName));
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.ReconnectDeviceFullName));
+                Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.RearmDeviceAlarmFullName));
+                Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.DisarmDeviceAlarmFullName));
             }
         }
 
@@ -403,6 +405,23 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void AccessControlGrpcService_AlarmOperations_ApiKeyRejectsInvalidMetadata()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository, "secret");
+
+                var rearm = Deserialize(service.RearmDeviceAlarm(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-rearm-auth" }));
+                var disarm = Deserialize(service.DisarmDeviceAlarm(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-disarm-auth" }));
+
+                Assert.Equal(false, rearm["success"]);
+                Assert.Equal("UNAUTHENTICATED", rearm["code"]);
+                Assert.Equal(false, disarm["success"]);
+                Assert.Equal("UNAUTHENTICATED", disarm["code"]);
+            }
+        }
+
+        [TestCase]
         public static void AccessControlGrpcService_DeleteDevice_IsIdempotentSuccess()
         {
             using (var fixture = new Stage4Fixture())
@@ -429,6 +448,103 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(false, response["success"]);
                 Assert.Equal("NOT_FOUND", response["code"]);
             }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AlarmOperations_InvalidDeviceIdReturnsInvalidArgument()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var rearm = Deserialize(service.RearmDeviceAlarm(@"{""deviceId"":0}", new GrpcRequestContext { RequestId = "req-rearm-invalid" }));
+                var disarm = Deserialize(service.DisarmDeviceAlarm(@"{""device_id"":0}", new GrpcRequestContext { RequestId = "req-disarm-invalid" }));
+
+                Assert.Equal(false, rearm["success"]);
+                Assert.Equal("INVALID_ARGUMENT", rearm["code"]);
+                Assert.Equal(false, disarm["success"]);
+                Assert.Equal("INVALID_ARGUMENT", disarm["code"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_AlarmOperations_MissingDeviceReturnsNotFound()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var rearm = Deserialize(service.RearmDeviceAlarm(@"{""device_id"":99}", new GrpcRequestContext { RequestId = "req-rearm-missing" }));
+                var disarm = Deserialize(service.DisarmDeviceAlarm(@"{""device_id"":99}", new GrpcRequestContext { RequestId = "req-disarm-missing" }));
+
+                Assert.Equal(false, rearm["success"]);
+                Assert.Equal("NOT_FOUND", rearm["code"]);
+                Assert.Equal(false, disarm["success"]);
+                Assert.Equal("NOT_FOUND", disarm["code"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_DisarmDeviceAlarm_ReturnsAlarmStateWithoutDisconnecting()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.DisarmDeviceAlarm(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-disarm" }));
+
+                Assert.Equal(true, response["success"]);
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(1, response["deviceId"]);
+                Assert.Equal(false, response["armed"]);
+                Assert.Equal(null, response["alarmHandle"]);
+                Assert.Equal(true, response["connected"]);
+                Assert.Equal("Online", response["status"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_RearmDeviceAlarm_ReturnsNewAlarmHandle()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                fixture.Lifecycle.DisarmDeviceAlarm(1, "req-pre-disarm");
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.RearmDeviceAlarm(@"{""device_id"":1}", new GrpcRequestContext { RequestId = "req-rearm" }));
+
+                Assert.Equal(true, response["success"]);
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(1, response["deviceId"]);
+                Assert.Equal(true, response["armed"]);
+                Assert.NotNull(response["alarmHandle"]);
+                Assert.Equal(true, response["connected"]);
+                Assert.Equal("Online", response["status"]);
+            }
+        }
+
+        private static void WaitUntil(System.Func<bool> condition, string message)
+        {
+            var deadline = System.DateTime.UtcNow.AddSeconds(2);
+            while (System.DateTime.UtcNow < deadline)
+            {
+                if (condition())
+                {
+                    return;
+                }
+
+                System.Threading.Thread.Sleep(20);
+            }
+
+            Assert.True(condition(), message);
         }
 
         private static System.Collections.Generic.Dictionary<string, object> Deserialize(string json)

@@ -33,6 +33,8 @@ METHODS = {
     "DeleteDevice": (ACCESS_SERVICE, "DeleteDevice", "unary"),
     "DisconnectDevice": (ACCESS_SERVICE, "DisconnectDevice", "unary"),
     "ReconnectDevice": (ACCESS_SERVICE, "ReconnectDevice", "unary"),
+    "RearmDeviceAlarm": (ACCESS_SERVICE, "RearmDeviceAlarm", "unary"),
+    "DisarmDeviceAlarm": (ACCESS_SERVICE, "DisarmDeviceAlarm", "unary"),
     "SyncPermissions": (PERMISSION_SERVICE, "SyncPermissions", "unary"),
     "SyncPersons": (PERMISSION_SERVICE, "SyncPersons", "unary"),
     "DeleteFaces": (PERMISSION_SERVICE, "DeleteFaces", "unary"),

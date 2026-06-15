@@ -79,6 +79,8 @@ class ControlDoorGrpcGui(tk.Tk):
             ("GetDeviceStatus", self.run_single),
             ("AddDevice", self.run_single),
             ("ReconnectDevice", self.run_single),
+            ("RearmDeviceAlarm", self.run_single),
+            ("DisarmDeviceAlarm", self.run_single),
             ("SyncPersons", self.run_single),
             ("SyncPermissions", self.run_single),
             ("GetFaces", self.run_single),
@@ -205,6 +207,10 @@ class ControlDoorGrpcGui(tk.Tk):
             return request_add_device(config)
         if method == "ReconnectDevice":
             return request_device_id(config, force=True)
+        if method == "RearmDeviceAlarm":
+            return request_device_id(config, force=True)
+        if method == "DisarmDeviceAlarm":
+            return request_device_id(config)
         if method == "DisconnectDevice":
             return request_device_id(config)
         if method == "DeleteDevice":

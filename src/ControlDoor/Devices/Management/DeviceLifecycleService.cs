@@ -297,6 +297,67 @@ namespace ControlDoor.Devices.Management
             return SubmitLogin(deviceId, wait: true, requestId: requestId);
         }
 
+        public DeviceOperationResult DisarmDeviceAlarm(int deviceId, string requestId)
+        {
+            var lookup = registry.TryGetByDeviceId(deviceId);
+            if (!lookup.Found)
+            {
+                return new DeviceOperationResult
+                {
+                    Success = false,
+                    Code = "NOT_FOUND",
+                    DeviceId = deviceId,
+                    Message = "设备不存在。"
+                };
+            }
+
+            CancelDelayedReArm(deviceId);
+            if (!lookup.Snapshot.AlarmHandle.HasValue)
+            {
+                return DeviceOperationResult.FromSnapshot(true, "OK", "设备未布防，跳过撤防。", lookup.Snapshot);
+            }
+
+            var result = dispatcher.SubmitAndWaitAsync(CreateDisarmAlarmTask(deviceId, requestId)).GetAwaiter().GetResult();
+            return FromTaskResult(result);
+        }
+
+        public DeviceOperationResult RearmDeviceAlarm(int deviceId, bool force, string requestId)
+        {
+            var lookup = registry.TryGetByDeviceId(deviceId);
+            if (!lookup.Found)
+            {
+                return new DeviceOperationResult
+                {
+                    Success = false,
+                    Code = "NOT_FOUND",
+                    DeviceId = deviceId,
+                    Message = "设备不存在。"
+                };
+            }
+
+            if (!lookup.Snapshot.IsConnected || !lookup.Snapshot.SdkUserId.HasValue)
+            {
+                return DeviceOperationResult.FromSnapshot(false, "DEVICE_ERROR", "设备未在线，不能重新布防。", lookup.Snapshot);
+            }
+
+            if (!force && lookup.Snapshot.AlarmHandle.HasValue)
+            {
+                return DeviceOperationResult.FromSnapshot(true, "OK", "设备已布防。", lookup.Snapshot);
+            }
+
+            CancelDelayedReArm(deviceId);
+            if (lookup.Snapshot.AlarmHandle.HasValue)
+            {
+                var disarm = dispatcher.SubmitAndWaitAsync(CreateDisarmAlarmTask(deviceId, requestId)).GetAwaiter().GetResult();
+                if (!disarm.Success)
+                {
+                    return FromTaskResult(disarm);
+                }
+            }
+
+            return SubmitArmAlarm(deviceId, wait: true, requestId: requestId);
+        }
+
         public DeviceOperationResult DeleteDevice(int deviceId, bool disconnectFirst, string requestId)
         {
             var lookup = registry.TryGetByDeviceId(deviceId);
@@ -566,6 +627,57 @@ namespace ControlDoor.Devices.Management
                 }
             });
             task.Priority = DeviceTaskPriority.Normal;
+            task.RequestId = requestId ?? string.Empty;
+            return task;
+        }
+
+        private DeviceSdkTask CreateDisarmAlarmTask(int deviceId, string requestId)
+        {
+            var task = new DeviceSdkTask(deviceId, DeviceTaskType.CloseAlarm, "DeviceDisarmAlarm", async context =>
+            {
+                var started = DateTime.Now;
+                var snapshot = context.SnapshotBeforeExecution;
+                if (snapshot == null)
+                {
+                    return DeviceTaskResult.FromTask(context.Task, false, "NOT_FOUND", "设备不存在。", DeviceConnectionStatus.Unknown, started, DateTime.Now);
+                }
+
+                if (!snapshot.AlarmHandle.HasValue)
+                {
+                    return DeviceTaskResult.FromTask(context.Task, true, "OK", "设备未布防，跳过撤防。", snapshot.Status, started, DateTime.Now);
+                }
+
+                DeviceRuntimeError lastError = null;
+                try
+                {
+                    await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = snapshot.AlarmHandle.Value }, context.CancellationToken).ConfigureAwait(false);
+                    LogLifecycleSuccess(context, "设备撤防成功。", started, fields =>
+                    {
+                        fields.Extra["alarmHandle"] = snapshot.AlarmHandle.Value.ToString();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    lastError = ToRuntimeError("DeviceCloseAlarm", ex, DateTime.Now, retryable: false);
+                    context.Registry.RecordError(deviceId, lastError, DateTime.Now, snapshot.Status);
+                }
+                finally
+                {
+                    context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
+                }
+
+                var success = lastError == null;
+                var result = DeviceTaskResult.FromTask(context.Task, success, success ? "OK" : lastError.Code, success ? "撤防成功。" : lastError.Message, snapshot.Status, started, DateTime.Now);
+                if (lastError != null)
+                {
+                    result.SdkErrorCode = lastError.SdkErrorCode;
+                }
+
+                return result;
+            });
+            task.Priority = DeviceTaskPriority.Critical;
+            task.TimeoutMilliseconds = options.LogoutTimeoutMs;
+            task.AllowWhenDeleting = true;
             task.RequestId = requestId ?? string.Empty;
             return task;
         }

@@ -98,6 +98,10 @@ def resolve_payload(method: str, raw_payload: str, config):
         return request_add_device(config)
     if method == "ReconnectDevice":
         return request_device_id(config, force=True)
+    if method == "RearmDeviceAlarm":
+        return request_device_id(config, force=True)
+    if method == "DisarmDeviceAlarm":
+        return request_device_id(config)
     if method in {"DisconnectDevice", "DeleteDevice"}:
         return request_device_id(config, disconnectFirst=True)
     if method == "SyncPermissions":
