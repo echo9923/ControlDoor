@@ -20,13 +20,27 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void Stage9Window_RepeatAlarmWithinWindow_DoesNotRefreshEndsAt()
+        public static void Stage9Window_RepeatAlarmWithinWindow_RefreshesEndsAt()
         {
             var manager = new CameraAlarmWindowManager(5);
             var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
             manager.OpenOrRecord("cam-1", new List<string> { "10:1" }, t0);
 
             var second = manager.OpenOrRecord("cam-1", new List<string> { "10:1" }, t0.AddSeconds(2));
+
+            Assert.False(second.OpenedNew);
+            Assert.Equal(t0.AddSeconds(7), second.Window.EndsAt);
+            Assert.Equal(2, second.Window.TriggeredCount);
+        }
+
+        [TestCase]
+        public static void Stage9Window_RepeatAlarmWithOlderTimestamp_DoesNotShortenEndsAt()
+        {
+            var manager = new CameraAlarmWindowManager(5);
+            var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+            manager.OpenOrRecord("cam-1", new List<string> { "10:1" }, t0);
+
+            var second = manager.OpenOrRecord("cam-1", new List<string> { "10:1" }, t0.AddSeconds(-2));
 
             Assert.False(second.OpenedNew);
             Assert.Equal(t0.AddSeconds(5), second.Window.EndsAt);

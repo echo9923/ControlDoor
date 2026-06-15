@@ -269,7 +269,7 @@ namespace ControlDoor.CameraDoorInterlock
             }
             else
             {
-                logger?.Info("CameraDoorInterlock", "摄像头窗口内重复报警，不续期。", new LogFields
+                logger?.Info("CameraDoorInterlock", "摄像头窗口内重复报警，窗口已续期。", new LogFields
                 {
                     Extra =
                     {

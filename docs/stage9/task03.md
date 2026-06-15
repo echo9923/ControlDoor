@@ -11,7 +11,7 @@
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `Enabled` | `false` | 是否启用阶段 9。 |
-| `WindowSeconds` | `5` | 常闭窗口秒数。 |
+| `WindowSeconds` | `5` | 最后一条报警后的静默恢复延迟秒数。 |
 | `DoorControlSdkLockTimeoutMs` | `5000` | 兼容配置，设备通道模型中不作为互斥等待参数。 |
 | `RestoreRetryIntervalMs` | `1000` | 恢复失败重试间隔。恢复任务对可重试错误持续重试，无最大次数。 |
 | `Mappings` | `[]` | 摄像头到门禁目标映射。 |

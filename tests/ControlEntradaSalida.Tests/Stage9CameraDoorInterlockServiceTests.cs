@@ -85,6 +85,34 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void Stage9Service_ContinuousAlarmExtendsWindowAndRestoresAfterQuietPeriod()
+        {
+            using (var fixture = new Stage9Fixture())
+            {
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                fixture.SpinForControlGatewayCalls(1);
+
+                for (var second = 1; second <= 4; second++)
+                {
+                    fixture.EmitAiopAlarm(fixture.CameraIp);
+                    fixture.Service.ProcessEvents(t0.AddSeconds(second));
+                    fixture.SpinForControlGatewayCalls(1);
+                }
+
+                Assert.Equal(1, fixture.Gateway.Calls.Count(c => CommandOf(c) == GateControlCommand.AlwaysClose));
+
+                fixture.Service.ExpireWindows(t0.AddSeconds(5));
+                Assert.Equal(0, RestoreCount(fixture), "持续报警已将窗口续期，第 5 秒不应恢复。");
+                Assert.Equal(1, fixture.WindowManager.GetActive().Count);
+
+                fixture.Service.ExpireWindows(t0.AddSeconds(9));
+                Assert.Equal(1, RestoreCount(fixture), "最后一条报警后静默满 WindowSeconds 才应恢复。");
+            }
+        }
+
+        [TestCase]
         public static void Stage9Service_WindowEnd_SubmitsRestore()
         {
             using (var fixture = new Stage9Fixture())

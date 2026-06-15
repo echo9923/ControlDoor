@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace ControlDoor.CameraDoorInterlock
 {
     /// <summary>
-    /// 单个摄像头的报警窗口（task04）。每个摄像头独立窗口，窗口内重复报警不续期。
+    /// 单个摄像头的报警窗口（task04）。每个摄像头独立窗口，重复报警会续期。
     /// </summary>
     public sealed class CameraAlarmWindow
     {

@@ -5,7 +5,7 @@ using System.Linq;
 namespace ControlDoor.CameraDoorInterlock
 {
     /// <summary>
-    /// 管理每个摄像头独立的报警窗口（task04）。窗口内重复报警不刷新 EndsAt，只增加计数。
+    /// 管理每个摄像头独立的报警窗口（task04）。窗口内重复报警刷新 EndsAt，只增加计数且不重复常闭。
     /// 所有时间由调用方显式传入，便于单元测试。
     /// </summary>
     public sealed class CameraAlarmWindowManager
@@ -40,6 +40,12 @@ namespace ControlDoor.CameraDoorInterlock
                 if (windowsByKey.TryGetValue(cameraKey, out existing))
                 {
                     existing.TriggeredCount++;
+                    var extendedEndsAt = now.AddSeconds(windowSeconds);
+                    if (extendedEndsAt > existing.EndsAt)
+                    {
+                        existing.EndsAt = extendedEndsAt;
+                    }
+
                     return new CameraWindowOpenResult { OpenedNew = false, Window = existing };
                 }
 
