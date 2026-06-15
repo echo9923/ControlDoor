@@ -49,6 +49,12 @@ namespace ControlEntradaSalida.Tests
                 var device = (Dictionary<string, object>)devices[0];
                 Assert.Equal("办公区域", device["description"]);
                 Assert.True(device.ContainsKey("types"));
+                Assert.True(device.ContainsKey("isAlarmArmed"));
+                Assert.True(device.ContainsKey("alarmStatus"));
+                Assert.True(device.ContainsKey("alarmStatusMessage"));
+                Assert.Equal(false, device["isAlarmArmed"]);
+                Assert.Equal("Unavailable", device["alarmStatus"]);
+                Assert.Equal("设备不可布防", device["alarmStatusMessage"]);
             }
         }
 
@@ -69,6 +75,69 @@ namespace ControlEntradaSalida.Tests
                 var filteredDevices = (System.Collections.ICollection)filtered["devices"];
                 Assert.Equal(2, includedDevices.Count);
                 Assert.Equal(1, filteredDevices.Count);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceStatus_AlarmHandleReturnsArmedStatus()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Registry.RegisterSdkUserId(1, 1001, "serial-1", System.DateTime.Now);
+                fixture.Registry.RegisterAlarmHandle(1, 9001, System.DateTime.Now);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.GetDeviceStatus(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-armed" }));
+
+                var devices = (System.Collections.ArrayList)response["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+                Assert.Equal(true, device["isAlarmArmed"]);
+                Assert.Equal("Armed", device["alarmStatus"]);
+                Assert.Equal("已布防", device["alarmStatusMessage"]);
+                Assert.False(device.ContainsKey("alarmHandle"));
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceStatus_OnlineWithoutAlarmHandleReturnsNotArmed()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Registry.RegisterSdkUserId(1, 1001, "serial-1", System.DateTime.Now);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.GetDeviceStatus(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-not-armed" }));
+
+                var devices = (System.Collections.ArrayList)response["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+                Assert.Equal(false, device["isAlarmArmed"]);
+                Assert.Equal("NotArmed", device["alarmStatus"]);
+                Assert.Equal("在线但未布防", device["alarmStatusMessage"]);
+                Assert.False(device.ContainsKey("alarmHandle"));
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceStatus_DisabledJsonDeviceReturnsUnavailableAlarmStatus()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord(1, "10.0.4.1", enabled: false);
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.GetDeviceStatus(@"{""includeDisabled"":true}", new GrpcRequestContext { RequestId = "req-disabled-alarm" }));
+
+                var devices = (System.Collections.ArrayList)response["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+                Assert.Equal(false, device["isAlarmArmed"]);
+                Assert.Equal("Unavailable", device["alarmStatus"]);
+                Assert.Equal("设备不可布防", device["alarmStatusMessage"]);
+                Assert.False(device.ContainsKey("alarmHandle"));
             }
         }
 

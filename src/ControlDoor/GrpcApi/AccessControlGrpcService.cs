@@ -388,6 +388,7 @@ namespace ControlDoor.GrpcApi
                 return new Dictionary<string, object>();
             }
 
+            var alarmStatus = ResolveAlarmStatus(snapshot);
             return new Dictionary<string, object>
             {
                 ["deviceId"] = snapshot.DeviceId,
@@ -399,11 +400,44 @@ namespace ControlDoor.GrpcApi
                 ["isConnected"] = snapshot.IsConnected,
                 ["status"] = snapshot.Status.ToString(),
                 ["statusMessage"] = snapshot.StatusMessage,
+                ["isAlarmArmed"] = snapshot.AlarmHandle.HasValue,
+                ["alarmStatus"] = alarmStatus,
+                ["alarmStatusMessage"] = AlarmStatusMessage(alarmStatus),
                 ["types"] = snapshot.Types.Select(item => item.ToString()).ToList(),
                 ["lastChecked"] = FormatDate(snapshot.LastCheckedAt),
                 ["lastErrorCode"] = snapshot.LastErrorCode,
                 ["lastErrorMessage"] = snapshot.LastErrorMessage
             };
+        }
+
+        private static string ResolveAlarmStatus(DeviceRuntimeSnapshot snapshot)
+        {
+            if (snapshot.AlarmHandle.HasValue)
+            {
+                return "Armed";
+            }
+
+            if (snapshot.Enabled && snapshot.IsConnected && !snapshot.IsDeleting)
+            {
+                return "NotArmed";
+            }
+
+            return "Unavailable";
+        }
+
+        private static string AlarmStatusMessage(string alarmStatus)
+        {
+            if (alarmStatus == "Armed")
+            {
+                return "已布防";
+            }
+
+            if (alarmStatus == "NotArmed")
+            {
+                return "在线但未布防";
+            }
+
+            return "设备不可布防";
         }
 
         private static DeviceRuntimeSnapshot ToSnapshot(DeviceRecord record)

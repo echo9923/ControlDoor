@@ -360,6 +360,9 @@ x-api-key: 配置的APIKey
 | `isConnected` | 是否已连接 |
 | `status` | 状态枚举字符串 |
 | `statusMessage` | 状态说明 |
+| `isAlarmArmed` | 是否已成功布防，由运行时布防句柄推导，不暴露内部 `alarmHandle` |
+| `alarmStatus` | 布防状态：`Armed` 已布防，`NotArmed` 在线但未布防，`Unavailable` 当前不可布防 |
+| `alarmStatusMessage` | 布防状态中文说明 |
 | `types` | 设备声明态类型数组，合法值为 `Acs`、`FaceCapture`、`Camera` |
 | `lastChecked` | 最近检查时间 |
 | `lastErrorCode` | 最近 SDK 错误码 |
