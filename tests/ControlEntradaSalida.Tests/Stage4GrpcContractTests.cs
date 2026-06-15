@@ -29,6 +29,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.ReconnectDeviceFullName));
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.RearmDeviceAlarmFullName));
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.DisarmDeviceAlarmFullName));
+                Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.GetDeviceAlarmStatusFullName));
             }
         }
 
@@ -422,6 +423,20 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void AccessControlGrpcService_GetDeviceAlarmStatus_ApiKeyRejectsInvalidMetadata()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository, "secret");
+
+                var response = Deserialize(service.GetDeviceAlarmStatus(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-alarm-status-auth" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("UNAUTHENTICATED", response["code"]);
+            }
+        }
+
+        [TestCase]
         public static void AccessControlGrpcService_DeleteDevice_IsIdempotentSuccess()
         {
             using (var fixture = new Stage4Fixture())
@@ -481,6 +496,110 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("NOT_FOUND", rearm["code"]);
                 Assert.Equal(false, disarm["success"]);
                 Assert.Equal("NOT_FOUND", disarm["code"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceAlarmStatus_InvalidDeviceIdReturnsInvalidArgument()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.GetDeviceAlarmStatus(@"{""device_id"":0}", new GrpcRequestContext { RequestId = "req-alarm-status-invalid" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("INVALID_ARGUMENT", response["code"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceAlarmStatus_MissingDeviceReturnsNotFound()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.GetDeviceAlarmStatus(@"{""device_id"":99}", new GrpcRequestContext { RequestId = "req-alarm-status-missing" }));
+
+                Assert.Equal(false, response["success"]);
+                Assert.Equal("NOT_FOUND", response["code"]);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceAlarmStatus_ArmedDeviceReturnsHandleAndArmedStatus()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Registry.RegisterSdkUserId(1, 1001, "serial-1", System.DateTime.Now);
+                fixture.Registry.RegisterAlarmHandle(1, 9001, System.DateTime.Now);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+                var sdkCallCount = fixture.Gateway.Calls.Count;
+
+                var response = Deserialize(service.GetDeviceAlarmStatus(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-alarm-status-armed" }));
+
+                Assert.Equal(true, response["success"]);
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(1, response["deviceId"]);
+                Assert.Equal(true, response["armed"]);
+                Assert.Equal("Armed", response["alarmStatus"]);
+                Assert.Equal("已布防", response["alarmStatusMessage"]);
+                Assert.Equal(9001, response["alarmHandle"]);
+                Assert.Equal(true, response["connected"]);
+                Assert.Equal("Online", response["status"]);
+                Assert.Equal(sdkCallCount, fixture.Gateway.Calls.Count);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceAlarmStatus_OnlineWithoutAlarmHandleReturnsNotArmed()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Registry.RegisterSdkUserId(1, 1001, "serial-1", System.DateTime.Now);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+                var sdkCallCount = fixture.Gateway.Calls.Count;
+
+                var response = Deserialize(service.GetDeviceAlarmStatus(@"{""device_id"":1}", new GrpcRequestContext { RequestId = "req-alarm-status-not-armed" }));
+
+                Assert.Equal(true, response["success"]);
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(false, response["armed"]);
+                Assert.Equal("NotArmed", response["alarmStatus"]);
+                Assert.Equal("在线但未布防", response["alarmStatusMessage"]);
+                Assert.Equal(null, response["alarmHandle"]);
+                Assert.Equal(true, response["connected"]);
+                Assert.Equal("Online", response["status"]);
+                Assert.Equal(sdkCallCount, fixture.Gateway.Calls.Count);
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceAlarmStatus_DisabledOrOfflineReturnsUnavailable()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord(1, "10.0.4.1", enabled: false);
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+                var sdkCallCount = fixture.Gateway.Calls.Count;
+
+                var response = Deserialize(service.GetDeviceAlarmStatus(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-alarm-status-unavailable" }));
+
+                Assert.Equal(true, response["success"]);
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(false, response["armed"]);
+                Assert.Equal("Unavailable", response["alarmStatus"]);
+                Assert.Equal("设备不可布防", response["alarmStatusMessage"]);
+                Assert.Equal(null, response["alarmHandle"]);
+                Assert.Equal(false, response["connected"]);
+                Assert.Equal("Disabled", response["status"]);
+                Assert.Equal(sdkCallCount, fixture.Gateway.Calls.Count);
             }
         }
 

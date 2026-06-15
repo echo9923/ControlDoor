@@ -579,6 +579,46 @@ x-api-key: 配置的APIKey
 | `status` | 设备运行时状态 |
 | `message` | 处理说明 |
 
+### 5.8 `GetDeviceAlarmStatus`
+
+| 项目 | 内容 |
+| --- | --- |
+| 完整方法名 | `/device.AccessControlService/GetDeviceAlarmStatus` |
+| 方法类型 | Unary |
+| 用途 | 查询单台设备当前运行时报警布防状态；只读快照，不调用 SDK、不刷新设备状态、不修改 `AlarmHandle`、不影响登录连接 |
+
+```json
+{
+  "deviceId": 10
+}
+```
+
+请求字段：
+
+| 字段 | 别名 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `deviceId` | `device_id` | 是 | 设备 ID，必须大于 0 |
+
+处理语义：
+
+- 该接口只读取服务当前认知的运行时状态，不进行真实设备探测。
+- 布防状态判断与 `GetDeviceStatus` 保持一致：已有 `AlarmHandle` 为 `Armed`，在线但无句柄为 `NotArmed`，禁用、离线、删除中等不可布防状态为 `Unavailable`。
+- `alarmHandle` 仅在本专用查询接口中返回，用于现场排查；`GetDeviceStatus` 继续不暴露内部布防句柄。
+- 接口不会触发重新布防、撤防、登录、重连或健康检查。
+
+响应业务字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `deviceId` | 设备 ID |
+| `armed` | 是否已布防，即运行时是否有 `AlarmHandle` |
+| `alarmStatus` | 布防状态，取值 `Armed` / `NotArmed` / `Unavailable` |
+| `alarmStatusMessage` | 布防状态中文说明：`已布防` / `在线但未布防` / `设备不可布防` |
+| `alarmHandle` | 当前运行时布防句柄；未布防时为 null |
+| `connected` | 设备是否在线 |
+| `status` | 设备连接状态枚举字符串 |
+| `message` | 查询说明 |
+
 ## 6. 调用注意事项
 
 1. 当前 gRPC 使用明文传输，跨主机或跨网段部署时建议放在受控网络内，或在外层增加 TLS/网关。

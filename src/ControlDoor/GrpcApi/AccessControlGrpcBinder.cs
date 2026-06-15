@@ -26,6 +26,7 @@ namespace ControlDoor.GrpcApi
                 .AddMethod(CreateMethod("ReconnectDevice"), HandleReconnectDevice)
                 .AddMethod(CreateMethod("RearmDeviceAlarm"), HandleRearmDeviceAlarm)
                 .AddMethod(CreateMethod("DisarmDeviceAlarm"), HandleDisarmDeviceAlarm)
+                .AddMethod(CreateMethod("GetDeviceAlarmStatus"), HandleGetDeviceAlarmStatus)
                 .Build();
         }
 
@@ -72,6 +73,11 @@ namespace ControlDoor.GrpcApi
         private System.Threading.Tasks.Task<string> HandleDisarmDeviceAlarm(string request, ServerCallContext context)
         {
             return System.Threading.Tasks.Task.FromResult(service.DisarmDeviceAlarm(request, ToContext(context)));
+        }
+
+        private System.Threading.Tasks.Task<string> HandleGetDeviceAlarmStatus(string request, ServerCallContext context)
+        {
+            return System.Threading.Tasks.Task.FromResult(service.GetDeviceAlarmStatus(request, ToContext(context)));
         }
 
         private static GrpcRequestContext ToContext(ServerCallContext callContext)

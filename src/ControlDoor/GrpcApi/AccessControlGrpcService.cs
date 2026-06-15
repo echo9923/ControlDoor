@@ -16,6 +16,7 @@ namespace ControlDoor.GrpcApi
         public const string ReconnectDeviceFullName = "/device.AccessControlService/ReconnectDevice";
         public const string RearmDeviceAlarmFullName = "/device.AccessControlService/RearmDeviceAlarm";
         public const string DisarmDeviceAlarmFullName = "/device.AccessControlService/DisarmDeviceAlarm";
+        public const string GetDeviceAlarmStatusFullName = "/device.AccessControlService/GetDeviceAlarmStatus";
 
         private readonly DeviceLifecycleService lifecycle;
         private readonly IDeviceRepository repository;
@@ -36,7 +37,8 @@ namespace ControlDoor.GrpcApi
             DisconnectDeviceFullName,
             ReconnectDeviceFullName,
             RearmDeviceAlarmFullName,
-            DisarmDeviceAlarmFullName
+            DisarmDeviceAlarmFullName,
+            GetDeviceAlarmStatusFullName
         };
 
         public string GetDeviceStatus(string requestJson, GrpcRequestContext context = null)
@@ -332,6 +334,30 @@ namespace ControlDoor.GrpcApi
             return JsonResponse.Create(context.RequestId, true, "OK", "断开布防已处理。", ToAlarmOperationResponse(parsed.DeviceId, result.Message));
         }
 
+        public string GetDeviceAlarmStatus(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            var auth = Authorize(context);
+            if (!auth.Success)
+            {
+                return Error(context, auth.Code, auth.Message);
+            }
+
+            var parsed = ParseDeviceIdRequest(requestJson, context);
+            if (!parsed.Success)
+            {
+                return Error(context, parsed.Code, parsed.Message);
+            }
+
+            var snapshot = FindDeviceAlarmStatusSnapshot(parsed.DeviceId);
+            if (snapshot == null)
+            {
+                return Error(context, "NOT_FOUND", "设备不存在。");
+            }
+
+            return JsonResponse.Create(context.RequestId, true, "OK", "查询布防状态成功。", ToDeviceAlarmStatusResponse(snapshot, "查询布防状态成功。"));
+        }
+
         private SelectionResult SelectDevices(JsonObject request, bool includeDisabled)
         {
             var ids = request.GetIntList("deviceIds", "device_ids");
@@ -444,6 +470,34 @@ namespace ControlDoor.GrpcApi
                 ["alarmHandle"] = snapshot == null ? null : snapshot.AlarmHandle,
                 ["connected"] = snapshot != null && snapshot.IsConnected,
                 ["status"] = snapshot == null ? "Deleted" : snapshot.Status.ToString(),
+                ["message"] = message ?? string.Empty
+            };
+        }
+
+        private DeviceRuntimeSnapshot FindDeviceAlarmStatusSnapshot(int deviceId)
+        {
+            var lookup = lifecycle.Registry.TryGetByDeviceId(deviceId);
+            if (lookup.Found)
+            {
+                return lookup.Snapshot;
+            }
+
+            var record = repository.GetByDeviceId(deviceId);
+            return record == null ? null : ToSnapshot(record);
+        }
+
+        private static IDictionary<string, object> ToDeviceAlarmStatusResponse(DeviceRuntimeSnapshot snapshot, string message)
+        {
+            var alarmStatus = ResolveAlarmStatus(snapshot);
+            return new Dictionary<string, object>
+            {
+                ["deviceId"] = snapshot.DeviceId,
+                ["armed"] = snapshot.AlarmHandle.HasValue,
+                ["alarmStatus"] = alarmStatus,
+                ["alarmStatusMessage"] = AlarmStatusMessage(alarmStatus),
+                ["alarmHandle"] = snapshot.AlarmHandle.HasValue ? (object)snapshot.AlarmHandle.Value : null,
+                ["connected"] = snapshot.IsConnected,
+                ["status"] = snapshot.Status.ToString(),
                 ["message"] = message ?? string.Empty
             };
         }
