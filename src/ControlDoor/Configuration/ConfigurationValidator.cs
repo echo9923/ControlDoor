@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ControlDoor.Configuration
 {
@@ -247,6 +248,8 @@ namespace ControlDoor.Configuration
 
             ValidateCameraAlarmDoorInterlock(settings, warnings);
 
+            ValidateDeviceStore(settings, errors, warnings);
+
             return new ConfigurationValidationResult(settings, errors, warnings);
         }
 
@@ -384,6 +387,128 @@ namespace ControlDoor.Configuration
                     warnings.Add("CameraAlarmDoorInterlock.Enabled=true 但无有效映射，阶段 9 模块将自禁用。");
                 }
             }
+        }
+
+        // 校验设备清单：文件路径、内联字段格式、deviceId/IP 唯一性、types 合法性。
+        // 此处只做静态结构校验，不解析 FilePath 文件内容（文件读取由 JsonDeviceRepository 负责），
+        // 文件不存在不算配置错误，避免空目录首次启动被拦截。
+        private static void ValidateDeviceStore(AppSettings settings, ICollection<string> errors, ICollection<string> warnings)
+        {
+            var section = settings.Devices ?? new DeviceStoreOptions();
+            settings.Devices = section;
+            section.Items = section.Items ?? new List<DeviceStoreItem>();
+
+            section.FilePath = StringOrDefault(section.FilePath, "Configuration\\devices.json", "Devices.FilePath", warnings);
+
+            var seenIds = new HashSet<int>();
+            var seenIps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < section.Items.Count; i++)
+            {
+                var item = section.Items[i];
+                if (item == null)
+                {
+                    warnings.Add("Devices.Items[" + i + "] 为空，已跳过。");
+                    continue;
+                }
+
+                item.Name = (item.Name ?? string.Empty).Trim();
+                item.IpAddress = (item.IpAddress ?? string.Empty).Trim();
+                item.Username = string.IsNullOrWhiteSpace(item.Username) ? "admin" : item.Username.Trim();
+                item.Remark = item.Remark ?? string.Empty;
+
+                var prefix = "Devices.Items[" + i + "]";
+                if (item.DeviceId <= 0)
+                {
+                    errors.Add(prefix + ".deviceId 必须大于 0。");
+                }
+                else if (!seenIds.Add(item.DeviceId))
+                {
+                    errors.Add(prefix + ".deviceId=" + item.DeviceId + " 重复。");
+                }
+
+                if (string.IsNullOrWhiteSpace(item.Name))
+                {
+                    errors.Add(prefix + ".name 不能为空。");
+                }
+
+                if (string.IsNullOrWhiteSpace(item.IpAddress))
+                {
+                    errors.Add(prefix + ".ipAddress 不能为空。");
+                }
+                else if (!seenIps.Add(item.IpAddress))
+                {
+                    errors.Add(prefix + ".ipAddress=" + item.IpAddress + " 重复。");
+                }
+
+                if (item.Port < 1 || item.Port > 65535)
+                {
+                    warnings.Add(prefix + ".port 非法，已回退为 8000。");
+                    item.Port = 8000;
+                }
+
+                if (string.IsNullOrWhiteSpace(item.Password))
+                {
+                    errors.Add(prefix + ".password 不能为空。");
+                }
+
+                // 归一化并校验 types，剔除非法值；空 types 视为配置错误（启动期无法分类）。
+                item.Types = item.Types ?? new List<string>();
+                var normalized = new List<string>();
+                foreach (var raw in item.Types)
+                {
+                    if (string.IsNullOrWhiteSpace(raw))
+                    {
+                        continue;
+                    }
+
+                    var matched = NormalizeDeviceType(raw);
+                    if (matched == null)
+                    {
+                        warnings.Add(prefix + ".types 含非法值 \"" + raw + "\"，已剔除（合法值: Acs / FaceCapture / Camera）。");
+                        continue;
+                    }
+
+                    if (!normalized.Any(existing => string.Equals(existing, matched, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        normalized.Add(matched);
+                    }
+                }
+
+                if (normalized.Count == 0)
+                {
+                    errors.Add(prefix + ".types 不能为空（至少声明一个: Acs / FaceCapture / Camera）。");
+                }
+                else
+                {
+                    item.Types = normalized;
+                }
+            }
+        }
+
+        private static string NormalizeDeviceType(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            var value = raw.Trim();
+            if (string.Equals(value, "Acs", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Acs";
+            }
+
+            if (string.Equals(value, "FaceCapture", StringComparison.OrdinalIgnoreCase))
+            {
+                return "FaceCapture";
+            }
+
+            if (string.Equals(value, "Camera", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Camera";
+            }
+
+            return null;
         }
     }
 }

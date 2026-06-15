@@ -14,6 +14,7 @@
 | `EmployeeId` | 员工编号，对应 `employee_id`。 |
 | `Operation` | `Permission`、`Person`、`Face`、`DeletePerson`、`DeleteFace`。 |
 | `PermissionLevel` | 权限同步目标值。 |
+| `PermissionPayloadJson` | 权限补偿载荷 JSON，保存员工号、权限等级和可选姓名；旧数据为空时用员工号兜底。 |
 | `PersonPayloadJson` | 人员下发载荷 JSON。 |
 | `FacePayloadJson` | 人脸下发载荷 JSON。 |
 | `ReasonCode` | 产生补偿的原因，例如 `DEVICE_OFFLINE`、`SDK_RETRYABLE_ERROR`。 |
@@ -40,11 +41,11 @@
 
 | 意图 | 字段变化 |
 | --- | --- |
-| 权限同步 | `permission_level = 新值`，`permission_pending = 1`，`permission_sync_completion_blocked = 1`。 |
+| 权限同步 | `permission_level = 新值`，`permission_payload = 新 payload`，`permission_pending = 1`，`permission_sync_completion_blocked = 1`。 |
 | 人员下发 | `person_payload = 新 payload`，`person_pending = 1`，`delete_person_pending = 0`。 |
 | 人脸下发 | `face_payload = 新 payload`，`face_pending = 1`，`delete_face_pending = 0`。 |
 | 删除人脸 | `delete_face_pending = 1`，`face_pending = 0`，`face_payload = NULL`。 |
-| 删除人员 | `delete_person_pending = 1`，`person_pending = 0`，`face_pending = 0`，`delete_face_pending = 0`，`person_payload = NULL`，`face_payload = NULL`。 |
+| 删除人员 | `delete_person_pending = 1`，`permission_pending = 0`，`person_pending = 0`，`face_pending = 0`，`delete_face_pending = 0`，`permission_payload = NULL`，`person_payload = NULL`，`face_payload = NULL`。 |
 
 删除人员表示设备端该员工不应继续存在，因此会清除人员、人脸相关待下发动作。权限 pending 默认一并清除，避免删除人员后又单独补偿权限；如果后续业务重新下发人员或权限，会生成新的补偿意图。
 
@@ -93,7 +94,7 @@ code=DEVICE_OFFLINE; message=设备离线，已进入补偿; requestId=...
 
 | 不做内容 | 原因 |
 | --- | --- |
-| 不修改表结构 | 现有数据库零结构变更。 |
+| 不破坏既有结构 | 只允许幂等补齐 `permission_payload` 这类兼容列，不破坏既有列、索引和唯一约束。 |
 | 不记录完整操作历史 | 唯一键决定一行只表达最新状态。 |
 | 不执行设备调用 | 本任务只写补偿状态。 |
 | 不清理终态 | 清理由任务 6.6 负责。 |

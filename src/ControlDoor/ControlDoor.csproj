@@ -26,5 +26,13 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Configuration\appsettings.json</Link>
     </Content>
+    <Content Include="Configuration\appsettings.deploy.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Configuration\appsettings.deploy.json</Link>
+    </Content>
+    <Content Include="Configuration\devices.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Configuration\devices.json</Link>
+    </Content>
   </ItemGroup>
 </Project>

@@ -25,6 +25,8 @@ namespace ControlDoor.Configuration
 
         public CameraAlarmDoorInterlockOptions CameraAlarmDoorInterlock { get; set; } = new CameraAlarmDoorInterlockOptions();
 
+        public DeviceStoreOptions Devices { get; set; } = new DeviceStoreOptions();
+
         public void EnsureGroups()
         {
             Service = Service ?? new ServiceOptions();
@@ -37,6 +39,7 @@ namespace ControlDoor.Configuration
             FaceEventLogging = FaceEventLogging ?? new FaceEventLoggingOptions();
             FaceEnrollment = FaceEnrollment ?? new FaceEnrollmentOptions();
             CameraAlarmDoorInterlock = CameraAlarmDoorInterlock ?? new CameraAlarmDoorInterlockOptions();
+            Devices = Devices ?? new DeviceStoreOptions();
         }
     }
 
@@ -97,6 +100,10 @@ namespace ControlDoor.Configuration
         public int ReconnectBaseDelayMs { get; set; } = 5000;
 
         public int ReconnectMaxDelayMs { get; set; } = 300000;
+
+        public int ReArmBaseDelayMs { get; set; } = 1000;
+
+        public int ReArmMaxDelayMs { get; set; } = 60000;
     }
 
     public sealed class HikvisionSdkOptions

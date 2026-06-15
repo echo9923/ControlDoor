@@ -14,7 +14,13 @@ namespace ControlDoor.Devices.Management
 
         public int ReconnectMaxDelayMs { get; set; } = 60000;
 
-        public int MaxReconnectAttempts { get; set; } = 10;
+        // 布防失败后无限重试的指数退避参数。
+        public int ReArmBaseDelayMs { get; set; } = 1000;
+
+        public int ReArmMaxDelayMs { get; set; } = 60000;
+
+        // 0 或负数表示不限重连次数（默认无限重试）；显式设为正数则作为最大重连次数刹车。
+        public int MaxReconnectAttempts { get; set; } = 0;
 
         public int FailureThreshold { get; set; } = 3;
 

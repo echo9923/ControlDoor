@@ -10,7 +10,7 @@
 
 | 边界 | 要求 |
 | --- | --- |
-| 现有表零结构变更 | 不修改 `device_operation_retry_states` 字段、索引、默认值、唯一约束和类型。 |
+| 表结构兼容变更 | 仅允许幂等补齐当前补偿语义必需的兼容列；不得破坏既有字段、索引、默认值、唯一约束和类型。 |
 | 不新增阶段 6 表 | 阶段 6 的持久化只使用现有补偿表。 |
 | 同设备同员工唯一 | 严格遵守 `device_id + employee_id` 唯一状态行。 |
 | 设备调用通道化 | 补偿重试必须通过 `DeviceSdkDispatcher` 投递，不能直接调用 SDK 或 ISAPI。 |
@@ -49,7 +49,7 @@
 
 | 字段组 | 语义 |
 | --- | --- |
-| `permission_level`、`permission_pending` | 需要把该员工权限同步到指定等级。 |
+| `permission_level`、`permission_payload`、`permission_pending` | 需要把该员工权限同步到指定等级；payload 保存请求中的员工号、权限等级和可选姓名。 |
 | `person_payload`、`person_pending` | 需要把人员基础信息下发到设备。 |
 | `face_payload`、`face_pending` | 需要把人脸信息下发到设备。 |
 | `delete_person_pending` | 需要删除设备端人员。 |
@@ -65,7 +65,7 @@
 
 | 新意图 | 合并规则 |
 | --- | --- |
-| 新权限同步 | 覆盖 `permission_level`，置 `permission_pending = 1`。 |
+| 新权限同步 | 覆盖 `permission_level` 和 `permission_payload`，置 `permission_pending = 1`。 |
 | 新人员下发 | 覆盖 `person_payload`，置 `person_pending = 1`，清除 `delete_person_pending`。 |
 | 新人脸下发 | 覆盖 `face_payload`，置 `face_pending = 1`，清除 `delete_face_pending`。 |
 | 新删除人员 | 置 `delete_person_pending = 1`，清除 `permission_pending`、`person_pending`、`face_pending`、`delete_face_pending`。 |

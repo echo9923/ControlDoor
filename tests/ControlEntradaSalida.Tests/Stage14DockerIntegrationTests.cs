@@ -34,7 +34,7 @@ namespace ControlEntradaSalida.Tests
             var connectionString = Environment.GetEnvironmentVariable(ConnectionStringVariable);
             if (string.IsNullOrWhiteSpace(connectionString))
             {
-                connectionString = "Server=127.0.0.1,14333;Database=ruoyi-vue-pro;User Id=door_user;Password=change_me;TrustServerCertificate=True;";
+                connectionString = "Server=127.0.0.1,14333;Database=ruoyi-vue-pro;User Id=admin_user;Password=123456;TrustServerCertificate=True;";
             }
 
             TestWorkspace.WriteConfig(runDirectory, CreateConfig(connectionString, port));

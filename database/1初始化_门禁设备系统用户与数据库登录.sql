@@ -43,69 +43,6 @@ GO
 USE [ruoyi-vue-pro];
 GO
 
-/* ========== 设备表 devices ========== */
-IF OBJECT_ID(N'dbo.devices', N'U') IS NOT NULL
-    DROP TABLE dbo.devices;
-GO
-
-CREATE TABLE dbo.devices (
-    device_id        INT           NOT NULL,
-    device_name      NVARCHAR(255) NOT NULL,
-    description      NVARCHAR(255) NULL,
-    ip_address       NVARCHAR(20)  NOT NULL,
-    port             NVARCHAR(5)   NOT NULL DEFAULT N'8000',
-    username         NVARCHAR(45)  NOT NULL DEFAULT N'admin',
-    [password]       NVARCHAR(255) NOT NULL DEFAULT N'SXSSF1314te',
-    status           TINYINT       NOT NULL DEFAULT 1,
-    last_used_time   DATETIME2(0)  NULL,
-    created_at       DATETIME2(0)  NOT NULL DEFAULT SYSDATETIME(),
-    updated_at       DATETIME2(0)  NOT NULL DEFAULT SYSDATETIME(),
-    CONSTRAINT PK_devices PRIMARY KEY (device_id)
-);
-GO
-
-CREATE INDEX idx_ip_address ON dbo.devices(ip_address);
-CREATE INDEX idx_status     ON dbo.devices(status);
-GO
-
-CREATE TRIGGER trg_devices_update
-ON dbo.devices
-AFTER UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    UPDATE d
-    SET updated_at = SYSDATETIME()
-    FROM dbo.devices AS d
-    INNER JOIN inserted AS i ON d.device_id = i.device_id;
-END;
-GO
-
-EXEC sys.sp_addextendedproperty
-    @name = N'MS_Description',
-    @value = N'门禁设备信息表',
-    @level0type = N'SCHEMA', @level0name = N'dbo',
-    @level1type = N'TABLE',  @level1name = N'devices';
-GO
-
-/* ========== 初始化设备数据 ========== */
-INSERT INTO dbo.devices (device_id, device_name, ip_address, port, username, [password], description, status, created_at, updated_at) VALUES
-
-(10, N'物资仓库西门门禁进', N'10.98.26.50', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(11, N'生产区门禁右进', N'10.98.26.56', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(12, N'物资仓库西门门禁出', N'10.98.26.51', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(13, N'煤炭路门禁进', N'10.98.26.52', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(14, N'煤炭路门禁出', N'10.98.26.53', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(15, N'生产区门禁左进', N'10.98.26.54', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(16, N'生产区门禁左出', N'10.98.26.55', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(17, N'生产区门禁右出', N'10.98.26.57', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(18, N'生产区西门门禁左进', N'10.98.26.70', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(19, N'生产区西门门禁右进', N'10.98.26.69', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(20, N'生产区西门门禁左出', N'10.98.26.71', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME()),
-(21, N'生产区西门门禁右出', N'10.98.26.72', N'8000', N'admin', N'xxzx@135', N'生产区域', 1, SYSDATETIME(), SYSDATETIME());
-GO
-
 /* ========== 人员表 system_users ========== */
 IF OBJECT_ID(N'dbo.system_users', N'U') IS NOT NULL
     DROP TABLE dbo.system_users;

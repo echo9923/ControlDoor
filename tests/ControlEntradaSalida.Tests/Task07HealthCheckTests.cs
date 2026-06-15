@@ -77,7 +77,7 @@ namespace ControlEntradaSalida.Tests
         public static void HealthCheckService_Stage1OptionalDatabaseTablesRemainWarnings()
         {
             var runDirectory = TestWorkspace.Create();
-            TestWorkspace.WriteConfig(runDirectory, @"{""Database"":{""ConnectionString"":""Server=.;Database=test;""}}");
+            TestWorkspace.WriteConfig(runDirectory, @"{""Service"":{""GrpcListenPort"":" + TestWorkspace.FindAvailablePort() + @"},""Database"":{""ConnectionString"":""Server=.;Database=test;""}}");
             var settings = new ConfigurationLoader().Load(runDirectory).Settings;
             var database = new RecordingDatabaseClient { FailOperationName = "ReadOptionalTable:dbo.face_event_checkpoint" };
 
@@ -92,7 +92,7 @@ namespace ControlEntradaSalida.Tests
         [TestCase]
         public static void DatabaseHealthCheckItem_RequiredDatabaseFailure_Fails()
         {
-            var database = new RecordingDatabaseClient { FailOperationName = "ReadTable:dbo.devices" };
+            var database = new RecordingDatabaseClient { FailOperationName = "ReadTable:dbo.system_users" };
             var result = new DatabaseHealthCheckItem(database).Run(NewContext(TestWorkspace.Create()));
 
             Assert.Equal(HealthCheckStatus.Failed, result.Status);

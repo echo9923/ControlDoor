@@ -21,6 +21,8 @@ namespace ControlDoor.Devices.Management
         private readonly DeviceLifecycleOptions options;
         private readonly ServiceLogger logger;
         private readonly Dictionary<int, int> healthFailureCounts = new Dictionary<int, int>();
+
+        private readonly Dictionary<int, int> reArmFailureCounts = new Dictionary<int, int>();
         private bool disposed;
 
         public DeviceLifecycleService(
@@ -131,6 +133,17 @@ namespace ControlDoor.Devices.Management
                 };
             }
 
+            if (registry.TryGetByIpAddress(record.IpAddress).Found)
+            {
+                return new DeviceOperationResult
+                {
+                    Success = false,
+                    Code = "INVALID_ARGUMENT",
+                    DeviceId = record.DeviceId,
+                    Message = "设备 IP 已存在。"
+                };
+            }
+
             if (repository.ExistsIpAddress(record.IpAddress))
             {
                 return new DeviceOperationResult
@@ -160,6 +173,22 @@ namespace ControlDoor.Devices.Management
             var register = registry.Register(record.ToRuntimeOptions(DateTime.Now));
             if (!register.Success)
             {
+                if (persist)
+                {
+                    var rollback = repository.DeleteDevice(record.DeviceId);
+                    if (!rollback.Success)
+                    {
+                        logger?.Error("DeviceLifecycle", "设备运行时注册失败，JSON 设备清单回滚失败: " + rollback.Message, null);
+                        return new DeviceOperationResult
+                        {
+                            Success = false,
+                            Code = register.Code,
+                            DeviceId = record.DeviceId,
+                            Message = register.Message + "；JSON 设备清单回滚失败，请人工检查 devices.json: " + rollback.Message
+                        };
+                    }
+                }
+
                 return new DeviceOperationResult
                 {
                     Success = false,
@@ -229,6 +258,7 @@ namespace ControlDoor.Devices.Management
             }
 
             CancelDelayedReconnect(deviceId);
+            CancelDelayedReArm(deviceId);
             var task = CreateDisconnectTask(deviceId, "ManualDisconnect", DeviceConnectionStatus.Disconnected, requestId);
             var result = dispatcher.SubmitAndWaitAsync(task).GetAwaiter().GetResult();
             return FromTaskResult(result);
@@ -254,6 +284,7 @@ namespace ControlDoor.Devices.Management
             }
 
             CancelDelayedReconnect(deviceId);
+            CancelDelayedReArm(deviceId);
             registry.ResetReconnect(deviceId, DateTime.Now);
             var cleanup = CreateDisconnectTask(deviceId, "ReconnectCleanup", DeviceConnectionStatus.Offline, requestId);
             cleanup.Priority = force ? DeviceTaskPriority.Critical : DeviceTaskPriority.High;
@@ -277,6 +308,7 @@ namespace ControlDoor.Devices.Management
             }
 
             CancelDelayedReconnect(deviceId);
+            CancelDelayedReArm(deviceId);
             var delete = repository.DeleteDevice(deviceId);
             if (!delete.Success)
             {
@@ -312,6 +344,7 @@ namespace ControlDoor.Devices.Management
             {
                 try
                 {
+                    CancelDelayedReArm(snapshot.DeviceId);
                     var task = CreateDisconnectTask(snapshot.DeviceId, "ServiceStopCleanup", DeviceConnectionStatus.Offline, string.Empty);
                     task.Priority = DeviceTaskPriority.Critical;
                     dispatcher.SubmitAndWaitAsync(task).GetAwaiter().GetResult();
@@ -375,7 +408,6 @@ namespace ControlDoor.Devices.Management
                         return DeviceTaskResult.FromTask(context.Task, false, register.Code, register.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
                     }
 
-                    repository.UpdateLastUsedTime(deviceId);
                     ClearHealthFailures(deviceId);
                     LogLifecycleSuccess(context, "设备登录成功。", started, fields =>
                     {
@@ -515,12 +547,18 @@ namespace ControlDoor.Devices.Management
                         fields.Extra["alarmDeployType"] = options.AlarmDeployType.ToString();
                     });
 
+                    ClearReArmFailures(deviceId);
                     return DeviceTaskResult.FromTask(context.Task, true, "OK", "布防成功。", DeviceConnectionStatus.Online, started, DateTime.Now);
                 }
                 catch (Exception ex)
                 {
                     var error = ToRuntimeError("DeviceArmAlarm", ex, DateTime.Now, retryable: true);
                     context.Registry.RecordError(deviceId, error, DateTime.Now, DeviceConnectionStatus.Degraded);
+                    // 布防失败后按指数退避无限重试，直到成功或设备被手动断开/删除/服务停止。
+                    if (options.AlarmEnabled)
+                    {
+                        ScheduleReArm(deviceId, error.Message);
+                    }
                     var result = DeviceTaskResult.FromTask(context.Task, false, error.Code, error.Message, DeviceConnectionStatus.Degraded, started, DateTime.Now);
                     result.SdkErrorCode = error.SdkErrorCode;
                     result.Retryable = true;
@@ -613,7 +651,9 @@ namespace ControlDoor.Devices.Management
                 return;
             }
 
-            if (snapshot.Reconnect.AttemptCount >= Math.Max(1, options.MaxReconnectAttempts))
+            // 仅当显式配置为正数时才作为最大重连次数刹车；0/负数 = 无限重试直到成功。
+            if (options.MaxReconnectAttempts > 0
+                && snapshot.Reconnect.AttemptCount >= options.MaxReconnectAttempts)
             {
                 registry.MarkDisconnected(
                     deviceId,
@@ -643,6 +683,42 @@ namespace ControlDoor.Devices.Management
         private void CancelDelayedReconnect(int deviceId)
         {
             delayedScheduler?.CancelByTaskKey("stage4:reconnect:" + deviceId, "manual operation");
+        }
+
+        // 布防失败后无限重试，直到成功或设备被手动断开/删除/服务停止。门控与重连一致。
+        private void ScheduleReArm(int deviceId, string reason)
+        {
+            var snapshot = registry.TryGetByDeviceId(deviceId).Snapshot;
+            if (snapshot == null ||
+                snapshot.Status == DeviceConnectionStatus.Disconnected ||
+                snapshot.Status == DeviceConnectionStatus.InvalidConfig ||
+                snapshot.Status == DeviceConnectionStatus.Disabled ||
+                snapshot.Reconnect.ManualDisconnected)
+            {
+                return;
+            }
+
+            var attempt = IncrementReArmFailure(deviceId);
+            var policy = RetryBackoffPolicy.Exponential(
+                TimeSpan.FromMilliseconds(options.ReArmBaseDelayMs),
+                TimeSpan.FromMilliseconds(options.ReArmMaxDelayMs));
+            var delay = policy.CalculateDelay(attempt);
+            var dueAt = DateTime.Now.Add(delay);
+            delayedScheduler?.Schedule(new DelayedDeviceTask(
+                deviceId,
+                DeviceTaskType.SetupAlarm,
+                DeviceTaskPriority.Normal,
+                dueAt,
+                "stage4:rearm:" + deviceId,
+                "Stage4ReArm",
+                () => CreateArmAlarmTask(deviceId, string.Empty),
+                DateTime.Now));
+        }
+
+        private void CancelDelayedReArm(int deviceId)
+        {
+            ClearReArmFailures(deviceId);
+            delayedScheduler?.CancelByTaskKey("stage4:rearm:" + deviceId, "manual operation");
         }
 
         private void LogLifecycleSuccess(DeviceTaskContext context, string message, DateTime startedAt, Action<LogFields> configure = null)
@@ -707,6 +783,11 @@ namespace ControlDoor.Devices.Management
                 return ValidationResult.Failed("port 必须在 1-65535 范围内。");
             }
 
+            if (record.Types == null || record.Types.Count == 0)
+            {
+                return ValidationResult.Failed("types 不能为空。");
+            }
+
             if (string.IsNullOrWhiteSpace(record.Password))
             {
                 return ValidationResult.Failed("password 不能为空。");
@@ -735,6 +816,26 @@ namespace ControlDoor.Devices.Management
             lock (gate)
             {
                 healthFailureCounts.Remove(deviceId);
+            }
+        }
+
+        private int IncrementReArmFailure(int deviceId)
+        {
+            lock (gate)
+            {
+                int count;
+                reArmFailureCounts.TryGetValue(deviceId, out count);
+                count++;
+                reArmFailureCounts[deviceId] = count;
+                return count;
+            }
+        }
+
+        private void ClearReArmFailures(int deviceId)
+        {
+            lock (gate)
+            {
+                reArmFailureCounts.Remove(deviceId);
             }
         }
 

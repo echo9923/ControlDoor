@@ -26,7 +26,7 @@ namespace ControlEntradaSalida.Tests
             new DatabaseHealthCheck(fake).Run();
 
             var requiredIndex = fake.Commands.ToList().FindIndex(item => item.OperationName == "ReadTable:dbo.system_users");
-            var optionalIndex = fake.Commands.ToList().FindIndex(item => item.OperationName == "ReadOptionalTable:dbo.attendance_gate_v2");
+            var optionalIndex = fake.Commands.ToList().FindIndex(item => item.OperationName == "ReadOptionalTable:dbo.face_event_checkpoint");
 
             Assert.True(requiredIndex > 0);
             Assert.True(optionalIndex > requiredIndex);
@@ -42,8 +42,8 @@ namespace ControlEntradaSalida.Tests
         [TestCase]
         public static void SqlServerDatabase_EnsureReadOnly_RejectsSelectContainingMutatingKeyword()
         {
-            AssertSqlRejected("SELECT * FROM dbo.devices; DROP TABLE dbo.devices");
-            AssertSqlRejected("SELECT * FROM dbo.devices WHERE name = 'ALTER'");
+            AssertSqlRejected("SELECT * FROM dbo.system_users; DROP TABLE dbo.system_users");
+            AssertSqlRejected("SELECT * FROM dbo.system_users WHERE name = 'ALTER'");
         }
 
         [TestCase]
@@ -56,7 +56,7 @@ namespace ControlEntradaSalida.Tests
         [TestCase]
         public static void DatabaseHealthReport_OptionalFailureWithRequiredSuccess_IsSuccess()
         {
-            var fake = new RecordingDatabaseClient { FailOperationName = "ReadOptionalTable:dbo.device_operation_retry_states" };
+            var fake = new RecordingDatabaseClient { FailOperationName = "ReadOptionalTable:dbo.face_event_checkpoint" };
 
             var report = new DatabaseHealthCheck(fake).Run();
 

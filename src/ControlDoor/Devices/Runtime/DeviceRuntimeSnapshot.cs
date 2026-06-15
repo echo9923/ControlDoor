@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using ControlDoor.Devices.Management;
 
 namespace ControlDoor.Devices.Runtime
 {
@@ -19,14 +22,16 @@ namespace ControlDoor.Devices.Runtime
             DateTime? lastLoginAt,
             DateTime? lastLogoutAt,
             DateTime? lastCheckedAt,
-            DateTime? lastUsedAt,
             DeviceRuntimeError lastError,
             ReconnectState reconnect,
             DateTime updatedAt,
-            DeviceQueueInfo queueInfo)
+            DeviceQueueInfo queueInfo,
+            IEnumerable<DeviceType> types = null,
+            string description = null)
         {
             DeviceId = deviceId;
             DeviceName = deviceName ?? string.Empty;
+            Description = description ?? string.Empty;
             IpAddress = ipAddress ?? string.Empty;
             Port = port;
             Enabled = enabled;
@@ -39,16 +44,18 @@ namespace ControlDoor.Devices.Runtime
             LastLoginAt = lastLoginAt;
             LastLogoutAt = lastLogoutAt;
             LastCheckedAt = lastCheckedAt;
-            LastUsedAt = lastUsedAt;
             LastError = lastError == null ? null : lastError.Clone();
             Reconnect = reconnect == null ? ReconnectState.New() : reconnect.Clone();
             UpdatedAt = updatedAt;
             QueueInfo = queueInfo == null ? null : queueInfo.Clone();
+            Types = (types ?? Enumerable.Empty<DeviceType>()).ToList().AsReadOnly();
         }
 
         public int DeviceId { get; private set; }
 
         public string DeviceName { get; private set; }
+
+        public string Description { get; private set; }
 
         public string IpAddress { get; private set; }
 
@@ -78,8 +85,6 @@ namespace ControlDoor.Devices.Runtime
 
         public DateTime? LastCheckedAt { get; private set; }
 
-        public DateTime? LastUsedAt { get; private set; }
-
         public DeviceRuntimeError LastError { get; private set; }
 
         public string LastErrorCode => LastError == null ? null : LastError.Code;
@@ -91,5 +96,8 @@ namespace ControlDoor.Devices.Runtime
         public DateTime UpdatedAt { get; private set; }
 
         public DeviceQueueInfo QueueInfo { get; private set; }
+
+        // 声明态设备类型，来自设备清单；不可变快照，供消费方按角色筛选。
+        public IReadOnlyList<DeviceType> Types { get; private set; }
     }
 }

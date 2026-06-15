@@ -116,7 +116,7 @@ namespace ControlDoor.Permissions
 
             try
             {
-                await ExecuteGatewayOperationAsync(state, operation, snapshot.SdkUserId.Value, context.CancellationToken).ConfigureAwait(false);
+                await ExecuteGatewayOperationAsync(state, operation, snapshot, context.CancellationToken).ConfigureAwait(false);
                 var success = DeviceTaskResult.FromTask(task, true, "OK", SuccessMessage(operation), snapshot.Status, started, DateTime.Now);
                 success.OperationName = RetryOperationNames.ToStage5OperationName(operation);
                 return success;
@@ -137,8 +137,9 @@ namespace ControlDoor.Permissions
             }
         }
 
-        private async Task ExecuteGatewayOperationAsync(DeviceOperationRetryState state, RetryOperation operation, int userId, CancellationToken cancellationToken)
+        private async Task ExecuteGatewayOperationAsync(DeviceOperationRetryState state, RetryOperation operation, DeviceRuntimeSnapshot snapshot, CancellationToken cancellationToken)
         {
+            var userId = snapshot.SdkUserId.Value;
             switch (operation)
             {
                 case RetryOperation.DeletePerson:
@@ -156,12 +157,12 @@ namespace ControlDoor.Permissions
                     return;
                 case RetryOperation.Permission:
                     var level = state.PermissionLevel ?? 0;
-                    var permission = new PermissionInfo { EmployeeId = state.EmployeeId, PermissionCode = level.ToString() };
-                    permission.DoorIndexes.Add(1);
-                    await gateway.SetPermissionAsync(new SetPermissionRequest
+                    var person = payloadParser.ParsePermissionPerson(state.PermissionPayloadJson, state.EmployeeId);
+                    person.Enabled = DevicePermissionAreaPolicy.ShouldEnable(snapshot.Description, level);
+                    await gateway.UpsertPersonAsync(new UpsertPersonRequest
                     {
                         UserId = userId,
-                        Permissions = { permission }
+                        Person = person
                     }, cancellationToken).ConfigureAwait(false);
                     return;
                 case RetryOperation.Face:

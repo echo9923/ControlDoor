@@ -24,15 +24,14 @@
 | 4 | 调用 `Login`。 | 失败记录 SDK 错误并进入重连策略。 |
 | 5 | 登录成功写入 `SdkUserId`、设备序列号、字符编码和登录模式。 | 写入索引失败时尝试登出。 |
 | 6 | 更新状态为 `Online`。 | 记录 `LastCheckedAt`。 |
-| 7 | 更新 `dbo.devices.last_used_time = SYSDATETIME()`。 | DB 失败不登出设备，但记录 `DB_ERROR`。 |
-| 8 | 按任务 4.5 决定是否投递布防任务。 | 布防失败不影响登录成功。 |
+| 7 | 按任务 4.5 决定是否投递布防任务。 | 布防失败不影响登录成功。 |
 
 ## 登出任务
 
 | 场景 | 优先级 | 行为 |
 | --- | --- | --- |
 | 服务停止 | `Critical` | best-effort 撤防后登出。 |
-| 删除设备 | `Critical` | 撤防、登出、清理索引后删除数据库。 |
+| 删除设备 | `Critical` | 撤防、登出、清理索引后删除 JSON 清单记录。 |
 | 手动断开 | `Critical` | 撤防、登出、状态置为 `Disconnected`。 |
 | 强制重连 | `Critical` | 撤防、登出、清理旧 UserID 后重新登录。 |
 
@@ -47,17 +46,14 @@
 | 5 | 更新设备状态。 | 根据场景置为 `Disconnected`、`Deleted`、`Reconnecting`。 |
 | 6 | 完成任务并记录日志。 | 失败信息保留在 `LastError`。 |
 
-## 数据库写入
+## 设备清单写入
 
-| 操作 | SQL |
-| --- | --- |
-| 登录成功最近使用时间 | `UPDATE dbo.devices SET last_used_time = SYSDATETIME() WHERE device_id = @deviceId` |
+登录成功不回写设备清单，也不维护设备最近使用时间；设备主数据只由 JSON 清单维护。
 
 约束：
 
-- 不修改 `status` 字段表示在线/离线。
-- `last_used_time` 更新失败不影响设备在线状态。
-- 删除设备的 `DELETE` 在任务 4.8 定义。
+- 不修改 JSON `enabled` 字段表示在线/离线。
+- 删除设备的 JSON 写回在任务 4.8 定义。
 
 ## 不做的事
 

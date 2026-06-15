@@ -1,6 +1,6 @@
 namespace ControlDoor.Devices.Management
 {
-    public sealed class DatabaseWriteResult
+    public sealed class DeviceStoreWriteResult
     {
         public bool Success { get; set; }
 
@@ -10,9 +10,9 @@ namespace ControlDoor.Devices.Management
 
         public int? RowsAffected { get; set; }
 
-        public static DatabaseWriteResult Ok(int? rowsAffected = null, string message = "OK")
+        public static DeviceStoreWriteResult Ok(int? rowsAffected = null, string message = "OK")
         {
-            return new DatabaseWriteResult
+            return new DeviceStoreWriteResult
             {
                 Success = true,
                 Code = "OK",
@@ -21,12 +21,12 @@ namespace ControlDoor.Devices.Management
             };
         }
 
-        public static DatabaseWriteResult Failed(string code, string message)
+        public static DeviceStoreWriteResult Failed(string code, string message)
         {
-            return new DatabaseWriteResult
+            return new DeviceStoreWriteResult
             {
                 Success = false,
-                Code = string.IsNullOrWhiteSpace(code) ? "DB_ERROR" : code,
+                Code = string.IsNullOrWhiteSpace(code) ? "WRITE_FAILED" : code,
                 Message = message ?? string.Empty
             };
         }

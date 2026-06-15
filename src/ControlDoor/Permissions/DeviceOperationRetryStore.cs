@@ -276,6 +276,7 @@ WHERE id IN (
                 new DatabaseParameter("@deviceId", intent.DeviceId),
                 new DatabaseParameter("@employeeId", intent.EmployeeId),
                 new DatabaseParameter("@permissionLevel", (object)intent.PermissionLevel ?? DBNull.Value),
+                new DatabaseParameter("@permissionPayload", operation == RetryOperation.Permission ? (object)(intent.PermissionPayloadJson ?? intent.PayloadJson ?? string.Empty) : DBNull.Value),
                 new DatabaseParameter("@personPayload", operation == RetryOperation.Person ? (object)(intent.PersonPayloadJson ?? intent.PayloadJson ?? string.Empty) : DBNull.Value),
                 new DatabaseParameter("@facePayload", operation == RetryOperation.Face ? (object)(intent.FacePayloadJson ?? intent.PayloadJson ?? string.Empty) : DBNull.Value),
                 new DatabaseParameter("@nextRetryAt", (object)intent.NextRetryAt ?? DBNull.Value),
@@ -292,6 +293,7 @@ WHERE id IN (
                 new DatabaseParameter("@id", state.Id),
                 new DatabaseParameter("@updatedAt", DateTime.Now),
                 new DatabaseParameter("@permissionLevel", (object)state.PermissionLevel ?? DBNull.Value),
+                new DatabaseParameter("@permissionPayload", (object)state.PermissionPayloadJson ?? DBNull.Value),
                 new DatabaseParameter("@personPayload", (object)state.PersonPayloadJson ?? DBNull.Value),
                 new DatabaseParameter("@facePayload", (object)state.FacePayloadJson ?? DBNull.Value)
             };
@@ -305,6 +307,7 @@ WHERE id IN (
                 EmployeeId = (intent.EmployeeId ?? string.Empty).Trim(),
                 Operation = RetryOperationNames.ToStage5OperationName(operation),
                 PermissionLevel = intent.PermissionLevel,
+                PermissionPayloadJson = intent.PermissionPayloadJson,
                 PayloadJson = intent.PayloadJson,
                 PersonPayloadJson = intent.PersonPayloadJson,
                 FacePayloadJson = intent.FacePayloadJson,
@@ -431,11 +434,16 @@ WHERE id IN (
                     return @"UPDATE dbo.device_operation_retry_states
 SET permission_pending = 0,
     permission_sync_completion_blocked = 0,
+    permission_payload = NULL,
     updated_at = @updatedAt
 WHERE id = @id
   AND (
       (permission_level = @permissionLevel)
       OR (permission_level IS NULL AND @permissionLevel IS NULL)
+  )
+  AND (
+      (permission_payload = @permissionPayload)
+      OR (permission_payload IS NULL AND @permissionPayload IS NULL)
   );";
                 case RetryOperation.Person:
                     return @"UPDATE dbo.device_operation_retry_states
@@ -466,6 +474,7 @@ WHERE id = @id;";
                     return @"UPDATE dbo.device_operation_retry_states
 SET permission_pending = 0,
     permission_sync_completion_blocked = 0,
+    permission_payload = NULL,
     person_pending = 0,
     face_pending = 0,
     delete_person_pending = 0,
@@ -527,6 +536,7 @@ BEGIN TRY
             device_id,
             employee_id,
             permission_level,
+            permission_payload,
             permission_pending,
             permission_sync_completion_blocked,
             person_payload,
@@ -546,6 +556,7 @@ BEGIN TRY
             @deviceId,
             @employeeId,
             CASE WHEN @operation = N'SyncPermission' THEN @permissionLevel ELSE NULL END,
+            CASE WHEN @operation = N'SyncPermission' THEN @permissionPayload ELSE NULL END,
             CASE WHEN @operation = N'SyncPermission' THEN 1 ELSE 0 END,
             CASE WHEN @operation = N'SyncPermission' THEN 1 ELSE 0 END,
             CASE WHEN @operation = N'SyncPerson' THEN @personPayload ELSE NULL END,
@@ -588,6 +599,11 @@ BEGIN TRY
                 WHEN @operation = N'SyncPermission' THEN 1
                 WHEN @operation = N'DeletePerson' THEN 0
                 ELSE permission_pending
+            END,
+            permission_payload = CASE
+                WHEN @operation = N'SyncPermission' THEN @permissionPayload
+                WHEN @operation = N'DeletePerson' THEN NULL
+                ELSE permission_payload
             END,
             permission_sync_completion_blocked = CASE
                 WHEN @operation = N'SyncPermission' THEN 1

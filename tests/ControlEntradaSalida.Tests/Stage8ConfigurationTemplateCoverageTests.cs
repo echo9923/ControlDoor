@@ -31,6 +31,7 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal("sdk\\Hikvision", result.Settings.HikvisionSdk.DllDirectory);
             Assert.Equal("snapshots", result.Settings.FaceEventLogging.SnapshotRootDirectory);
             Assert.False(result.Settings.CameraAlarmDoorInterlock.Enabled);
+            Assert.Equal("Configuration\\devices.json", result.Settings.Devices.FilePath);
         }
 
         [TestCase]
@@ -40,8 +41,12 @@ namespace ControlEntradaSalida.Tests
 
             Assert.Contains("\"DeviceRuntime\"", template);
             Assert.Contains("\"DeviceLifecycle\"", template);
+            Assert.Contains("\"Devices\"", template);
+            Assert.Contains("\"FilePath\"", template);
             Assert.False(template.Contains("\"DeviceSdkDispatcher\""));
             Assert.False(template.Contains("\"DeviceConnection\""));
+            Assert.False(template.Contains("\"Source\""));
+            Assert.False(template.Contains("Source=" + "Database"));
         }
 
         [TestCase]
@@ -61,7 +66,8 @@ namespace ControlEntradaSalida.Tests
   ""DeviceOperationRetry"": { ""ScanIntervalSeconds"": 30, ""MaxRetryAttempts"": 10 },
   ""FaceEventLogging"": { ""SnapshotRootDirectory"": ""snapshots"" },
   ""FaceEnrollment"": { ""MaxFaceImageBytes"": 204800 },
-  ""CameraAlarmDoorInterlock"": { ""Enabled"": false, ""Mappings"": [] }
+  ""CameraAlarmDoorInterlock"": { ""Enabled"": false, ""Mappings"": [] },
+  ""Devices"": { ""FilePath"": ""Configuration\\devices.json"", ""Items"": [] }
 }");
 
             var result = new ConfigurationLoader().Load(runDirectory);

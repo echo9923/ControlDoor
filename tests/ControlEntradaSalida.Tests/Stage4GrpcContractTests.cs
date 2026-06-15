@@ -35,7 +35,7 @@ namespace ControlEntradaSalida.Tests
         {
             using (var fixture = new Stage4Fixture())
             {
-                fixture.AddRecord();
+                fixture.AddRecord(description: "办公区域");
                 fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
                 var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
 
@@ -45,6 +45,10 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("OK", response["code"]);
                 Assert.True(response.ContainsKey("requestId"));
                 Assert.True(response.ContainsKey("devices"));
+                var devices = (System.Collections.ArrayList)response["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+                Assert.Equal("办公区域", device["description"]);
+                Assert.True(device.ContainsKey("types"));
             }
         }
 
@@ -97,9 +101,9 @@ namespace ControlEntradaSalida.Tests
                 var record = fixture.Repository.GetByDeviceId(9);
                 Assert.True(record.Types.Contains(DeviceType.Acs));
                 Assert.True(record.Types.Contains(DeviceType.FaceCapture));
-                // types 仍在请求解析和持久化中保留，但响应不再输出该字段（对齐 main）。
                 var device = (Dictionary<string, object>)response["device"];
-                Assert.False(device.ContainsKey("types"));
+                Assert.True(device.ContainsKey("types"));
+                Assert.Equal(string.Empty, device["description"]);
             }
         }
 
@@ -277,7 +281,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void AccessControlGrpcService_AddDevice_ResponseDoesNotContainTypes()
+        public static void AccessControlGrpcService_AddDevice_ResponseContainsTypesAndDescription()
         {
             using (var fixture = new Stage4Fixture())
             {
@@ -289,7 +293,8 @@ namespace ControlEntradaSalida.Tests
 
                 Assert.Equal(true, response["success"]);
                 var device = (Dictionary<string, object>)response["device"];
-                Assert.False(device.ContainsKey("types"));
+                Assert.True(device.ContainsKey("types"));
+                Assert.True(device.ContainsKey("description"));
             }
         }
 

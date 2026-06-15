@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using ControlDoor.Devices.Management;
 
 namespace ControlDoor.Devices.Runtime
 {
@@ -7,6 +9,8 @@ namespace ControlDoor.Devices.Runtime
         public int DeviceId { get; set; }
 
         public string DeviceName { get; set; }
+
+        public string Description { get; set; }
 
         public string IpAddress { get; set; }
 
@@ -18,8 +22,10 @@ namespace ControlDoor.Devices.Runtime
 
         public bool Enabled { get; set; } = true;
 
-        public DateTime? CreatedAt { get; set; }
+        // 声明态设备类型，由 DeviceRecord.ToRuntimeOptions 透传，
+        // 启动期即可分类，不依赖登录后的能力探测。
+        public IList<DeviceType> Types { get; set; } = new List<DeviceType>();
 
-        public DateTime? LastUsedAt { get; set; }
+        public DateTime? CreatedAt { get; set; }
     }
 }

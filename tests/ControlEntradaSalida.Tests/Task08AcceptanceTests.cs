@@ -40,7 +40,7 @@ namespace ControlEntradaSalida.Tests
         [TestCase]
         public static void Acceptance_DatabaseGuardRejectsSchemaChanges()
         {
-            AssertMutatingSqlFails("ALTER TABLE dbo.devices ADD test int");
+            AssertMutatingSqlFails("ALTER TABLE dbo.attendance_gate_v2 ADD test int");
             AssertMutatingSqlFails("CREATE TABLE dbo.stage1_test(id int)");
             AssertMutatingSqlFails("DROP TABLE dbo.stage1_test");
         }
@@ -49,7 +49,7 @@ namespace ControlEntradaSalida.Tests
         public static void Acceptance_ValidateConfigHealthChecksCanPassWithWarnings()
         {
             var runDirectory = TestWorkspace.Create();
-            TestWorkspace.WriteConfig(runDirectory, @"{""Database"":{""ConnectionString"":""Server=.;Database=test;""}}");
+            TestWorkspace.WriteConfig(runDirectory, @"{""Service"":{""GrpcListenPort"":" + TestWorkspace.FindAvailablePort() + @"},""Database"":{""ConnectionString"":""Server=.;Database=test;""}}");
             var settings = new ControlDoor.Configuration.ConfigurationLoader().Load(runDirectory).Settings;
 
             var summary = HealthCheckService

@@ -95,6 +95,8 @@
 | 响应 | 直接返回 gRPC JSON。 | 通过日志和补偿状态观察。 |
 | 失败处理 | 产生补偿意图。 | 回写 attempt、next_retry_at 或 exhausted_at。 |
 
+权限补偿执行时不再调用设备端 `UserRight/SetUp`。后台任务读取状态行中的 `permission_level` 和可选 `permission_payload`，按当前设备快照 `Description` 识别办公、生产或 Other 区域，计算该员工在本设备上是否启用，然后通过 `UserInfo/SetUp` 的人员写入能力更新 `Valid.enable`、`doorRight` 和 `RightPlan`。旧补偿数据没有 `permission_payload` 或没有姓名时，设备端姓名使用员工号兜底。
+
 ## 不做的事
 
 | 不做内容 | 原因 |

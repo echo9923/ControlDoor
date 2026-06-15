@@ -147,10 +147,26 @@ namespace ControlDoor.Host
                 HealthCheckIntervalMs = settings.DeviceConnection.StatusCheckIntervalMs,
                 ReconnectBaseDelayMs = settings.DeviceConnection.ReconnectBaseDelayMs,
                 ReconnectMaxDelayMs = settings.DeviceConnection.ReconnectMaxDelayMs,
-                MaxReconnectAttempts = settings.DeviceOperationRetry.MaxRetryAttempts,
+                ReArmBaseDelayMs = settings.DeviceConnection.ReArmBaseDelayMs,
+                ReArmMaxDelayMs = settings.DeviceConnection.ReArmMaxDelayMs,
                 AlarmDeployType = settings.FaceEventLogging.AlarmDeployType
             };
-            var deviceRepository = new SqlDeviceRepository(database);
+            IDeviceRepository deviceRepository;
+            try
+            {
+                deviceRepository = CreateDeviceRepository(settings);
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Host", "设备清单初始化失败。", ex);
+                lock (gate)
+                {
+                    state = ServiceLifecycleState.Failed;
+                }
+
+                return Task.FromResult(HostStartupResult.Failed("设备清单初始化失败。", new[] { ex.Message }));
+            }
+
             deviceLifecycle = new DeviceLifecycleService(deviceRegistry, deviceDispatcher, delayedScheduler, deviceRepository, hikvisionGateway, deviceOptions, logger);
             accessControlGrpcService = new AccessControlGrpcService(deviceLifecycle, deviceRepository, settings.Service.GrpcManagementApiKey);
             retryStore = new DeviceOperationRetryStore(database, settings.DeviceOperationRetry, logger);
@@ -311,6 +327,20 @@ namespace ControlDoor.Host
             deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(100)).GetAwaiter().GetResult();
             database?.Dispose();
             logger?.Dispose();
+        }
+
+        private IDeviceRepository CreateDeviceRepository(AppSettings currentSettings)
+        {
+            var devices = currentSettings.Devices ?? new DeviceStoreOptions();
+            logger?.Info("Host", "设备清单使用 JSON 来源。", new LogFields
+            {
+                Extra =
+                {
+                    ["filePath"] = devices.FilePath ?? string.Empty,
+                    ["inlineCount"] = devices.Items == null ? "0" : devices.Items.Count.ToString()
+                }
+            });
+            return new JsonDeviceRepository(runDirectory, devices, logger);
         }
 
         private void ThrowIfDisposed()

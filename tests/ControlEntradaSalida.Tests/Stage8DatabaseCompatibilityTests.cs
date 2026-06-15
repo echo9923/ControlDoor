@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -13,7 +14,6 @@ namespace ControlEntradaSalida.Tests
 
             foreach (var table in new[]
             {
-                "dbo.devices",
                 "dbo.system_users",
                 "dbo.attendance_gate_v2",
                 "dbo.device_operation_retry_states",
@@ -21,6 +21,35 @@ namespace ControlEntradaSalida.Tests
             })
             {
                 Assert.Contains(table, sql);
+            }
+        }
+
+        [TestCase]
+        public static void Stage8RuntimeDatabaseHealth_DoesNotRequireLegacyDevicesTable()
+        {
+            var legacyDevicesTable = "dbo." + "devices";
+            Assert.False(ControlDoor.Database.DatabaseHealthCheck.RequiredTables.Contains(legacyDevicesTable));
+            Assert.True(ControlDoor.Database.DatabaseHealthCheck.RequiredTables.Contains("dbo.system_users"));
+            Assert.True(ControlDoor.Database.DatabaseHealthCheck.RequiredTables.Contains("dbo.attendance_gate_v2"));
+            Assert.True(ControlDoor.Database.DatabaseHealthCheck.RequiredTables.Contains("dbo.device_operation_retry_states"));
+        }
+
+        [TestCase]
+        public static void Stage8Documentation_DoesNotDescribeLegacyDevicesAsRuntimeSource()
+        {
+            foreach (var file in CoreDocumentationFiles())
+            {
+                var text = File.ReadAllText(file, Encoding.UTF8);
+
+                foreach (var forbidden in new[]
+                {
+                    "新增设备到" + "数据库",
+                    "删除数据库" + "记录",
+                    "设备表" + "读写"
+                })
+                {
+                    Assert.False(text.Contains(forbidden), file + " should not contain legacy device-source wording: " + forbidden);
+                }
             }
         }
 
@@ -127,6 +156,27 @@ namespace ControlEntradaSalida.Tests
 
             Assert.NotNull(file, marker);
             return File.ReadAllText(file, Encoding.UTF8).ToLowerInvariant();
+        }
+
+        private static IEnumerable<string> CoreDocumentationFiles()
+        {
+            yield return "AGENTS.md";
+            yield return "\u76ee\u6807.md";
+            yield return Path.Combine("docs", "\u95e8\u7981\u7cfb\u7edf\u8bbe\u8ba1\u65b9\u6848.md");
+            yield return Path.Combine("docs", "\u5e95\u5c42\u6570\u636e\u5e93\u6587\u6863.md");
+            yield return Path.Combine("docs", "gRPC\u63a5\u53e3\u6e05\u5355.md");
+            yield return Path.Combine("docs", "api\u6587\u6863.md");
+            yield return Path.Combine("docs", "stage4", "task01.md");
+            yield return Path.Combine("docs", "stage4", "task02.md");
+            yield return Path.Combine("docs", "stage4", "task06.md");
+            yield return Path.Combine("docs", "stage4", "task07.md");
+            yield return Path.Combine("docs", "stage4", "task08.md");
+            yield return Path.Combine("docs", "stage4", "task09.md");
+            yield return Path.Combine("docs", "stage4", "task10.md");
+            yield return Path.Combine("docs", "stage8", "task04.md");
+            yield return Path.Combine("docs", "stage8", "package-docs", "\u90e8\u7f72\u8bf4\u660e.md");
+            yield return Path.Combine("docs", "stage8", "package-docs", "\u8fd0\u884c\u524d\u68c0\u67e5.md");
+            yield return Path.Combine("docs", "stage10", "task01.md");
         }
     }
 }

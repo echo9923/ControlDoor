@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ControlDoor.Configuration;
+using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Observability;
 
@@ -67,6 +68,17 @@ namespace ControlDoor.CameraDoorInterlock
             var normalizedIp = NormalizeIp(ip);
             if (!string.IsNullOrEmpty(normalizedIp))
             {
+                var sourceLookup = registry.TryGetByIpAddress(normalizedIp);
+                if (sourceLookup.Found && !HasDeclaredType(sourceLookup.Snapshot, DeviceType.Camera))
+                {
+                    logger?.Warn("CameraDoorInterlock", "AIOP 来源设备未声明 Camera 类型，已忽略。", new LogFields
+                    {
+                        DeviceId = sourceLookup.Snapshot.DeviceId,
+                        Extra = { ["ipAddress"] = normalizedIp }
+                    });
+                    return false;
+                }
+
                 lock (gate)
                 {
                     if (cameraIpIndex.TryGetValue(normalizedIp, out var key))
@@ -100,6 +112,16 @@ namespace ControlDoor.CameraDoorInterlock
 
                 if (snapshot != null)
                 {
+                    if (!HasDeclaredType(snapshot, DeviceType.Camera))
+                    {
+                        logger?.Warn("CameraDoorInterlock", "AIOP 来源设备未声明 Camera 类型，已忽略。", new LogFields
+                        {
+                            DeviceId = snapshot.DeviceId,
+                            Extra = { ["ipAddress"] = snapshot.IpAddress }
+                        });
+                        return false;
+                    }
+
                     var snapshotIp = NormalizeIp(snapshot.IpAddress);
                     if (!string.IsNullOrEmpty(snapshotIp))
                     {
@@ -210,6 +232,16 @@ namespace ControlDoor.CameraDoorInterlock
             var lookup = registry.TryGetByIpAddress(doorIp);
             if (lookup.Found && lookup.Snapshot != null)
             {
+                if (!HasDeclaredType(lookup.Snapshot, DeviceType.Acs))
+                {
+                    logger?.Warn("CameraDoorInterlock", "门禁目标设备未声明 Acs 类型，已跳过。", new LogFields
+                    {
+                        DeviceId = lookup.Snapshot.DeviceId,
+                        Extra = { ["doorIp"] = doorIp }
+                    });
+                    return 0;
+                }
+
                 lock (gate)
                 {
                     doorDeviceIdByIp[doorIp] = lookup.Snapshot.DeviceId;
@@ -257,6 +289,16 @@ namespace ControlDoor.CameraDoorInterlock
                 if (doorNos.Count == 0)
                 {
                     configurationErrors.Add("CameraAlarmDoorInterlock.Mappings[" + i + "] 门号为空。");
+                    continue;
+                }
+
+                if (!ValidateConfiguredDeviceType(i, "摄像头", cameraIp, cameraId, DeviceType.Camera))
+                {
+                    continue;
+                }
+
+                if (!ValidateConfiguredDeviceType(i, "门禁设备", doorIp, doorId, DeviceType.Acs))
+                {
                     continue;
                 }
 
@@ -320,6 +362,49 @@ namespace ControlDoor.CameraDoorInterlock
         private static string NormalizeIp(string ip)
         {
             return string.IsNullOrWhiteSpace(ip) ? string.Empty : ip.Trim();
+        }
+
+        private bool ValidateConfiguredDeviceType(int index, string role, string ip, int deviceId, DeviceType requiredType)
+        {
+            DeviceRuntimeSnapshot snapshot = null;
+            if (!string.IsNullOrEmpty(ip))
+            {
+                var lookup = registry.TryGetByIpAddress(ip);
+                if (lookup.Found)
+                {
+                    snapshot = lookup.Snapshot;
+                }
+            }
+            else if (deviceId > 0)
+            {
+                var lookup = registry.TryGetByDeviceId(deviceId);
+                if (lookup.Found)
+                {
+                    snapshot = lookup.Snapshot;
+                }
+            }
+
+            if (snapshot == null || HasDeclaredType(snapshot, requiredType))
+            {
+                return true;
+            }
+
+            var message = "CameraAlarmDoorInterlock.Mappings[" + index + "] " + role + "未声明 " + requiredType + " 类型。";
+            configurationErrors.Add(message);
+            logger?.Warn("CameraDoorInterlock", message, new LogFields
+            {
+                DeviceId = snapshot.DeviceId,
+                Extra = { ["ipAddress"] = snapshot.IpAddress }
+            });
+            return false;
+        }
+
+        private static bool HasDeclaredType(DeviceRuntimeSnapshot snapshot, DeviceType requiredType)
+        {
+            return snapshot == null ||
+                snapshot.Types == null ||
+                snapshot.Types.Count == 0 ||
+                snapshot.Types.Contains(requiredType);
         }
 
         private sealed class MappingEntry

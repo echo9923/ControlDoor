@@ -68,6 +68,7 @@ namespace ControlDoor.Permissions
             {
                 case RetryOperation.Permission:
                     state.PermissionLevel = intent.PermissionLevel;
+                    state.PermissionPayloadJson = ResolvePermissionPayload(intent);
                     state.PermissionPending = true;
                     state.PermissionSyncCompletionBlocked = true;
                     state.DeletePersonPending = false;
@@ -92,6 +93,7 @@ namespace ControlDoor.Permissions
                     state.DeletePersonPending = true;
                     state.PermissionPending = false;
                     state.PermissionSyncCompletionBlocked = false;
+                    state.PermissionPayloadJson = null;
                     state.PersonPending = false;
                     state.FacePending = false;
                     state.DeleteFacePending = false;
@@ -152,6 +154,11 @@ namespace ControlDoor.Permissions
         private static string ResolvePersonPayload(DeviceOperationRetryIntent intent)
         {
             return intent.PersonPayloadJson ?? intent.PayloadJson;
+        }
+
+        private static string ResolvePermissionPayload(DeviceOperationRetryIntent intent)
+        {
+            return intent.PermissionPayloadJson ?? intent.PayloadJson;
         }
 
         private static string ResolveFacePayload(DeviceOperationRetryIntent intent)

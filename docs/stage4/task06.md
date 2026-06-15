@@ -26,16 +26,16 @@
 
 | 字段 | 来源 |
 | --- | --- |
-| `deviceId` | 运行时/数据库。 |
-| `deviceName` | `dbo.devices.device_name`。 |
-| `ipAddress` | `dbo.devices.ip_address`。 |
-| `port` | `dbo.devices.port`。 |
-| `enabled` | `dbo.devices.status == 1`。 |
+| `deviceId` | 运行时/JSON 清单。 |
+| `deviceName` | `devices[].name`。 |
+| `ipAddress` | `devices[].ipAddress`。 |
+| `port` | `devices[].port`。 |
+| `enabled` | `devices[].enabled`。 |
 | `isConnected` | 运行时状态是否 Online。 |
 | `status` | 运行时状态枚举字符串。 |
 | `statusMessage` | 状态说明。 |
+| `types` | 声明态设备类型数组，如 `Acs`、`FaceCapture`、`Camera`。 |
 | `lastChecked` | 最近状态检测时间。 |
-| `lastUsed` | `dbo.devices.last_used_time` 或登录成功更新时间。 |
 | `lastErrorCode` | 最近错误码。 |
 | `lastErrorMessage` | 最近错误说明。 |
 
@@ -55,7 +55,7 @@
 
 | 不做内容 | 原因 |
 | --- | --- |
-| 不修改数据库 | 查询接口只读。 |
+| 不修改 JSON 清单 | 查询接口只读。 |
 | 不触发登录 | refresh 只做状态检测，不自动重连；重连由任务 4.4/4.8。 |
 | 不返回密码 | 设备状态对象不得包含密码。 |
 

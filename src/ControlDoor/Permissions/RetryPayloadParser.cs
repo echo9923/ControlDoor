@@ -60,6 +60,17 @@ namespace ControlDoor.Permissions
             return GetInt(values, "permission_code", "permissionCode", "permission_level", "permissionLevel");
         }
 
+        public PersonInfo ParsePermissionPerson(string payloadJson, string employeeId)
+        {
+            var values = ParseObject(payloadJson);
+            var resolvedEmployeeId = FirstString(values, employeeId, "employee_id", "employeeId", "employee_no", "employeeNo");
+            return new PersonInfo
+            {
+                EmployeeId = resolvedEmployeeId,
+                Name = FirstString(values, resolvedEmployeeId, "name", "full_name", "fullName", "name_alias")
+            };
+        }
+
         private static IDictionary<string, object> ParseObject(string payloadJson)
         {
             if (string.IsNullOrWhiteSpace(payloadJson))

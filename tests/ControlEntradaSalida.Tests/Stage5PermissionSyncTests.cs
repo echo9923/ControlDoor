@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web.Script.Serialization;
+using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.GrpcApi;
 using ControlDoor.Hikvision;
@@ -43,7 +44,8 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("OK", items["code"]);
                 Assert.Equal("OK", records["code"]);
                 Assert.Equal("OK", single["code"]);
-                Assert.True(fixture.Gateway.Calls.Count(call => call.MethodName == "SetPermissionAsync") >= 4);
+                Assert.True(fixture.Gateway.Calls.Count(call => call.MethodName == "UpsertPersonAsync") >= 4);
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
             }
         }
 
@@ -52,7 +54,7 @@ namespace ControlEntradaSalida.Tests
         {
             using (var fixture = new Stage5Fixture())
             {
-                fixture.AddOnlineDevice();
+                fixture.AddOnlineDevice(description: "办公区域");
 
                 var response = fixture.Response(fixture.Service.SyncPermissions(
                     @"{""items"":[{""employee_id"":""10001"",""permission_code"":1},{""employee_id"":""10001"",""permission_code"":9}]}",
@@ -61,6 +63,72 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("OK", response["code"]);
                 Assert.Equal(1, Convert.ToInt32(response["total"]));
                 Assert.Equal(9, fixture.UserWriter.PermissionLevels["10001"]);
+                var person = fixture.LastUpsertPerson("10001");
+                Assert.False(person.Enabled);
+            }
+        }
+
+        [TestCase]
+        public static void SyncPermissions_LevelOneEnablesOnlyOfficeDevices()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(deviceId: 1, description: "办公区域");
+                fixture.AddOnlineDevice(deviceId: 2, description: "生产区域");
+                fixture.AddOnlineDevice(deviceId: 3, description: "主入口");
+
+                var response = fixture.Response(fixture.Service.SyncPermissions(
+                    @"{""items"":[{""employee_id"":""10001"",""name"":""张三"",""permission_code"":1}]}",
+                    fixture.Context("sp-area-level1")));
+
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(3, fixture.Gateway.Calls.Count(call => call.MethodName == "UpsertPersonAsync"));
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
+                var persons = fixture.UpsertPersons("10001").ToList();
+                Assert.Equal(true, persons[0].Enabled);
+                Assert.Equal(false, persons[1].Enabled);
+                Assert.Equal(false, persons[2].Enabled);
+            }
+        }
+
+        [TestCase]
+        public static void SyncPermissions_LevelTwoEnablesOfficeProductionAndOtherDevices()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(deviceId: 1, description: "办公区域");
+                fixture.AddOnlineDevice(deviceId: 2, description: "生产区域");
+                fixture.AddOnlineDevice(deviceId: 3, description: string.Empty);
+
+                var response = fixture.Response(fixture.Service.SyncPermissions(
+                    @"{""items"":[{""employee_id"":""10001"",""permission_code"":2}]}",
+                    fixture.Context("sp-area-level2")));
+
+                Assert.Equal("OK", response["code"]);
+                var persons = fixture.UpsertPersons("10001").ToList();
+                Assert.True(persons.All(item => item.Enabled));
+            }
+        }
+
+        [TestCase]
+        public static void SyncPermissions_LevelZeroAndUnknownDisableAllDevices()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(deviceId: 1, description: "办公区域");
+                fixture.AddOnlineDevice(deviceId: 2, description: "生产区域");
+
+                var zero = fixture.Response(fixture.Service.SyncPermissions(
+                    @"{""items"":[{""employee_id"":""10001"",""permission_code"":0}]}",
+                    fixture.Context("sp-area-zero")));
+                var unknown = fixture.Response(fixture.Service.SyncPermissions(
+                    @"{""items"":[{""employee_id"":""10002"",""permission_code"":9}]}",
+                    fixture.Context("sp-area-unknown")));
+
+                Assert.Equal("OK", zero["code"]);
+                Assert.Equal("OK", unknown["code"]);
+                Assert.True(fixture.UpsertPersons("10001").All(item => !item.Enabled));
+                Assert.True(fixture.UpsertPersons("10002").All(item => !item.Enabled));
             }
         }
 
@@ -71,13 +139,14 @@ namespace ControlEntradaSalida.Tests
             {
                 fixture.AddOfflineDevice(1);
 
-                var response = fixture.Response(fixture.Service.SyncPermissions(@"{""items"":[{""employee_id"":""10001"",""permission_code"":7}]}", fixture.Context("sp-offline")));
+                var response = fixture.Response(fixture.Service.SyncPermissions(@"{""items"":[{""employee_id"":""10001"",""name_alias"":""张三"",""permission_code"":7}]}", fixture.Context("sp-offline")));
 
                 Assert.Equal("PARTIAL_SUCCESS", response["code"]);
                 Assert.Equal(1, Convert.ToInt32(response["queued"]));
                 Assert.Equal(1, fixture.RetryWriter.Intents.Count);
                 Assert.Equal("SyncPermission", fixture.RetryWriter.Intents[0].Operation);
                 Assert.Equal(7, fixture.RetryWriter.Intents[0].PermissionLevel.Value);
+                Assert.Contains("张三", fixture.RetryWriter.Intents[0].PermissionPayloadJson);
             }
         }
 
@@ -110,6 +179,25 @@ namespace ControlEntradaSalida.Tests
                 var faceIndex = fixture.Gateway.Calls.ToList().FindIndex(call => call.MethodName == "UploadFaceAsync");
                 Assert.True(modifyIndex >= 0);
                 Assert.True(faceIndex > modifyIndex);
+            }
+        }
+
+        [TestCase]
+        public static void SyncPersons_TargetsAcsFaceRecognitionDoorDevices()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(deviceId: 1, types: new[] { DeviceType.Acs });
+                fixture.AddOnlineDevice(deviceId: 2, types: new[] { DeviceType.FaceCapture });
+                var face = Convert.ToBase64String(JpegBytes());
+
+                var response = fixture.Response(fixture.Service.SyncPersons(@"{""people"":[{""employee_id"":""10001"",""name"":""张三"",""face_image_base64"":""" + face + @"""}]}", fixture.Context("persons-acs-face")));
+
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(1, Convert.ToInt32(response["targetDevices"]));
+                Assert.Equal(1, Convert.ToInt32(response["facesUploaded"]));
+                Assert.Equal(1, fixture.Gateway.Calls.Count(call => call.MethodName == "UpsertPersonAsync"));
+                Assert.Equal(1, fixture.Gateway.Calls.Count(call => call.MethodName == "UploadFaceAsync"));
             }
         }
 
@@ -317,7 +405,7 @@ namespace ControlEntradaSalida.Tests
         {
             using (var fixture = new Stage5Fixture())
             {
-                fixture.AddOnlineDevice();
+                fixture.AddOnlineDevice(types: new[] { DeviceType.FaceCapture });
 
                 var frames = fixture.Service.CaptureFaceStream(@"{""employee_id"":""10001""}", fixture.Context("capture")).ToList();
                 var frame = fixture.Response(frames[0]);
@@ -398,9 +486,10 @@ namespace ControlEntradaSalida.Tests
 
         public ControlDoor.Hikvision.MockHikvisionGateway Gateway => inner.Gateway;
 
-        public void AddOnlineDevice(int deviceId = 1)
+        public void AddOnlineDevice(int deviceId = 1, IEnumerable<DeviceType> types = null, string description = "测试设备")
         {
-            inner.AddRecord(deviceId);
+            inner.AddRecord(deviceId, ipAddress: "192.168.1." + (63 + deviceId), description: description);
+            ApplyTypes(deviceId, types);
             inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
             var login = inner.Lifecycle.SubmitLogin(deviceId, wait: true, requestId: "stage5-login");
             Assert.True(login.Success, login.Message);
@@ -414,10 +503,39 @@ namespace ControlEntradaSalida.Tests
             }, DateTime.Now);
         }
 
-        public void AddOfflineDevice(int deviceId = 1)
+        public void AddOfflineDevice(int deviceId = 1, IEnumerable<DeviceType> types = null, string description = "测试设备")
         {
-            inner.AddRecord(deviceId);
+            inner.AddRecord(deviceId, ipAddress: "192.168.1." + (63 + deviceId), description: description);
+            ApplyTypes(deviceId, types);
             inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+        }
+
+        public PersonInfo LastUpsertPerson(string employeeId)
+        {
+            var call = Gateway.Calls.Last(item => item.MethodName == "UpsertPersonAsync" &&
+                ((UpsertPersonRequest)item.Request).Person.EmployeeId == employeeId);
+            return ((UpsertPersonRequest)call.Request).Person;
+        }
+
+        public IEnumerable<PersonInfo> UpsertPersons(string employeeId)
+        {
+            return Gateway.Calls
+                .Where(item => item.MethodName == "UpsertPersonAsync")
+                .Select(item => (UpsertPersonRequest)item.Request)
+                .Where(item => item.Person.EmployeeId == employeeId)
+                .Select(item => item.Person);
+        }
+
+        private void ApplyTypes(int deviceId, IEnumerable<DeviceType> types)
+        {
+            if (types == null)
+            {
+                return;
+            }
+
+            var record = inner.Repository.GetByDeviceId(deviceId);
+            record.Types = types.ToList();
+            inner.Repository.Add(record);
         }
 
         public GrpcRequestContext Context(string requestId)

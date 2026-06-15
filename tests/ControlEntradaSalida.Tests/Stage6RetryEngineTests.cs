@@ -47,6 +47,7 @@ namespace ControlEntradaSalida.Tests
             Assert.False(result.State.FacePending);
             Assert.False(result.State.DeleteFacePending);
             Assert.True(result.State.DeletePersonPending);
+            Assert.Equal(null, result.State.PermissionPayloadJson);
             Assert.Equal(null, result.State.PersonPayloadJson);
             Assert.Equal(null, result.State.FacePayloadJson);
         }
@@ -175,7 +176,7 @@ namespace ControlEntradaSalida.Tests
                 EmployeeId = "10001",
                 Operation = "SyncPermission",
                 PermissionLevel = 7,
-                PayloadJson = @"{""permission_code"":7}",
+                PayloadJson = @"{""permission_code"":7,""name"":""张三""}",
                 LastError = "offline",
                 CreatedAt = new DateTime(2026, 1, 1, 8, 0, 0)
             });
@@ -188,7 +189,9 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains("INSERT INTO dbo.device_operation_retry_states", command.CommandText);
             Assert.Contains("UPDATE dbo.device_operation_retry_states", command.CommandText);
             Assert.Contains("permission_sync_completion_blocked", command.CommandText);
+            Assert.Contains("permission_payload", command.CommandText);
             Assert.Contains("@operation=SyncPermission", command.CommandText);
+            Assert.Contains("@permissionPayload={\"permission_code\":7,\"name\":\"张三\"}", command.CommandText);
         }
 
         [TestCase]
@@ -228,6 +231,8 @@ namespace ControlEntradaSalida.Tests
 
             var staleSql = staleDatabase.Commands.Single().CommandText;
             Assert.Contains("permission_level = @permissionLevel", staleSql);
+            Assert.Contains("permission_payload = @permissionPayload", staleSql);
+            Assert.Contains("permission_payload = NULL", staleSql);
             Assert.False(staleUserWriter.PermissionLevels.ContainsKey("10001"));
 
             var updatedDatabase = new RecordingDatabaseClient { RowsAffected = 1 };
@@ -261,17 +266,63 @@ namespace ControlEntradaSalida.Tests
         {
             using (var fixture = new Stage6Fixture())
             {
-                fixture.AddOnlineDevice();
-                fixture.Database.QueryRows.Add(Row(id: 1, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+                fixture.AddOnlineDevice(description: "办公区域");
+                fixture.Database.QueryRows.Add(Row(id: 1, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 1));
 
                 var result = fixture.Manager.RunOnceAsync("stage6-online").GetAwaiter().GetResult();
 
                 Assert.Equal(1, result.Due);
                 Assert.Equal(1, result.Submitted);
                 Assert.Equal(1, result.Succeeded);
-                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "UpsertPersonAsync"));
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
+                var request = (UpsertPersonRequest)fixture.Gateway.Calls.Last(call => call.MethodName == "UpsertPersonAsync").Request;
+                Assert.Equal("10001", request.Person.EmployeeId);
+                Assert.Equal("10001", request.Person.Name);
+                Assert.True(request.Person.Enabled);
                 Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.MarkOperationSuccess"));
                 Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_ProductionPermissionLevelOne_DisablesPerson()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice(description: "生产区域");
+                fixture.Database.QueryRows.Add(Row(id: 10, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 1));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-production-level1").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Succeeded);
+                var request = (UpsertPersonRequest)fixture.Gateway.Calls.Last(call => call.MethodName == "UpsertPersonAsync").Request;
+                Assert.False(request.Person.Enabled);
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_PermissionPayloadName_IsUsedWhenPresent()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice(description: "办公区域");
+                fixture.Database.QueryRows.Add(Row(
+                    id: 11,
+                    deviceId: 1,
+                    employeeId: "10001",
+                    permissionPending: true,
+                    permissionLevel: 1,
+                    permissionPayload: @"{""employee_id"":""10001"",""name"":""张三"",""permission_code"":1}"));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-permission-name").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Succeeded);
+                var request = (UpsertPersonRequest)fixture.Gateway.Calls.Last(call => call.MethodName == "UpsertPersonAsync").Request;
+                Assert.Equal("10001", request.Person.EmployeeId);
+                Assert.Equal("张三", request.Person.Name);
+                Assert.True(request.Person.Enabled);
             }
         }
 
@@ -431,6 +482,7 @@ namespace ControlEntradaSalida.Tests
             int deviceId,
             string employeeId,
             int? permissionLevel = null,
+            string permissionPayload = null,
             bool permissionPending = false,
             bool personPending = false,
             string personPayload = null,
@@ -446,6 +498,7 @@ namespace ControlEntradaSalida.Tests
                 ["device_id"] = deviceId,
                 ["employee_id"] = employeeId,
                 ["permission_level"] = permissionLevel,
+                ["permission_payload"] = permissionPayload,
                 ["permission_pending"] = permissionPending,
                 ["permission_sync_completion_blocked"] = permissionPending,
                 ["person_payload"] = personPayload,
@@ -499,9 +552,9 @@ namespace ControlEntradaSalida.Tests
 
         public MockHikvisionGateway Gateway => inner.Gateway;
 
-        public void AddOnlineDevice()
+        public void AddOnlineDevice(string description = "测试设备")
         {
-            inner.AddRecord(1);
+            inner.AddRecord(1, description: description);
             inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
             var login = inner.Lifecycle.SubmitLogin(1, wait: true, requestId: "stage6-login");
             Assert.True(login.Success, login.Message);
@@ -514,9 +567,9 @@ namespace ControlEntradaSalida.Tests
             }, DateTime.Now);
         }
 
-        public void AddOfflineDevice()
+        public void AddOfflineDevice(string description = "测试设备")
         {
-            inner.AddRecord(1);
+            inner.AddRecord(1, description: description);
             inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
         }
 

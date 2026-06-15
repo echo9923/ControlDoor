@@ -43,15 +43,15 @@
 | --- | --- |
 | P/Invoke 定义 | `HCNetSDK.NET_DVR_Login_V40(ref NET_DVR_USER_LOGIN_INFO, ref NET_DVR_DEVICEINFO_V40)` |
 | 生产调用 | `DeviceConnectionManager.ConnectToDeviceInternal()`，另有旧封装 `Common.Login()` |
-| 主要用途 | 登录数据库 `devices` 表加载出的设备，获得 `UserID`，作为后续所有 SDK/ISAPI 调用句柄 |
-| 输入来源 | `devices.ip_address`、`devices.port`、`devices.username`、`devices.password` |
+| 主要用途 | 登录 `Configuration/devices.json` 设备清单加载出的设备，获得 `UserID`，作为后续所有 SDK/ISAPI 调用句柄 |
+| 输入来源 | `devices.json` 中的 `ipAddress`、`port`、`username`、`password` |
 | 成功判定 | 返回值 `lUserID >= 0` |
 | 失败处理 | `NET_DVR_GetLastError()` 取错误码，标记离线，调度重连 |
 | 关联文件 | `DeviceConnectionManager.cs`、`Common.cs` |
 
 生产服务使用流程：
 
-1. `DeviceConnectionManager.LoadAllDevices()` 从数据库读取启用设备。
+1. 设备生命周期服务从 `Configuration/devices.json` 读取启用设备。
 2. `InitializeDeviceConnectionsAsync()` 并发连接启用设备，受 `maxConcurrentConnections` 限制。
 3. 单台设备先获取连接信号量，再获取 `DeviceSdkLock`。
 4. 构造 `NET_DVR_USER_LOGIN_INFO`：
@@ -69,7 +69,7 @@
    - 读取序列号
    - 建立 `UserID -> deviceId` 索引，用于报警回调反查设备
    - 调用 `DeviceStatusEngine.GetDeviceCapabilities()` 和 `GetDeviceWorkStatus()` 补全能力与状态
-   - 更新 `last_used_time`
+   - 当前 ControlDoor 服务不再回写设备清单
 7. 登录失败后：
    - 调用 `NET_DVR_GetLastError()`
    - 清空 `UserID`

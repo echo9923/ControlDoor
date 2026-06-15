@@ -10,6 +10,7 @@
 | --- | --- |
 | 发布包 | `门禁publish\ServicePackage` 结构完整。 |
 | 配置 | `Configuration/appsettings.json` 已填现场值。 |
+| 设备清单 | `Configuration/devices.json` 已填现场设备 ID/IP、账号、端口、`enabled` 和 `types`。 |
 | validate | `ControlDoor.exe --validate-config` 通过。 |
 | 数据库 | 初始化脚本和专项脚本已按顺序执行。 |
 | 设备 | 测试设备 ID/IP、账号、端口、协议确认。 |
@@ -52,7 +53,7 @@
 
 | 目的 | 检查对象 |
 | --- | --- |
-| 设备是否加载 | `dbo.devices`。 |
+| 设备是否加载 | `Configuration/devices.json` 和 `GetDeviceStatus includeDisabled=true`。 |
 | 用户权限字段 | `dbo.system_users`。 |
 | 离线补偿状态 | `dbo.device_operation_retry_states`。 |
 | 实时事件记录 | `dbo.attendance_gate_v2`。 |

@@ -10,6 +10,7 @@ BEGIN
         [device_id] INT NOT NULL,
         [employee_id] NVARCHAR(64) NOT NULL,
         [permission_level] INT NULL,
+        [permission_payload] NVARCHAR(MAX) NULL,
         [permission_pending] BIT NOT NULL CONSTRAINT [DF_device_operation_retry_states_permission_pending] DEFAULT ((0)),
         [permission_sync_completion_blocked] BIT NOT NULL CONSTRAINT [DF_device_operation_retry_states_permission_sync_completion_blocked] DEFAULT ((1)),
         [person_payload] NVARCHAR(MAX) NULL,
@@ -28,6 +29,13 @@ BEGIN
         CONSTRAINT [PK_device_operation_retry_states] PRIMARY KEY CLUSTERED ([id] ASC),
         CONSTRAINT [UQ_device_operation_retry_states_device_employee] UNIQUE NONCLUSTERED ([device_id] ASC, [employee_id] ASC)
     );
+END
+GO
+
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'permission_payload') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [permission_payload] NVARCHAR(MAX) NULL;
 END
 GO
 

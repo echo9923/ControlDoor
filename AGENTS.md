@@ -29,14 +29,14 @@
 - `docs/stage1/task08.md`：阶段 1 验收清单，适用于确认服务骨架、配置、日志、数据库、后台任务、服务生命周期和健康检查是否完成。
 - `docs/stage3/目标.md`：阶段 3 海康 SDK/ISAPI 网关实施目标，适用于确认底层网关接口、SDK/ISAPI 封装、mock 网关和测试验收范围。
 - `docs/stage4/task01.md`：阶段 4 边界与任务总览，适用于确认设备生命周期和设备管理 gRPC 的实施范围。
-- `docs/stage4/task02.md`：设备加载与运行时注册方案，适用于实现 `dbo.devices` 加载、设备运行时对象和索引注册。
-- `docs/stage4/task03.md`：启动登录与登出清理方案，适用于实现登录任务、登出任务、停止清理和 `last_used_time` 更新。
+- `docs/stage4/task02.md`：设备清单 JSON 加载与运行时注册方案，适用于实现 `Configuration/devices.json` 加载、设备运行时对象和索引注册。
+- `docs/stage4/task03.md`：启动登录与登出清理方案，适用于实现登录任务、登出任务、停止清理和不回写设备清单。
 - `docs/stage4/task04.md`：状态检测与重连策略，适用于实现周期检测、自动重连、手动重连和退避规则。
 - `docs/stage4/task05.md`：布防编排与撤防策略，适用于实现登录后布防、断开前撤防和 AlarmHandle 管理。
 - `docs/stage4/task06.md`：`GetDeviceStatus` 实施方案，适用于实现设备状态查询、筛选、刷新和鉴权。
-- `docs/stage4/task07.md`：`AddDevice` 实施方案，适用于实现新增设备入库、运行时注册和可选立即连接。
+- `docs/stage4/task07.md`：`AddDevice` 实施方案，适用于实现新增设备写入 JSON 清单、运行时注册和可选立即连接。
 - `docs/stage4/task08.md`：`DeleteDevice`、`DisconnectDevice`、`ReconnectDevice` 实施方案，适用于实现设备删除、手动断开和手动重连。
-- `docs/stage4/task09.md`：阶段 4 测试与验收方案，适用于验证设备生命周期、设备管理 gRPC、数据库兼容和 mock SDK 集成。
+- `docs/stage4/task09.md`：阶段 4 测试与验收方案，适用于验证设备生命周期、设备管理 gRPC、JSON 清单读写、遗留数据库兼容边界和 mock SDK 集成。
 - `docs/stage4/task10.md`：阶段 1-4 联调测试方案，适用于使用 Docker 数据库验证服务启动、gRPC、设备生命周期基础闭环，并指导真实设备冒烟联调。
 - `docs/stage5/task01.md`：阶段 5 边界与任务总览，适用于确认权限、人员、人脸同步的实施范围和顺序。
 - `docs/stage5/task02.md`：权限同步 `SyncPermissions` 方案，适用于实现权限请求解析、在线设备下发和人员权限同步状态更新。
@@ -74,6 +74,7 @@
 - `docs/stage9/task04.md`：摄像头窗口与门目标活动集合方案，适用于实现窗口不续期、多摄像头共享门和最后窗口结束恢复规则。
 - `docs/stage9/task05.md`：门禁常闭、恢复和停止清理方案，适用于实现 `NET_DVR_ControlGateway` 常闭/恢复、恢复重试和服务停止 best-effort 恢复。
 - `docs/stage9/task06.md`：阶段 9 测试、联调与验收方案，适用于验证 AIOP 触发、窗口语义、多目标联动、恢复可靠性和默认关闭兼容性。
+- `docs/stage10/task01.md`：设备清单 JSON 化与设备类型字段方案，适用于确认 `devices.json`、`Devices.FilePath`、`Devices.Items`、`types` 语义、门禁刷脸设备下发范围和 `lastUsedTime` 移除边界。
 
 在 `docs/` 下每新增一个文档，必须在本节同步增加一条目录指引项。目录项应包含文档路径、核心用途和适用场景，确保后续查阅和实施时能快速定位。
 

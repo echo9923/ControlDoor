@@ -32,9 +32,9 @@ namespace ControlDoor.Database
             return report;
         }
 
-        public static IReadOnlyList<string> RequiredTables { get; } = new[] { "dbo.devices", "dbo.system_users" };
+        public static IReadOnlyList<string> RequiredTables { get; } = new[] { "dbo.system_users", "dbo.attendance_gate_v2", "dbo.device_operation_retry_states" };
 
-        public static IReadOnlyList<string> OptionalTables { get; } = new[] { "dbo.attendance_gate_v2", "dbo.device_operation_retry_states", "dbo.face_event_checkpoint" };
+        public static IReadOnlyList<string> OptionalTables { get; } = new[] { "dbo.face_event_checkpoint" };
     }
 
     public sealed class DatabaseHealthReport

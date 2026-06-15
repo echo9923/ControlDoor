@@ -74,6 +74,7 @@ namespace ControlDoor.Runtime.Health
                 new DirectoryHealthCheck("日志目录", settings.Logging.LogDirectory, required: true),
                 new DirectoryHealthCheck("SDK 日志目录", settings.HikvisionSdk.SdkLogDirectory, required: settings.HikvisionSdk.RequireSdkLog),
                 new DirectoryHealthCheck("抓拍目录", settings.FaceEventLogging.SnapshotRootDirectory, required: settings.FaceEventLogging.Enabled),
+                new DeviceStoreHealthCheck(),
                 new PortHealthCheck(),
                 new DatabaseHealthCheckItem(database),
                 new DllPresenceHealthCheck("Hikvision SDK DLL", required: true, "HCNetSDK.dll", CombineRelative(settings.HikvisionSdk.DllDirectory, "HCNetSDK.dll"), "sdk\\Hikvision\\HCNetSDK.dll"),

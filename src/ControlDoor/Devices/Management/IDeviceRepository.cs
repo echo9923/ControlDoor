@@ -14,10 +14,8 @@ namespace ControlDoor.Devices.Management
 
         bool ExistsIpAddress(string ipAddress);
 
-        DatabaseWriteResult InsertDevice(DeviceRecord record);
+        DeviceStoreWriteResult InsertDevice(DeviceRecord record);
 
-        DatabaseWriteResult DeleteDevice(int deviceId);
-
-        DatabaseWriteResult UpdateLastUsedTime(int deviceId);
+        DeviceStoreWriteResult DeleteDevice(int deviceId);
     }
 }

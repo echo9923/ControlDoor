@@ -6,8 +6,8 @@
 
 本轮联调分为两个层级：
 
-1. **基础环境联调**：使用 Docker SQL Server 和禁用占位设备，确认服务能启动、gRPC 能监听、数据库读写路径可用、日志可观察。此层级不连接真实设备。
-2. **真实设备冒烟联调**：在基础环境通过后，由现场接入一台真实设备，再启用该设备记录，观察登录、布防、状态检测、断开、重连和停止清理日志。
+1. **基础环境联调**：使用 Docker SQL Server 和 `Configuration/devices.json` 中的禁用占位设备，确认服务能启动、gRPC 能监听、数据库业务表可用、JSON 设备管理可写、日志可观察。此层级不连接真实设备。
+2. **真实设备冒烟联调**：在基础环境通过后，由现场接入一台真实设备，再启用 JSON 设备记录，观察登录、布防、状态检测、断开、重连和停止清理日志。
 
 ## 边界
 
@@ -61,40 +61,42 @@ docker exec controldoor-sqlserver-stage14 /bin/bash -lc "ls /opt/mssql-tools/bin
 
 ## 测试运行配置
 
-构建后，运行目录的 `Configuration/appsettings.json` 使用以下测试连接字符串：
+构建后，运行目录的 `Configuration/appsettings.json` 使用以下测试连接字符串，并通过 `Devices.FilePath` 指向独立设备清单：
 
 ```json
 {
   "Database": {
-    "ConnectionString": "Server=127.0.0.1,14333;Database=ruoyi-vue-pro;User Id=door_user;Password=change_me;TrustServerCertificate=True;"
+    "ConnectionString": "Server=127.0.0.1,14333;Database=ruoyi-vue-pro;User Id=admin_user;Password=123456;TrustServerCertificate=True;"
+  },
+  "Devices": {
+    "FilePath": "Configuration\\devices.json",
+    "BackupOnWrite": true,
+    "Items": []
   }
 }
 ```
 
-基础联调阶段，`dbo.devices` 中的 `9001` 设备保持 `status = 0`，确保服务启动时不会触发真实 SDK 登录。
+基础联调阶段，在运行目录创建 `Configuration/devices.json`，让 `9001` 设备保持 `enabled=false`，确保服务启动时不会触发真实 SDK 登录：
 
-真实设备接入前，将设备记录更新为现场提供的 IP、端口、用户名和密码，但仍先保持 `status = 0`：
-
-```sql
-UPDATE dbo.devices
-SET device_name = N'阶段1-4真实设备联调',
-    ip_address = N'<设备IP>',
-    port = N'8000',
-    username = N'admin',
-    [password] = N'<设备密码>',
-    status = 0,
-    updated_at = SYSDATETIME()
-WHERE device_id = 9001;
+```json
+{
+  "devices": [
+    {
+      "deviceId": 9001,
+      "name": "阶段1-4真实设备联调",
+      "types": [ "Acs", "FaceCapture" ],
+      "ipAddress": "<设备IP或占位IP>",
+      "port": 8000,
+      "username": "admin",
+      "password": "<设备密码或占位密码>",
+      "enabled": false,
+      "remark": "阶段1-4联调占位设备"
+    }
+  ]
+}
 ```
 
-确认配置无误后，再启用：
-
-```sql
-UPDATE dbo.devices
-SET status = 1,
-    updated_at = SYSDATETIME()
-WHERE device_id = 9001;
-```
+真实设备接入前，将 `ipAddress`、`port`、`username`、`password` 改为现场提供的值，但仍先保持 `enabled=false`；确认配置无误后，再把 `enabled` 改为 `true` 并重启服务，或通过 `AddDevice connectNow=true` 新增并立即连接测试设备。
 
 ## 基础环境联调步骤
 
@@ -102,35 +104,36 @@ WHERE device_id = 9001;
 | --- | --- | --- |
 | 1 | `dotnet build` 测试项目 | 构建成功，0 Error。 |
 | 2 | 执行全量测试 runner | `Total` 全部通过。 |
-| 3 | 启动 Docker SQL Server 并执行 seed | `ruoyi-vue-pro` 存在，`devices` 中有 1 条禁用占位设备。 |
-| 4 | 运行 `ControlDoor.exe --validate-config` | 配置和数据库健康检查通过；SDK DLL 缺失最多为 Warning。 |
-| 5 | 运行 `ControlDoor.exe --console` | Host 启动成功，gRPC 监听 `5001`。 |
-| 6 | 调用 `GetDeviceStatus` | 返回 `9001`，`enabled=false`，`status=Disabled` 或数据库禁用态。 |
-| 7 | 调用 `AddDevice` 新增禁用设备 | 数据库插入成功，运行时注册成功，不触发登录。 |
-| 8 | 调用 `DeleteDevice` 删除测试新增设备 | 数据库和运行时清理成功。 |
-| 9 | 停止服务 | 后台任务停止，日志有 Host 停止成功记录。 |
+| 3 | 启动 Docker SQL Server 并执行 seed | `ruoyi-vue-pro` 存在，业务表可读。 |
+| 4 | 准备 `Configuration/devices.json` | 有 1 条 `enabled=false` 的占位设备 `9001`，且包含合法 `types`。 |
+| 5 | 运行 `ControlDoor.exe --validate-config` | 配置、JSON 设备清单和数据库健康检查通过；SDK DLL 缺失最多为 Warning。 |
+| 6 | 运行 `ControlDoor.exe --console` | Host 启动成功，gRPC 监听 `5001`。 |
+| 7 | 调用 `GetDeviceStatus` | 返回 `9001`，`enabled=false`，`status=Disabled`。 |
+| 8 | 调用 `AddDevice` 新增禁用设备 | 写入 `Configuration/devices.json`，运行时注册成功，不触发登录。 |
+| 9 | 调用 `DeleteDevice` 删除测试新增设备 | JSON 记录和运行时清理成功。 |
+| 10 | 停止服务 | 后台任务停止，日志有 Host 停止成功记录。 |
 
 可使用受环境变量保护的自动化冒烟测试执行步骤 4-6：
 
 ```powershell
 $env:CONTROLDOOR_STAGE14_INTEGRATION = "1"
-$env:CONTROLDOOR_STAGE14_CONNECTION_STRING = "Server=127.0.0.1,14333;Database=ruoyi-vue-pro;User Id=door_user;Password=change_me;TrustServerCertificate=True;"
+$env:CONTROLDOOR_STAGE14_CONNECTION_STRING = "Server=127.0.0.1,14333;Database=ruoyi-vue-pro;User Id=admin_user;Password=123456;TrustServerCertificate=True;"
 C:\Users\Administrator\AppData\Local\Temp\ControlDoorArtifacts\bin\ControlEntradaSalida.Tests\debug\ControlEntradaSalida.Tests.exe Stage14Integration
 Remove-Item Env:\CONTROLDOOR_STAGE14_INTEGRATION
 Remove-Item Env:\CONTROLDOOR_STAGE14_CONNECTION_STRING
 ```
 
-该测试会创建临时运行目录、启动真实 `ControlDoorHost`、连接 Docker SQL Server、启动 gRPC server，并通过 gRPC 客户端调用 `GetDeviceStatus` 验证禁用占位设备 `9001` 可见；随后调用 `AddDevice` 新增一台禁用测试设备 `9010`，再调用 `DeleteDevice` 删除它，覆盖设备管理的数据库写路径。
+该测试会创建临时运行目录、启动真实 `ControlDoorHost`、连接 Docker SQL Server、加载 JSON 设备清单、启动 gRPC server，并通过 gRPC 客户端调用 `GetDeviceStatus` 验证禁用占位设备 `9001` 可见；随后调用 `AddDevice` 新增一台禁用测试设备 `9010`，再调用 `DeleteDevice` 删除它，覆盖设备管理的 JSON 写路径。
 
 ## 真实设备冒烟步骤
 
 | 步骤 | 操作 | 预期 |
 | --- | --- | --- |
 | 1 | 现场接入设备并提供 IP、端口、用户名、密码 | 本机可访问设备管理端口。 |
-| 2 | 更新 `dbo.devices` 的 `9001` 记录但保持禁用 | `GetDeviceStatus includeDisabled=true` 可看到新 IP。 |
+| 2 | 更新 `Configuration/devices.json` 的 `9001` 记录但保持 `enabled=false` | `GetDeviceStatus includeDisabled=true` 可看到新 IP。 |
 | 3 | 确认 SDK DLL 已放入运行目录或 SDK 目录 | 健康检查不再报告海康 SDK DLL Warning。 |
-| 4 | 启用 `9001` 并重启服务，或调用 `AddDevice connectNow=true` | 服务投递登录任务。 |
-| 5 | 观察日志中的 `DeviceLogin` | 成功时记录 UserID、状态变为 `Online`，并更新 `last_used_time`。 |
+| 4 | 将 `9001.enabled` 改为 `true` 并重启服务，或调用 `AddDevice connectNow=true` | 服务投递登录任务。 |
+| 5 | 观察日志中的 `DeviceLogin` | 成功时记录 UserID，状态变为 `Online`。 |
 | 6 | 观察 `DeviceArmAlarm` | 成功时记录 AlarmHandle 并建立反查索引。 |
 | 7 | 调用 `GetDeviceStatus refresh=true` | 触发状态检测，在线设备保持 `Online`。 |
 | 8 | 调用 `DisconnectDevice` | 先撤防再登出，状态变为 `Disconnected`。 |
@@ -153,7 +156,7 @@ Remove-Item Env:\CONTROLDOOR_STAGE14_CONNECTION_STRING
 | 日志关键词 | 判定 |
 | --- | --- |
 | `ControlDoor Host 启动成功` | 服务生命周期正常。 |
-| `设备加载完成` | `dbo.devices` 加载和运行时注册完成。 |
+| `设备加载完成` | `Configuration/devices.json` 加载和运行时注册完成。 |
 | `DeviceLogin` | 登录任务进入设备固定执行通道。 |
 | `登录成功` | SDK 登录成功，UserID 已写入运行时。 |
 | `DeviceArmAlarm` / `布防成功` | AlarmHandle 已注册。 |
@@ -164,23 +167,24 @@ Remove-Item Env:\CONTROLDOOR_STAGE14_CONNECTION_STRING
 
 ## 通过标准
 
-- Docker 数据库可初始化，必需表 `dbo.devices`、`dbo.system_users` 可读。
+- Docker 数据库可初始化，当前业务必需表 `dbo.system_users`、`dbo.attendance_gate_v2`、`dbo.device_operation_retry_states` 可读。
+- `Configuration/devices.json` 可解析，设备 `types` 合法，禁用占位设备可通过 `GetDeviceStatus includeDisabled=true` 查询。
 - 基础环境中服务可通过 `--validate-config` 和 `--console` 启动。
 - gRPC 设备管理 5 个方法保持 JSON 契约兼容。
 - 基础环境不触发真实设备 SDK 登录。
 - 接入真实设备后，登录、布防、刷新状态、断开、重连、停止清理均有明确日志和可解释结果。
-- 数据库无结构变更，仅使用既有表和字段。
+- 数据库无结构变更；设备增删只改 `Configuration/devices.json`。
 
 ## 当前基础环境联调记录
 
 | 时间 | 项目 | 结果 |
 | --- | --- | --- |
 | 2026-06-12 | Docker SQL Server 容器 `controldoor-sqlserver-stage14` | 已启动，端口 `14333 -> 1433`。 |
-| 2026-06-12 | `database/stage1_4_integration_seed.sql` | 执行成功，`ruoyi-vue-pro` 中有 1 台禁用占位设备，启用设备数为 0。 |
+| 2026-06-12 | `database/stage1_4_integration_seed.sql` | 历史记录已废弃；当前脚本只准备业务数据库表，设备联调入口为 `Configuration/devices.json`。 |
 | 2026-06-12 | `ControlDoor.exe --validate-config` | 通过；数据库在该模式下按现有实现为跳过真实连接的 Warning，SDK DLL/SqlServerTypes 缺失为 Warning。 |
-| 2026-06-12 | `Stage14Integration` | 通过；真实 `ControlDoorHost` 启动、连接 Docker SQL Server、启动 gRPC server、`GetDeviceStatus` 返回禁用设备 `9001`、`AddDevice` 新增禁用设备 `9010`、`DeleteDevice` 删除 `9010`。 |
+| 2026-06-12 | `Stage14Integration` | 历史记录已废弃；当前对应测试应覆盖 JSON 设备清单写路径。 |
 | 2026-06-12 | 全量测试 runner | 通过；集成测试默认跳过，`Total: 274, Failed: 0`。 |
-| 2026-06-12 | 真实设备接入前联调库残留检查 | 通过；`dbo.devices` 仅剩禁用占位设备 `9001`，`last_used_time` 仍为 `NULL`，未触发真实 SDK 登录。 |
+| 2026-06-12 | 真实设备接入前联调库残留检查 | 历史记录已废弃；当前真实设备接入前只检查 JSON 清单中的禁用占位设备。 |
 
 ## 当前真实设备联调记录
 
@@ -189,9 +193,9 @@ Remove-Item Env:\CONTROLDOOR_STAGE14_CONNECTION_STRING
 | 2026-06-12 | 设备网络连通性 | 通过；现场设备 `169.254.66.109:8000` TCP 端口可达。 |
 | 2026-06-12 | 运行目录 SDK DLL 检查 | 通过；运行目录已补齐 `HCNetSDK.dll`、`HCNetSDKCom`、`SqlServerTypes` 及海康 SDK 依赖 DLL。 |
 | 2026-06-12 | 首次真实设备冒烟 | 未通过；测试进程工作目录不在 ControlDoor 运行目录，`DllImport("HCNetSDK.dll")` 未能命中运行目录 DLL，报 `0x8007007E`。 |
-| 2026-06-12 | `Stage14Integration_RealDevice_LoginAndStatusSmoke` | 通过；测试在启动 Host 前调用 `SetDllDirectory(runDirectory)`，真实 `ControlDoorHost` 连接 Docker SQL Server 后加载设备 `9001`，`GetDeviceStatus refresh=true` 返回 `isConnected=true`、`status=Online`、`lastErrorCode=null`。 |
-| 2026-06-12 | 数据库回写检查 | 通过；`dbo.devices.device_id = 9001` 的 `last_used_time` 更新为 `2026-06-12 02:20:22`，联调结束后已将 `status` 切回 `0`，避免后续启动自动登录真实设备。 |
-| 2026-06-12 | 日志检查 | 通过；日志确认 Host 启动、数据库健康检查、`dbo.devices` 加载、`UpdateDeviceLastUsedTime`、后台任务停止和 Host 停止成功。已补充生命周期成功日志，后续真实设备联调可直接观察 `设备登录成功。`、`设备布防成功。`、`设备撤防成功。` 和 `设备登出成功。`。 |
+| 2026-06-12 | `Stage14Integration_RealDevice_LoginAndStatusSmoke` | 历史记录；测试在启动 Host 前调用 `SetDllDirectory(runDirectory)`，真实 `ControlDoorHost` 当时连接 Docker SQL Server 后加载设备 `9001`，`GetDeviceStatus refresh=true` 返回 `isConnected=true`、`status=Online`、`lastErrorCode=null`。阶段 10 后真实设备清单应由 `Configuration/devices.json` 提供。 |
+| 2026-06-12 | 数据库回写检查 | 历史记录已废弃；当前设备登录不回写设备清单。 |
+| 2026-06-12 | 日志检查 | 历史记录；当时日志包含 `UpdateDeviceLastUsedTime`，阶段 10 后后续真实设备联调直接观察 `设备登录成功。`、`设备布防成功。`、`设备撤防成功。` 和 `设备登出成功。`。 |
 | 2026-06-12 | 全量测试 runner | 通过；集成测试默认跳过，`Total: 276, Failed: 0`。 |
 
 真实设备冒烟测试默认跳过，只有显式设置环境变量才会运行：
@@ -208,4 +212,4 @@ Remove-Item Env:\CONTROLDOOR_STAGE14_DEVICE_ID
 Remove-Item Env:\CONTROLDOOR_STAGE14_REAL_DEVICE_TIMEOUT_SECONDS
 ```
 
-后续如果需要继续现场联调，应先按需启用 `9001`，测试结束后再切回禁用状态。
+后续如果需要继续现场联调，应先按需在 `Configuration/devices.json` 中启用 `9001`，测试结束后再切回 `enabled=false`。

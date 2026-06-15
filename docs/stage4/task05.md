@@ -57,10 +57,21 @@
 
 | 失败 | 策略 |
 | --- | --- |
-| 布防失败 | 设备仍可在线；事件功能标记不可用；按配置安排布防重试。 |
+| 布防失败 | 设备仍可在线（状态降级 `Degraded`）；按 `ReArmBaseDelayMs`/`ReArmMaxDelayMs` 指数退避无限重试，直到布防成功或设备被手动断开/删除/服务停止。 |
 | 撤防失败 | 记录 warning，继续登出/删除流程；本地句柄清理。 |
-| 回调未注册 | 布防失败，提示先注册回调。 |
+| 回调未注册 | 布防失败，触发 ReArm 重试；提示先注册回调。 |
 | AlarmHandle 索引冲突 | 尝试撤防新句柄并返回内部错误。 |
+
+### 布防重试（ReArm）
+
+| 配置 | 说明 |
+| --- | --- |
+| `ReArmBaseDelayMs` | 布防重试指数退避基数（默认 1000ms）。 |
+| `ReArmMaxDelayMs` | 布防重试最大退避延迟（默认 60000ms）。 |
+
+- 布防任务失败后投递延迟任务（taskKey `stage4:rearm:{deviceId}`，`DeviceTaskType.SetupAlarm`），倍数固定 2，无限重试。
+- 布防成功后清零重试计数。
+- `DisconnectDevice`、`ReconnectDevice`、`DeleteDevice` 和服务停止清理会取消挂起的 ReArm 任务。门控与重连一致：`Disconnected`/`InvalidConfig`/`Disabled`/手动断开时不调度。
 
 ## 不做的事
 
@@ -77,8 +88,8 @@
 | --- | --- |
 | 登录后布防成功 | AlarmHandle 写入运行时和索引。 |
 | 重复布防 | 不重复调用 SDK。 |
-| 布防失败 | 设备保持在线，事件状态为失败。 |
+| 布防失败 | 设备保持在线（`Degraded`），并投递 ReArm 无限重试任务。 |
 | 索引失败 | 尝试撤防新句柄。 |
-| 删除前撤防 | 撤防发生在登出和删除数据库前。 |
+| 删除前撤防 | 撤防发生在登出和删除 JSON 设备记录前。 |
 | 撤防失败 | 本地索引仍清理，流程继续。 |
 | 服务停止 | 对全部已布防设备执行 best-effort 撤防。 |

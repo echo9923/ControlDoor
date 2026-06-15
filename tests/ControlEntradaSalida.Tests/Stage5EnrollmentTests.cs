@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using ControlDoor.Devices.Management;
 using ControlDoor.Hikvision;
 
 namespace ControlEntradaSalida.Tests
@@ -25,7 +26,7 @@ namespace ControlEntradaSalida.Tests
         {
             using (var fixture = new Stage5Fixture())
             {
-                fixture.AddOnlineDevice();
+                fixture.AddOnlineDevice(types: new[] { DeviceType.FaceCapture });
                 fixture.Gateway.ConfigureException("CaptureFaceAsync", new DeviceGatewayException("CaptureFace", SdkError.FromCode(7, "session lost")));
 
                 var frame = fixture.Response(fixture.Service.CaptureFaceStream(@"{""employee_id"":""10001""}", fixture.Context("capture-failure")).First());
@@ -46,7 +47,7 @@ namespace ControlEntradaSalida.Tests
         {
             using (var fixture = new Stage5Fixture())
             {
-                fixture.AddOnlineDevice();
+                fixture.AddOnlineDevice(types: new[] { DeviceType.FaceCapture });
 
                 var frame = fixture.Response(fixture.Service.CaptureFaceStream(@"{""employee_id"":""10001""}", fixture.Context("capture-status-task")).First());
                 var status = fixture.Response(fixture.Service.GetEnrollmentStatus(
@@ -66,7 +67,7 @@ namespace ControlEntradaSalida.Tests
         {
             using (var fixture = new Stage5Fixture())
             {
-                fixture.AddOnlineDevice();
+                fixture.AddOnlineDevice(types: new[] { DeviceType.FaceCapture });
                 fixture.Gateway.ConfigureResult("CaptureFaceAsync", new FaceCaptureResult
                 {
                     ImageBytes = new byte[205 * 1024],

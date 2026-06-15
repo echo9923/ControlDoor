@@ -57,7 +57,7 @@
 | --- | --- |
 | 完整方法名 | `/permission.PermissionSyncService/SyncPermissions` |
 | 方法类型 | Unary |
-| 用途 | 按员工编号同步门禁权限编号到设备 |
+| 用途 | 按员工编号同步门禁权限等级到设备 |
 | 服务端处理 | `PermissionSyncGrpcService.SyncPermissions` |
 
 请求支持三种结构：数组、对象中的 `items`、对象中的 `records`，也支持单个对象。
@@ -78,7 +78,10 @@
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `employee_id` | 是 | 员工编号/工号 |
-| `permission_code` | 是 | 权限编号，必须可解析为整数 |
+| `permission_code` | 是 | 门禁权限等级，必须可解析为整数；`0` 全部禁用，`1` 仅办公区域启用，`2` 办公/生产/未分类均启用，其他值全部禁用 |
+| `name` | 否 | 员工姓名，别名 `full_name`、`fullName`、`name_alias`；为空时设备端姓名使用员工编号 |
+
+区域识别来自设备 `description` / JSON `remark`：包含 `生产` 识别为生产区域，包含 `办公` 识别为办公区域，为空或不匹配识别为 `Other`。权限同步通过 `UserInfo/SetUp` 写入 `Valid.enable`、`doorRight` 和 `RightPlan` 启用或禁用员工，不再把 `permission_code` 作为设备端 `UserRight/SetUp` 权限码直接下发。
 
 响应业务字段：
 
@@ -304,7 +307,7 @@
 
 ## 5. 门禁设备管理服务 `device.AccessControlService`
 
-该服务用于管理本地服务中的门禁设备连接与数据库中的 `devices` 表。若配置了 `Service.GrpcManagementApiKey`，调用方必须在 metadata 中传入：
+该服务用于管理本地服务中的门禁设备连接与 `Configuration/devices.json` 设备清单。若配置了 `Service.GrpcManagementApiKey`，调用方必须在 metadata 中传入：
 
 ```text
 x-api-key: 配置的APIKey
@@ -350,14 +353,15 @@ x-api-key: 配置的APIKey
 | --- | --- |
 | `deviceId` | 设备 ID |
 | `deviceName` | 设备名称 |
+| `description` | 设备描述，权限同步用其识别办公/生产区域 |
 | `ipAddress` | 设备 IP |
 | `port` | 端口 |
 | `enabled` | 是否启用 |
 | `isConnected` | 是否已连接 |
 | `status` | 状态枚举字符串 |
 | `statusMessage` | 状态说明 |
+| `types` | 设备声明态类型数组，合法值为 `Acs`、`FaceCapture`、`Camera` |
 | `lastChecked` | 最近检查时间 |
-| `lastUsed` | 最近使用时间 |
 | `lastErrorCode` | 最近 SDK 错误码 |
 | `lastErrorMessage` | 最近错误说明 |
 
@@ -367,7 +371,7 @@ x-api-key: 配置的APIKey
 | --- | --- |
 | 完整方法名 | `/device.AccessControlService/AddDevice` |
 | 方法类型 | Unary |
-| 用途 | 新增设备到数据库和内存，可选立即连接 |
+| 用途 | 新增设备到 `Configuration/devices.json` 和运行时，可选立即连接 |
 
 ```json
 {
@@ -377,6 +381,7 @@ x-api-key: 配置的APIKey
   "port": "8000",
   "username": "admin",
   "password": "设备密码",
+  "types": ["Acs"],
   "description": "生产区域",
   "enabled": true,
   "connectNow": false
@@ -387,15 +392,18 @@ x-api-key: 配置的APIKey
 
 | 字段 | 别名 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `deviceId` | `device_id` | 是 | 设备 ID，必须大于 0，数据库主键非自增 |
+| `deviceId` | `device_id` | 是 | 设备 ID，必须大于 0，在 JSON 清单内唯一 |
 | `deviceName` | `device_name` | 是 | 设备名称 |
 | `ipAddress` | `ip_address` | 是 | 设备 IP |
 | `port` | 无 | 否 | 端口，默认 `8000`，必须为 1-65535 |
 | `username` | 无 | 否 | 登录用户名，默认 `admin` |
 | `password` | 无 | 是 | 登录密码 |
+| `types` | `deviceTypes`、`device_types` | 是 | 设备类型数组，合法值为 `Acs`、`FaceCapture`、`Camera`，可多选 |
 | `description` | 无 | 否 | 设备描述 |
 | `enabled` | 无 | 否 | 是否启用，默认 true |
 | `connectNow` | 无 | 否 | 新增后是否立即连接，默认 false |
+
+正式部署模式下，`AddDevice` 会写回 `Devices.FilePath` 指向的 `Configuration/devices.json`，并在写回前按 `BackupOnWrite` 生成备份。若使用 `Devices.Items` 内联清单，新增只更新当前运行时缓存，不写文件；该模式仅建议用于测试或临时小规模部署。
 
 响应业务字段：
 
@@ -412,7 +420,7 @@ x-api-key: 配置的APIKey
 | --- | --- |
 | 完整方法名 | `/device.AccessControlService/DeleteDevice` |
 | 方法类型 | Unary |
-| 用途 | 删除设备，默认先断开连接，再删除数据库记录和内存索引 |
+| 用途 | 删除设备，默认先断开连接，再从 `Configuration/devices.json` 和运行时索引中移除 |
 
 ```json
 {
@@ -434,6 +442,8 @@ x-api-key: 配置的APIKey
 | --- | --- |
 | `deleted` | 是否删除成功 |
 | `deviceId` | 被删除设备 ID |
+
+正式部署模式下，`DeleteDevice` 会写回 `Devices.FilePath` 指向的 `Configuration/devices.json`。若使用 `Devices.Items` 内联清单，删除只更新当前运行时缓存，不写文件。
 
 ### 5.4 `DisconnectDevice`
 

@@ -93,6 +93,33 @@ namespace ControlDoor.GrpcApi
             return Convert.ToString(value);
         }
 
+        public IList<string> GetStringList(params string[] names)
+        {
+            object value;
+            var result = new List<string>();
+            if (!TryGet(out value, names) || value == null)
+            {
+                return result;
+            }
+
+            var array = value as IEnumerable;
+            if (array != null && !(value is string))
+            {
+                foreach (var item in array)
+                {
+                    if (item != null)
+                    {
+                        result.Add(Convert.ToString(item));
+                    }
+                }
+
+                return result;
+            }
+
+            result.Add(Convert.ToString(value));
+            return result;
+        }
+
         public bool? GetBool(params string[] names)
         {
             object value;

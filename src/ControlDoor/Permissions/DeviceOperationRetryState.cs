@@ -14,6 +14,8 @@ namespace ControlDoor.Permissions
 
         public int? PermissionLevel { get; set; }
 
+        public string PermissionPayloadJson { get; set; }
+
         public bool PermissionPending { get; set; }
 
         public bool PermissionSyncCompletionBlocked { get; set; }
@@ -71,6 +73,7 @@ namespace ControlDoor.Permissions
                 DeviceId = ToInt32(Get(row, "device_id")),
                 EmployeeId = Convert.ToString(Get(row, "employee_id")) ?? string.Empty,
                 PermissionLevel = ToNullableInt32(Get(row, "permission_level")),
+                PermissionPayloadJson = Convert.ToString(Get(row, "permission_payload")),
                 PermissionPending = ToBool(Get(row, "permission_pending")),
                 PermissionSyncCompletionBlocked = ToBool(Get(row, "permission_sync_completion_blocked")),
                 PersonPayloadJson = Convert.ToString(Get(row, "person_payload")),

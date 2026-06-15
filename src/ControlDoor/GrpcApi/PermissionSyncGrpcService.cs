@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Tasks;
 using ControlDoor.Devices.Workers;
@@ -80,7 +81,7 @@ namespace ControlDoor.GrpcApi
                 return Error(context, parsed.Code, parsed.Message);
             }
 
-            var devices = GetTargetDevices();
+            var devices = GetAcsTargetDevices();
             var onlineDevices = devices.Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
             var offlineDevices = devices.Where(item => item.Enabled && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
             var disabledCount = devices.Count(item => !item.Enabled || item.Status == DeviceConnectionStatus.Disabled || item.Status == DeviceConnectionStatus.InvalidConfig);
@@ -168,7 +169,7 @@ namespace ControlDoor.GrpcApi
                 return Error(context, parsed.Code, parsed.Message);
             }
 
-            var devices = GetTargetDevices();
+            var devices = GetAcsTargetDevices();
             var onlineDevices = devices.Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
             var offlineDevices = devices.Where(item => item.Enabled && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
             var employeeResults = CreateEmployeeResults(parsed.Items.Select(item => item.EmployeeId));
@@ -294,7 +295,7 @@ namespace ControlDoor.GrpcApi
                 return Error(context, parsed.Code, parsed.Message);
             }
 
-            var onlineDevices = GetTargetDevices().Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
+            var onlineDevices = GetAcsTargetDevices().Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
             var results = CreateEmployeeResults(parsed.Items.Select(item => item.EmployeeId));
             var failedEmployees = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -357,7 +358,7 @@ namespace ControlDoor.GrpcApi
 
             var taskId = Guid.NewGuid().ToString("N");
             enrollmentStore.Start(taskId, employeeId);
-            var device = GetTargetDevices().FirstOrDefault(item =>
+            var device = GetFaceCaptureTargetDevices().FirstOrDefault(item =>
                 item.Enabled &&
                 item.IsConnected &&
                 item.SdkUserId.HasValue &&
@@ -474,7 +475,7 @@ namespace ControlDoor.GrpcApi
                 return Error(context, parsed.Code, parsed.Message);
             }
 
-            var devices = GetTargetDevices();
+            var devices = GetAcsTargetDevices();
             var onlineDevices = devices.Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
             var offlineDevices = devices.Where(item => item.Enabled && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
             var employeeResults = CreateEmployeeResults(parsed.Items.Select(item => item.EmployeeId));
@@ -549,12 +550,10 @@ namespace ControlDoor.GrpcApi
                     return offline;
                 }
 
-                var permission = new PermissionInfo { EmployeeId = command.EmployeeId, PermissionCode = command.PermissionCode.ToString() };
-                permission.DoorIndexes.Add(1);
-                await gateway.SetPermissionAsync(new SetPermissionRequest
+                await gateway.UpsertPersonAsync(new UpsertPersonRequest
                 {
                     UserId = snapshot.SdkUserId.Value,
-                    Permissions = { permission }
+                    Person = command.ToPermissionPersonInfo(snapshot.Description)
                 }, taskContext.CancellationToken).ConfigureAwait(false);
                 return DeviceTaskResult.FromTask(taskContext.Task, true, "OK", "权限同步成功。", snapshot.Status, started, DateTime.Now);
             });
@@ -726,13 +725,17 @@ namespace ControlDoor.GrpcApi
 
         private object QueueRetry(DeviceRuntimeSnapshot device, string employeeId, string operation, IDictionary<string, object> payload, int? permissionLevel, string message)
         {
+            var payloadJson = payload == null ? null : JsonRequestReader.Serialize(payload);
             var intent = new DeviceOperationRetryIntent
             {
                 DeviceId = device.DeviceId,
                 EmployeeId = employeeId,
                 Operation = operation,
                 PermissionLevel = permissionLevel,
-                PayloadJson = payload == null ? null : JsonRequestReader.Serialize(payload),
+                PermissionPayloadJson = string.Equals(operation, "SyncPermission", StringComparison.OrdinalIgnoreCase) && payload != null
+                    ? payloadJson
+                    : null,
+                PayloadJson = payloadJson,
                 LastError = message,
                 CreatedAt = DateTime.Now,
                 NextRetryAt = DateTime.Now
@@ -752,13 +755,14 @@ namespace ControlDoor.GrpcApi
                 var values = JsonRequestReader.AsObject(item);
                 var employeeId = TrimRequired(JsonRequestReader.GetString(values, "employee_id", "employeeId", "employee_no", "employeeNo"), "employee_id");
                 var permission = JsonRequestReader.GetInt(values, "permission_code", "permissionCode", "permission_level", "permissionLevel");
+                var name = JsonRequestReader.GetString(values, "name", "full_name", "fullName", "name_alias");
                 if (!permission.HasValue)
                 {
                     throw new RequestValidationException("INVALID_ARGUMENT", "permission_code 必须可解析为整数。");
                 }
 
                 commands.RemoveAll(command => string.Equals(command.EmployeeId, employeeId, StringComparison.OrdinalIgnoreCase));
-                commands.Add(new PermissionCommand { EmployeeId = employeeId, PermissionCode = permission.Value });
+                commands.Add(new PermissionCommand { EmployeeId = employeeId, Name = name, PermissionCode = permission.Value });
             }
 
             if (commands.Count == 0)
@@ -853,6 +857,28 @@ namespace ControlDoor.GrpcApi
         private IReadOnlyList<DeviceRuntimeSnapshot> GetTargetDevices()
         {
             return registry.GetAllSnapshots();
+        }
+
+        private IReadOnlyList<DeviceRuntimeSnapshot> GetAcsTargetDevices()
+        {
+            return GetTargetDevices()
+                .Where(item => HasDeclaredType(item, DeviceType.Acs))
+                .ToList();
+        }
+
+        private IReadOnlyList<DeviceRuntimeSnapshot> GetFaceCaptureTargetDevices()
+        {
+            return GetTargetDevices()
+                .Where(item => HasDeclaredType(item, DeviceType.FaceCapture))
+                .ToList();
+        }
+
+        private static bool HasDeclaredType(DeviceRuntimeSnapshot snapshot, DeviceType requiredType)
+        {
+            return snapshot == null ||
+                snapshot.Types == null ||
+                snapshot.Types.Count == 0 ||
+                snapshot.Types.Contains(requiredType);
         }
 
         private static void ValidateBatch(int count)
@@ -1009,6 +1035,7 @@ namespace ControlDoor.GrpcApi
             return new Dictionary<string, object>
             {
                 ["employee_id"] = command.EmployeeId,
+                ["name"] = command.Name,
                 ["permission_code"] = command.PermissionCode
             };
         }
@@ -1166,7 +1193,19 @@ namespace ControlDoor.GrpcApi
         {
             public string EmployeeId { get; set; }
 
+            public string Name { get; set; }
+
             public int PermissionCode { get; set; }
+
+            public PersonInfo ToPermissionPersonInfo(string deviceDescription)
+            {
+                return new PersonInfo
+                {
+                    EmployeeId = EmployeeId,
+                    Name = string.IsNullOrWhiteSpace(Name) ? EmployeeId : Name.Trim(),
+                    Enabled = DevicePermissionAreaPolicy.ShouldEnable(deviceDescription, PermissionCode)
+                };
+            }
         }
 
         private sealed class EmployeeCommand

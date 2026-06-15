@@ -20,11 +20,11 @@
 
 | 成功操作 | 字段变化 |
 | --- | --- |
-| 权限同步成功 | `permission_pending = 0`，`permission_sync_completion_blocked = 0`，必要时更新 `system_users.last_synced_level`、`last_synced_at`。 |
+| 权限同步成功 | `permission_pending = 0`，`permission_sync_completion_blocked = 0`，`permission_payload = NULL`，必要时更新 `system_users.last_synced_level`、`last_synced_at`。 |
 | 人员下发成功 | `person_pending = 0`，`person_payload = NULL`。 |
 | 人脸下发成功 | `face_pending = 0`，`face_payload = NULL`。 |
 | 删除人脸成功 | `delete_face_pending = 0`。 |
-| 删除人员成功 | 清除该行全部 pending 和 payload。 |
+| 删除人员成功 | 清除该行全部 pending 和 `permission_payload`、`person_payload`、`face_payload`。 |
 
 成功回写后，如果该状态行所有 pending 均为 0，则删除该行。删除补偿状态表示当前没有未完成补偿，不表示删除业务数据。
 

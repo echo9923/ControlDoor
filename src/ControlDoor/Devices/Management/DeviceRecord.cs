@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ControlDoor.Devices.Runtime;
 
 namespace ControlDoor.Devices.Management
@@ -21,7 +22,9 @@ namespace ControlDoor.Devices.Management
 
         public bool Enabled { get; set; } = true;
 
-        public DateTime? LastUsedAt { get; set; }
+        // 声明态设备类型（Acs/FaceCapture/Camera），可多选。
+        // 由 JSON 设备清单填写，启动期即可分类。
+        public IList<DeviceType> Types { get; set; } = new List<DeviceType>();
 
         public DeviceRuntimeCreationOptions ToRuntimeOptions(DateTime? now = null)
         {
@@ -29,13 +32,14 @@ namespace ControlDoor.Devices.Management
             {
                 DeviceId = DeviceId,
                 DeviceName = DeviceName,
+                Description = Description,
                 IpAddress = IpAddress,
                 Port = Port,
                 Username = Username,
                 Password = Password,
                 Enabled = Enabled,
-                CreatedAt = now,
-                LastUsedAt = LastUsedAt
+                Types = Types,
+                CreatedAt = now
             };
         }
     }

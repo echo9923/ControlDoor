@@ -37,12 +37,13 @@
 | 2 | 检查 `Configuration/appsettings.json` 是否存在。 |
 | 3 | 解析 JSON 并加载配置模型。 |
 | 4 | 校验必填项，补齐可选默认值。 |
-| 5 | 检查日志目录、SDK 日志目录、抓拍目录是否可创建和写入。 |
-| 6 | 检查数据库连接和核心表可读。 |
-| 7 | 检查 gRPC 端口是否可用。 |
-| 8 | 检查 Hikvision SDK DLL 是否存在、平台是否匹配。 |
-| 9 | 可选执行 SDK Init/Cleanup 和版本读取。 |
-| 10 | 输出中文检查结果摘要。 |
+| 5 | 检查 `Configuration/devices.json` 或内联 `Devices.Items` 设备清单是否存在、可解析且 `types` 合法。 |
+| 6 | 检查日志目录、SDK 日志目录、抓拍目录是否可创建和写入。 |
+| 7 | 检查数据库连接和当前仍使用的核心表可读。 |
+| 8 | 检查 gRPC 端口是否可用。 |
+| 9 | 检查 Hikvision SDK DLL 是否存在、平台是否匹配。 |
+| 10 | 可选执行 SDK Init/Cleanup 和版本读取。 |
+| 11 | 输出中文检查结果摘要。 |
 
 验证模式不启动 gRPC 服务、不启动设备 worker、不下发设备操作。
 
@@ -50,11 +51,12 @@
 
 | 表 | 阶段 8 要求 |
 | --- | --- |
-| `dbo.devices` | 必须可读。 |
 | `dbo.system_users` | 必须可读。 |
 | `dbo.attendance_gate_v2` | 阶段 7 启用时必须可读写检查。 |
 | `dbo.device_operation_retry_states` | 阶段 6 启用时必须可读写检查。 |
 | `dbo.face_event_checkpoint` | 阶段 7 不读写；如现场旧库存在，仅做结构不变检查。 |
+
+当前版本的设备主数据来自 `Configuration/devices.json`，运行前检查只校验 JSON 设备清单和仍被业务使用的数据库表。
 
 读写检查应使用低风险方式，例如事务内插入测试再回滚，或只做权限探测；不得改变现场数据。
 
@@ -97,6 +99,7 @@
 | 配置文件路径 | 完整路径。 |
 | 运行目录 | exe 所在目录。 |
 | gRPC 端口 | 端口和占用状态。 |
+| 设备清单 | `Configuration/devices.json` 路径、解析结果、设备数量和 `types` 校验摘要。 |
 | 数据库 | 连接结果和核心表状态。 |
 | SDK | DLL 路径、平台、版本、日志目录。 |
 | 日志 | 日志目录和记录策略摘要。 |

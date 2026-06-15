@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 
 namespace ControlEntradaSalida.Tests
@@ -18,6 +20,20 @@ namespace ControlEntradaSalida.Tests
             var configDirectory = Path.Combine(runDirectory, "Configuration");
             Directory.CreateDirectory(configDirectory);
             File.WriteAllText(Path.Combine(configDirectory, "appsettings.json"), json, Encoding.UTF8);
+        }
+
+        public static int FindAvailablePort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                return ((IPEndPoint)listener.LocalEndpoint).Port;
+            }
+            finally
+            {
+                listener.Stop();
+            }
         }
     }
 }

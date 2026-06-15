@@ -27,7 +27,6 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(snapshot.AlarmHandle.HasValue);
                 Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LoginAsync"));
                 Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "SetAlarmAsync"));
-                Assert.True(fixture.Repository.Operations.Any(item => item == "UpdateLastUsedTime:1"));
             }
         }
 
@@ -117,7 +116,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void DeviceLifecycle_DeleteDevice_RemovesRuntimeAndDatabaseIdempotently()
+        public static void DeviceLifecycle_DeleteDevice_RemovesRuntimeAndRepositoryIdempotently()
         {
             using (var fixture = new Stage4Fixture())
             {
@@ -131,6 +130,23 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(second.Success);
                 Assert.False(fixture.Registry.TryGetByDeviceId(1).Found);
                 Assert.True(fixture.Repository.Operations.Count(item => item == "DeleteDevice:1") >= 2);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_RegisterDevice_RuntimeIpConflict_DoesNotPersistRepository()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord(1, "10.0.4.1", enabled: true);
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                var result = fixture.Lifecycle.RegisterDevice(NewRecord(2, "10.0.4.1"), persist: true);
+
+                Assert.False(result.Success);
+                Assert.Equal("INVALID_ARGUMENT", result.Code);
+                Assert.False(fixture.Repository.ExistsDeviceId(2));
+                Assert.False(fixture.Repository.Operations.Any(item => item == "InsertDevice:2"));
             }
         }
 
@@ -170,6 +186,70 @@ namespace ControlEntradaSalida.Tests
 
                 Assert.Equal(DeviceConnectionStatus.Failed, snapshot.Status);
                 Assert.Equal("FAILED", snapshot.LastErrorCode);
+            }
+        }
+
+        // 默认 MaxReconnectAttempts=0 表示无限重试：连续登录失败后设备仍处于重连等待，不进入 Failed 终态。
+        [TestCase]
+        public static void DeviceLifecycle_ReconnectUnlimited_NeverMarksFailed()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.MaxReconnectAttempts = 0;
+                fixture.AddRecord(password: "wrong");
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "r1");
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "r2");
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "r3");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(snapshot.Status != DeviceConnectionStatus.Failed, "默认无限重连不应进入 Failed 终态。");
+                Assert.True(fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4Reconnect") >= 1);
+            }
+        }
+
+        // 布防失败后按指数退避无限重试：登录成功但 SetAlarmAsync 抛异常时，应投递 stage4:rearm 延迟任务。
+        [TestCase]
+        public static void DeviceLifecycle_ArmFailure_SchedulesReArmRetry()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReArmBaseDelayMs = 10000;
+                fixture.Options.ReArmMaxDelayMs = 60000;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                // 登录成功，但布防阶段抛异常，触发 ReArm 重试调度。
+                fixture.Gateway.ConfigureException("SetAlarmAsync", new DeviceGatewayException("Arm", SdkError.FromCode(7)));
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Gateway.Calls.Any(call => call.MethodName == "SetAlarmAsync"), "alarm was not attempted.");
+                WaitUntil(() => fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm") >= 1, "rearm was not scheduled.");
+
+                Assert.True(fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm") >= 1);
+                Assert.True(fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue == false);
+            }
+        }
+
+        // 断开设备时应取消挂起的布防重试：ReArm 投递后再 Disconnect，CancelledDelayedTaskCount 增加。
+        [TestCase]
+        public static void DeviceLifecycle_Disconnect_CancelsPendingReArm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReArmBaseDelayMs = 10000;
+                fixture.Options.ReArmMaxDelayMs = 60000;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Gateway.ConfigureException("SetAlarmAsync", new DeviceGatewayException("Arm", SdkError.FromCode(7)));
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm") >= 1, "rearm was not scheduled.");
+
+                var beforeCancel = fixture.DelayedScheduler.GetSnapshot().CancelledDelayedTaskCount;
+                fixture.Lifecycle.DisconnectDevice(1, "req-disconnect");
+                var snapshot = fixture.DelayedScheduler.GetSnapshot();
+
+                Assert.Equal(DeviceConnectionStatus.Disconnected, fixture.Registry.TryGetByDeviceId(1).Snapshot.Status);
+                Assert.True(snapshot.CancelledDelayedTaskCount > beforeCancel);
             }
         }
 
@@ -221,6 +301,21 @@ namespace ControlEntradaSalida.Tests
             }
 
             Assert.True(condition(), message);
+        }
+
+        private static ControlDoor.Devices.Management.DeviceRecord NewRecord(int deviceId, string ipAddress)
+        {
+            return new ControlDoor.Devices.Management.DeviceRecord
+            {
+                DeviceId = deviceId,
+                DeviceName = "门禁-" + deviceId,
+                IpAddress = ipAddress,
+                Port = 8000,
+                Username = "admin",
+                Password = "12345",
+                Enabled = true,
+                Types = new System.Collections.Generic.List<ControlDoor.Devices.Management.DeviceType> { ControlDoor.Devices.Management.DeviceType.Acs }
+            };
         }
     }
 }

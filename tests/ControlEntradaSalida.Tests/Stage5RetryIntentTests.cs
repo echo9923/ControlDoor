@@ -14,10 +14,10 @@ namespace ControlEntradaSalida.Tests
             using (var fixture = new Stage5Fixture())
             {
                 fixture.AddOnlineDevice();
-                fixture.Gateway.ConfigureTimeout("SetPermissionAsync");
+                fixture.Gateway.ConfigureTimeout("UpsertPersonAsync");
 
                 var response = fixture.Response(fixture.Service.SyncPermissions(
-                    @"{""items"":[{""employee_id"":""10001"",""permission_code"":3}]}",
+                    @"{""items"":[{""employee_id"":""10001"",""full_name"":""张三"",""permission_code"":3}]}",
                     fixture.Context("permission-timeout")));
 
                 Assert.Equal("PARTIAL_SUCCESS", response["code"]);
@@ -26,6 +26,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("SyncPermission", fixture.RetryWriter.Intents[0].Operation);
                 Assert.Equal(3, fixture.RetryWriter.Intents[0].PermissionLevel.Value);
                 Assert.Contains("permission_code", fixture.RetryWriter.Intents[0].PayloadJson);
+                Assert.Contains("张三", fixture.RetryWriter.Intents[0].PermissionPayloadJson);
             }
         }
 

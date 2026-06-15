@@ -48,7 +48,7 @@
 | `system_users` 结构 | 字段、索引、触发器不变。 |
 | 权限字段更新 | 只更新 `access_permission`、`last_synced_level`、`permission_updated_at`、`last_synced_at`。 |
 | 不写事件表 | 阶段 5 不写 `attendance_gate_v2`。 |
-| 不改设备表结构 | 阶段 5 不修改 `devices`。 |
+| 不改设备清单 | 阶段 5 不修改 JSON 设备清单。 |
 | 补偿接口边界 | 可生成补偿意图；持久化细节由阶段 6 测试覆盖。 |
 
 ## 阶段 5 通过标准

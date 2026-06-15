@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ControlDoor.Devices.Management;
 
 namespace ControlDoor.Devices.Runtime
 {
@@ -553,11 +554,13 @@ namespace ControlDoor.Devices.Runtime
             {
                 DeviceId = options.DeviceId,
                 DeviceName = options.DeviceName,
+                Description = options.Description,
                 IpAddress = normalizedIp,
                 Port = options.Port,
                 Username = options.Username,
                 Password = options.Password,
                 Enabled = options.Enabled,
+                Types = (options.Types ?? Enumerable.Empty<DeviceType>()).ToList(),
                 CreatedAt = options.CreatedAt
             };
         }

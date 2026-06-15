@@ -392,12 +392,14 @@ namespace ControlDoor.GrpcApi
             {
                 ["deviceId"] = snapshot.DeviceId,
                 ["deviceName"] = snapshot.DeviceName,
+                ["description"] = snapshot.Description,
                 ["ipAddress"] = snapshot.IpAddress,
                 ["port"] = snapshot.Port.ToString(),
                 ["enabled"] = snapshot.Enabled,
                 ["isConnected"] = snapshot.IsConnected,
                 ["status"] = snapshot.Status.ToString(),
                 ["statusMessage"] = snapshot.StatusMessage,
+                ["types"] = snapshot.Types.Select(item => item.ToString()).ToList(),
                 ["lastChecked"] = FormatDate(snapshot.LastCheckedAt),
                 ["lastErrorCode"] = snapshot.LastErrorCode,
                 ["lastErrorMessage"] = snapshot.LastErrorMessage
@@ -426,7 +428,8 @@ namespace ControlDoor.GrpcApi
                 ReconnectState.New(),
                 DateTime.Now,
                 null,
-                record.Types);
+                record.Types,
+                record.Description);
         }
 
         private static string FormatDate(DateTime? value)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Workers;
@@ -45,18 +46,19 @@ namespace ControlEntradaSalida.Tests
 
         public DeviceLifecycleService Lifecycle { get; }
 
-        public void AddRecord(int deviceId = 1, string ipAddress = "192.168.1.64", bool enabled = true, string password = "12345")
+        public void AddRecord(int deviceId = 1, string ipAddress = "192.168.1.64", bool enabled = true, string password = "12345", string description = "测试设备")
         {
             Repository.Add(new DeviceRecord
             {
                 DeviceId = deviceId,
                 DeviceName = "门禁-" + deviceId,
-                Description = "测试设备",
+                Description = description,
                 IpAddress = ipAddress,
                 Port = 8000,
                 Username = "admin",
                 Password = password,
-                Enabled = enabled
+                Enabled = enabled,
+                Types = new List<DeviceType> { DeviceType.Acs }
             });
         }
 

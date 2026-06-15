@@ -8,7 +8,7 @@ namespace ControlEntradaSalida.Tests
         [TestCase]
         public static void SqlServerDatabase_EnsureReadOnly_AllowsSelect()
         {
-            SqlServerDatabase.EnsureReadOnly("SELECT TOP 0 * FROM dbo.devices");
+            SqlServerDatabase.EnsureReadOnly("SELECT TOP 0 * FROM dbo.system_users");
             SqlServerDatabase.EnsureReadOnly("select 1");
         }
 
@@ -18,7 +18,7 @@ namespace ControlEntradaSalida.Tests
             var failed = false;
             try
             {
-                SqlServerDatabase.EnsureReadOnly("UPDATE dbo.devices SET enabled = 1");
+                SqlServerDatabase.EnsureReadOnly("UPDATE dbo.system_users SET access_permission = 1");
             }
             catch
             {
@@ -46,7 +46,7 @@ namespace ControlEntradaSalida.Tests
         public static void DatabaseHealthCheck_RequiredTableFailure_FailsReport()
         {
             var fake = new RecordingDatabaseClient();
-            fake.FailOperationName = "ReadTable:dbo.devices";
+            fake.FailOperationName = "ReadTable:dbo.system_users";
 
             var report = new DatabaseHealthCheck(fake).Run();
 
@@ -57,7 +57,7 @@ namespace ControlEntradaSalida.Tests
         public static void DatabaseHealthCheck_OptionalTableFailure_DoesNotFailStage1Report()
         {
             var fake = new RecordingDatabaseClient();
-            fake.FailOperationName = "ReadOptionalTable:dbo.attendance_gate_v2";
+            fake.FailOperationName = "ReadOptionalTable:dbo.face_event_checkpoint";
 
             var report = new DatabaseHealthCheck(fake).Run();
 

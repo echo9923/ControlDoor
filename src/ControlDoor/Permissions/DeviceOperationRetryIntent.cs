@@ -13,6 +13,8 @@ namespace ControlDoor.Permissions
 
         public int? PermissionLevel { get; set; }
 
+        public string PermissionPayloadJson { get; set; }
+
         public string PayloadJson { get; set; }
 
         public string PersonPayloadJson { get; set; }

@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using ControlDoor.Devices.Management;
 
 namespace ControlDoor.Devices.Runtime
 {
@@ -7,6 +10,7 @@ namespace ControlDoor.Devices.Runtime
         private readonly object gate = new object();
         private readonly int deviceId;
         private string deviceName;
+        private string description;
         private string ipAddress;
         private int port;
         private string username;
@@ -20,11 +24,11 @@ namespace ControlDoor.Devices.Runtime
         private DateTime? lastLoginAt;
         private DateTime? lastLogoutAt;
         private DateTime? lastCheckedAt;
-        private DateTime? lastUsedAt;
         private DeviceRuntimeError lastError;
         private ReconnectState reconnect;
         private bool isDeleting;
         private DateTime updatedAt;
+        private readonly IReadOnlyList<DeviceType> types;
 
         public DeviceRuntimeState(DeviceRuntimeCreationOptions options)
         {
@@ -45,6 +49,7 @@ namespace ControlDoor.Devices.Runtime
 
             deviceId = options.DeviceId;
             deviceName = options.DeviceName ?? string.Empty;
+            description = options.Description ?? string.Empty;
             ipAddress = options.IpAddress ?? string.Empty;
             port = options.Port;
             username = options.Username ?? string.Empty;
@@ -54,8 +59,16 @@ namespace ControlDoor.Devices.Runtime
             serialNumber = string.Empty;
             capabilities = DeviceCapabilities.Unknown();
             reconnect = ReconnectState.New();
-            lastUsedAt = options.LastUsedAt;
+            types = (options.Types ?? Enumerable.Empty<DeviceType>()).ToList().AsReadOnly();
             updatedAt = options.CreatedAt ?? DateTime.Now;
+        }
+
+        public IReadOnlyList<DeviceType> Types
+        {
+            get
+            {
+                return types;
+            }
         }
 
         public int DeviceId => deviceId;
@@ -67,6 +80,17 @@ namespace ControlDoor.Devices.Runtime
                 lock (gate)
                 {
                     return deviceName;
+                }
+            }
+        }
+
+        public string Description
+        {
+            get
+            {
+                lock (gate)
+                {
+                    return description;
                 }
             }
         }
@@ -189,11 +213,12 @@ namespace ControlDoor.Devices.Runtime
                     lastLoginAt,
                     lastLogoutAt,
                     lastCheckedAt,
-                    lastUsedAt,
                     lastError,
                     reconnect,
                     updatedAt,
-                    queueInfo);
+                    queueInfo,
+                    types,
+                    description);
             }
         }
 
@@ -205,12 +230,13 @@ namespace ControlDoor.Devices.Runtime
                 {
                     DeviceId = deviceId,
                     DeviceName = deviceName,
+                    Description = description,
                     IpAddress = ipAddress,
                     Port = port,
                     Username = username,
                     Password = password,
                     Enabled = enabled,
-                    LastUsedAt = lastUsedAt,
+                    Types = types.ToList(),
                     CreatedAt = updatedAt
                 };
             }
@@ -416,7 +442,6 @@ namespace ControlDoor.Devices.Runtime
         {
             lock (gate)
             {
-                lastUsedAt = now;
                 lastError = null;
                 Touch(now);
             }
