@@ -1,0 +1,5 @@
+sc.exe create ControlDoor binPath= "C:\ControlDoor\ControlDoor.exe" start= auto
+sc.exe start ControlDoor
+
+sc.exe stop ControlDoor
+sc.exe delete ControlDoor

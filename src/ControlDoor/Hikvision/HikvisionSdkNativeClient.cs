@@ -65,6 +65,49 @@ namespace ControlDoor.Hikvision
             return NativeMethods.NET_DVR_CloseAlarmChan_V30(alarmHandle);
         }
 
+        public bool GetAcsWorkStatus(int userId, int channel, out AcsWorkStatus status)
+        {
+            var nativeStatus = new NativeMethods.NET_DVR_ACS_WORK_STATUS_V50();
+            nativeStatus.Init();
+            nativeStatus.dwSize = (uint)Marshal.SizeOf(typeof(NativeMethods.NET_DVR_ACS_WORK_STATUS_V50));
+            var size = Marshal.SizeOf(typeof(NativeMethods.NET_DVR_ACS_WORK_STATUS_V50));
+            var ptr = IntPtr.Zero;
+            uint returned = 0;
+            try
+            {
+                ptr = Marshal.AllocHGlobal(size);
+                Marshal.StructureToPtr(nativeStatus, ptr, false);
+                var ok = NativeMethods.NET_DVR_GetDVRConfig(
+                    userId,
+                    NativeMethods.NET_DVR_GET_ACS_WORK_STATUS_V50,
+                    channel,
+                    ptr,
+                    (uint)size,
+                    ref returned);
+                if (ok)
+                {
+                    nativeStatus = (NativeMethods.NET_DVR_ACS_WORK_STATUS_V50)Marshal.PtrToStructure(
+                        ptr,
+                        typeof(NativeMethods.NET_DVR_ACS_WORK_STATUS_V50));
+                }
+
+                status = new AcsWorkStatus
+                {
+                    SetupAlarmStatus = nativeStatus.bySetupAlarmStatus == null
+                        ? new byte[0]
+                        : (byte[])nativeStatus.bySetupAlarmStatus.Clone()
+                };
+                return ok;
+            }
+            finally
+            {
+                if (ptr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(ptr);
+                }
+            }
+        }
+
         public bool ControlGateway(int userId, int gateIndex, GateControlCommand command)
         {
             return NativeMethods.NET_DVR_ControlGateway(userId, gateIndex, (int)command);
@@ -84,45 +127,102 @@ namespace ControlDoor.Hikvision
         {
             var urlBytes = Encoding.UTF8.GetBytes(requestUrl ?? string.Empty);
             var inputBytes = Encoding.UTF8.GetBytes(inputXml ?? string.Empty);
-            var outputBuffer = new byte[1024 * 1024];
-            var statusBuffer = new byte[8 * 1024];
+            var outputBufferSize = 3 * 1024 * 1024;
+            var statusBufferSize = 4096 * 4;
 
             var input = new NativeMethods.NET_DVR_XML_CONFIG_INPUT
             {
                 dwSize = Marshal.SizeOf(typeof(NativeMethods.NET_DVR_XML_CONFIG_INPUT)),
                 dwRequestUrlLen = (uint)urlBytes.Length,
-                dwInBufferSize = (uint)inputBytes.Length
+                dwInBufferSize = (uint)inputBytes.Length,
+                byRes = new byte[32]
             };
             var output = new NativeMethods.NET_DVR_XML_CONFIG_OUTPUT
             {
                 dwSize = Marshal.SizeOf(typeof(NativeMethods.NET_DVR_XML_CONFIG_OUTPUT)),
-                dwOutBufferSize = (uint)outputBuffer.Length,
-                dwStatusSize = (uint)statusBuffer.Length
+                dwOutBufferSize = (uint)outputBufferSize,
+                dwStatusSize = (uint)statusBufferSize,
+                byRes = new byte[32]
             };
 
-            var urlHandle = GCHandle.Alloc(urlBytes, GCHandleType.Pinned);
-            var inputHandle = GCHandle.Alloc(inputBytes, GCHandleType.Pinned);
-            var outputHandle = GCHandle.Alloc(outputBuffer, GCHandleType.Pinned);
-            var statusHandle = GCHandle.Alloc(statusBuffer, GCHandleType.Pinned);
+            IntPtr urlPtr = IntPtr.Zero;
+            IntPtr inputPtr = IntPtr.Zero;
+            IntPtr outputPtr = IntPtr.Zero;
+            IntPtr statusPtr = IntPtr.Zero;
             try
             {
-                input.lpRequestUrl = urlHandle.AddrOfPinnedObject();
-                input.lpInBuffer = inputBytes.Length == 0 ? IntPtr.Zero : inputHandle.AddrOfPinnedObject();
-                output.lpOutBuffer = outputHandle.AddrOfPinnedObject();
-                output.lpStatusBuffer = statusHandle.AddrOfPinnedObject();
+                urlPtr = AllocNullTerminatedUtf8Buffer(urlBytes);
+                inputPtr = AllocNullTerminatedUtf8Buffer(inputBytes);
+                outputPtr = Marshal.AllocHGlobal(outputBufferSize);
+                statusPtr = Marshal.AllocHGlobal(statusBufferSize);
+
+                input.lpRequestUrl = urlPtr;
+                input.lpInBuffer = inputPtr;
+                output.lpOutBuffer = outputPtr;
+                output.lpStatusBuffer = statusPtr;
 
                 var ok = NativeMethods.NET_DVR_STDXMLConfig(userId, ref input, ref output);
-                outputXml = output.dwReturnedXMLSize == 0
-                    ? string.Empty
-                    : Encoding.UTF8.GetString(outputBuffer, 0, (int)output.dwReturnedXMLSize).TrimEnd('\0');
+                var returnedSize = Math.Min((int)output.dwReturnedXMLSize, outputBufferSize);
+                outputXml = returnedSize <= 0
+                    ? ReadNullTerminatedUtf8(statusPtr, statusBufferSize)
+                    : PtrToUtf8String(outputPtr, returnedSize);
                 return ok;
             }
             finally
             {
-                urlHandle.Free();
-                inputHandle.Free();
-                outputHandle.Free();
-                statusHandle.Free();
+                FreeHGlobal(urlPtr);
+                FreeHGlobal(inputPtr);
+                FreeHGlobal(outputPtr);
+                FreeHGlobal(statusPtr);
+            }
+        }
+
+        private static IntPtr AllocNullTerminatedUtf8Buffer(byte[] bytes)
+        {
+            var source = bytes ?? new byte[0];
+            var ptr = Marshal.AllocHGlobal(source.Length + 1);
+            if (source.Length > 0)
+            {
+                Marshal.Copy(source, 0, ptr, source.Length);
+            }
+
+            Marshal.WriteByte(ptr, source.Length, 0);
+            return ptr;
+        }
+
+        private static string PtrToUtf8String(IntPtr ptr, int length)
+        {
+            if (ptr == IntPtr.Zero || length <= 0)
+            {
+                return string.Empty;
+            }
+
+            var buffer = new byte[length];
+            Marshal.Copy(ptr, buffer, 0, length);
+            return Encoding.UTF8.GetString(buffer).TrimEnd('\0');
+        }
+
+        private static string ReadNullTerminatedUtf8(IntPtr ptr, int maxLength)
+        {
+            if (ptr == IntPtr.Zero || maxLength <= 0)
+            {
+                return string.Empty;
+            }
+
+            var length = 0;
+            while (length < maxLength && Marshal.ReadByte(ptr, length) != 0)
+            {
+                length++;
+            }
+
+            return PtrToUtf8String(ptr, length);
+        }
+
+        private static void FreeHGlobal(IntPtr ptr)
+        {
+            if (ptr != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(ptr);
             }
         }
 
@@ -410,6 +510,12 @@ namespace ControlDoor.Hikvision
 
         private static class NativeMethods
         {
+            public const uint NET_DVR_GET_ACS_WORK_STATUS_V50 = 2180;
+            private const int MAX_DOOR_NUM_256 = 256;
+            private const int MAX_CASE_SENSOR_NUM = 8;
+            private const int MAX_CARD_READER_NUM_512 = 512;
+            private const int MAX_ALARMHOST_ALARMIN_NUM = 512;
+            private const int MAX_ALARMHOST_ALARMOUT_NUM = 512;
             public const uint NET_DVR_FACE_DATA_RECORD = 2551;
             public const uint NET_DVR_CAPTURE_FACE_INFO = 2510;
             public const int NET_SDK_GET_NEXT_STATUS_SUCCESS = 1000;
@@ -443,6 +549,9 @@ namespace ControlDoor.Hikvision
 
             [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
             public static extern bool NET_DVR_CaptureJPEGPicture(int userId, int channel, ref NET_DVR_JPEGPARA jpegPara, [MarshalAs(UnmanagedType.LPStr)] string filePath);
+
+            [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
+            public static extern bool NET_DVR_GetDVRConfig(int userId, uint command, int channel, IntPtr outputBuffer, uint outputBufferSize, ref uint bytesReturned);
 
             [DllImport("HCNetSDK.dll", CallingConvention = CallingConvention.StdCall)]
             public static extern bool NET_DVR_STDXMLConfig(int userId, ref NET_DVR_XML_CONFIG_INPUT input, ref NET_DVR_XML_CONFIG_OUTPUT output);
@@ -637,6 +746,94 @@ namespace ControlDoor.Hikvision
                 public ushort wPicSize;
 
                 public ushort wPicQuality;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            public struct NET_DVR_ACS_WORK_STATUS_V50
+            {
+                public uint dwSize;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_DOOR_NUM_256)]
+                public byte[] byDoorLockStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_DOOR_NUM_256)]
+                public byte[] byDoorStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_DOOR_NUM_256)]
+                public byte[] byMagneticStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_CASE_SENSOR_NUM)]
+                public byte[] byCaseStatus;
+
+                public ushort wBatteryVoltage;
+
+                public byte byBatteryLowVoltage;
+
+                public byte byPowerSupplyStatus;
+
+                public byte byMultiDoorInterlockStatus;
+
+                public byte byAntiSneakStatus;
+
+                public byte byHostAntiDismantleStatus;
+
+                public byte byIndicatorLightStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_CARD_READER_NUM_512)]
+                public byte[] byCardReaderOnlineStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_CARD_READER_NUM_512)]
+                public byte[] byCardReaderAntiDismantleStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_CARD_READER_NUM_512)]
+                public byte[] byCardReaderVerifyMode;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_ALARMHOST_ALARMIN_NUM)]
+                public byte[] bySetupAlarmStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_ALARMHOST_ALARMIN_NUM)]
+                public byte[] byAlarmInStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = MAX_ALARMHOST_ALARMOUT_NUM)]
+                public byte[] byAlarmOutStatus;
+
+                public uint dwCardNum;
+
+                public byte byFireAlarmStatus;
+
+                public byte byBatteryChargeStatus;
+
+                public byte byMasterChannelControllerStatus;
+
+                public byte bySlaveChannelControllerStatus;
+
+                public byte byAntiSneakServerStatus;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+                public byte[] byRes3;
+
+                public uint dwWhiteFaceNum;
+
+                public uint dwBlackFaceNum;
+
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 108)]
+                public byte[] byRes2;
+
+                public void Init()
+                {
+                    byDoorLockStatus = new byte[MAX_DOOR_NUM_256];
+                    byDoorStatus = new byte[MAX_DOOR_NUM_256];
+                    byMagneticStatus = new byte[MAX_DOOR_NUM_256];
+                    byCaseStatus = new byte[MAX_CASE_SENSOR_NUM];
+                    byCardReaderOnlineStatus = new byte[MAX_CARD_READER_NUM_512];
+                    byCardReaderAntiDismantleStatus = new byte[MAX_CARD_READER_NUM_512];
+                    byCardReaderVerifyMode = new byte[MAX_CARD_READER_NUM_512];
+                    bySetupAlarmStatus = new byte[MAX_ALARMHOST_ALARMIN_NUM];
+                    byAlarmInStatus = new byte[MAX_ALARMHOST_ALARMIN_NUM];
+                    byAlarmOutStatus = new byte[MAX_ALARMHOST_ALARMOUT_NUM];
+                    byRes3 = new byte[3];
+                    byRes2 = new byte[108];
+                }
             }
 
             [StructLayout(LayoutKind.Sequential)]

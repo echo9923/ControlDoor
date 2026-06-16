@@ -268,6 +268,30 @@ namespace ControlDoor.Devices.Runtime
 
         public DeviceRuntimeMutationResult ClearAlarmHandle(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
+            return ClearAlarmHandle(deviceId, now, false, context);
+        }
+
+        public DeviceRuntimeMutationResult MarkAlarmManuallyDisarmed(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            return ClearAlarmHandle(deviceId, now, true, context);
+        }
+
+        public DeviceRuntimeMutationResult ClearManualAlarmDisarm(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.ClearManualAlarmDisarm(now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "MANUAL_ALARM_DISARM_CLEARED", "Manual alarm disarm marker was cleared.");
+            }
+        }
+
+        private DeviceRuntimeMutationResult ClearAlarmHandle(int deviceId, DateTime now, bool manuallyDisarmed, DeviceIndexUpdateContext context = null)
+        {
             lock (gate)
             {
                 if (!devices.TryGetValue(deviceId, out var state))
@@ -276,7 +300,7 @@ namespace ControlDoor.Devices.Runtime
                 }
 
                 RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
-                state.MarkAlarmClosed(now);
+                state.MarkAlarmClosed(now, manuallyDisarmed);
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "ALARM_HANDLE_CLEARED", "Alarm handle was cleared.");
             }
         }

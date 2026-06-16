@@ -17,6 +17,7 @@ namespace ControlDoor.Devices.Runtime
             bool isDeleting,
             int? sdkUserId,
             int? alarmHandle,
+            bool alarmManuallyDisarmed,
             string serialNumber,
             DeviceCapabilities capabilities,
             DateTime? lastLoginAt,
@@ -39,6 +40,7 @@ namespace ControlDoor.Devices.Runtime
             IsDeleting = isDeleting;
             SdkUserId = sdkUserId;
             AlarmHandle = alarmHandle;
+            AlarmManuallyDisarmed = alarmManuallyDisarmed;
             SerialNumber = serialNumber ?? string.Empty;
             Capabilities = capabilities == null ? DeviceCapabilities.Unknown() : capabilities.Clone();
             LastLoginAt = lastLoginAt;
@@ -74,6 +76,8 @@ namespace ControlDoor.Devices.Runtime
         public int? SdkUserId { get; private set; }
 
         public int? AlarmHandle { get; private set; }
+
+        public bool AlarmManuallyDisarmed { get; private set; }
 
         public string SerialNumber { get; private set; }
 

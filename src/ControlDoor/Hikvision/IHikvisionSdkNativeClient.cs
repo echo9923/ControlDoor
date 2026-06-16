@@ -18,6 +18,8 @@ namespace ControlDoor.Hikvision
 
         bool CloseAlarm(int alarmHandle);
 
+        bool GetAcsWorkStatus(int userId, int channel, out AcsWorkStatus status);
+
         bool ControlGateway(int userId, int gateIndex, GateControlCommand command);
 
         bool CaptureJpegPicture(int userId, int channel, int pictureQuality, string filePath);

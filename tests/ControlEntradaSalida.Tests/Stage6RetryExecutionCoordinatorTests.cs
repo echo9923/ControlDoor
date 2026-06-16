@@ -48,6 +48,25 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+        [TestCase]
+        public static void RetryExecutionCoordinator_DeletePersonFaceFailure_StopsBeforeDeletePerson()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureTimeout("DeleteFaceAsync");
+                fixture.Database.QueryRows.Add(Row(id: 2, deviceId: 1, employeeId: "10001", deletePersonPending: true));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-delete-person-face-timeout").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Failed);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeleteFaceAsync"));
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.ScheduleRetry"));
+                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
+            }
+        }
+
         private static IReadOnlyDictionary<string, object> Row(
             long id,
             int deviceId,

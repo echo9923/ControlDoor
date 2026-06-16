@@ -19,6 +19,7 @@ namespace ControlDoor.Devices.Runtime
         private DeviceConnectionStatus status;
         private int? sdkUserId;
         private int? alarmHandle;
+        private bool alarmManuallyDisarmed;
         private string serialNumber;
         private DeviceCapabilities capabilities;
         private DateTime? lastLoginAt;
@@ -208,6 +209,7 @@ namespace ControlDoor.Devices.Runtime
                     isDeleting,
                     sdkUserId,
                     alarmHandle,
+                    alarmManuallyDisarmed,
                     serialNumber,
                     capabilities,
                     lastLoginAt,
@@ -337,6 +339,7 @@ namespace ControlDoor.Devices.Runtime
             lock (gate)
             {
                 alarmHandle = newAlarmHandle;
+                alarmManuallyDisarmed = false;
                 if (status == DeviceConnectionStatus.Online || status == DeviceConnectionStatus.Degraded)
                 {
                     capabilities.SupportsAlarm = true;
@@ -348,11 +351,25 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
-        public void MarkAlarmClosed(DateTime now)
+        public void MarkAlarmClosed(DateTime now, bool manuallyDisarmed = false)
         {
             lock (gate)
             {
                 alarmHandle = null;
+                if (manuallyDisarmed)
+                {
+                    alarmManuallyDisarmed = true;
+                }
+
+                Touch(now);
+            }
+        }
+
+        public void ClearManualAlarmDisarm(DateTime now)
+        {
+            lock (gate)
+            {
+                alarmManuallyDisarmed = false;
                 Touch(now);
             }
         }
@@ -375,6 +392,7 @@ namespace ControlDoor.Devices.Runtime
             {
                 sdkUserId = null;
                 alarmHandle = null;
+                alarmManuallyDisarmed = false;
                 status = DeviceConnectionStatus.Disconnected;
                 reconnect.ManualDisconnected = true;
                 reconnect.InCooldown = true;

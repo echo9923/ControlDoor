@@ -104,6 +104,10 @@ namespace ControlDoor.Configuration
         public int ReArmBaseDelayMs { get; set; } = 1000;
 
         public int ReArmMaxDelayMs { get; set; } = 60000;
+
+        public bool AlarmStatusProbeEnabled { get; set; } = true;
+
+        public int AlarmStatusProbeFailureThreshold { get; set; } = 2;
     }
 
     public sealed class HikvisionSdkOptions

@@ -125,6 +125,28 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void AccessControlGrpcService_GetDeviceStatus_ManualDisarmReturnsManualAlarmStatus()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                fixture.Lifecycle.DisarmDeviceAlarm(1, "req-disarm");
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.GetDeviceStatus(@"{""deviceId"":1}", new GrpcRequestContext { RequestId = "req-manual-disarm" }));
+
+                var devices = (System.Collections.ArrayList)response["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+                Assert.Equal(false, device["isAlarmArmed"]);
+                Assert.Equal("ManuallyDisarmed", device["alarmStatus"]);
+                Assert.Equal("已手动撤防", device["alarmStatusMessage"]);
+            }
+        }
+
+        [TestCase]
         public static void AccessControlGrpcService_GetDeviceStatus_DisabledJsonDeviceReturnsUnavailableAlarmStatus()
         {
             using (var fixture = new Stage4Fixture())
@@ -621,6 +643,8 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(1, response["deviceId"]);
                 Assert.Equal(false, response["armed"]);
                 Assert.Equal(null, response["alarmHandle"]);
+                Assert.Equal("ManuallyDisarmed", response["alarmStatus"]);
+                Assert.Equal("已手动撤防", response["alarmStatusMessage"]);
                 Assert.Equal(true, response["connected"]);
                 Assert.Equal("Online", response["status"]);
             }

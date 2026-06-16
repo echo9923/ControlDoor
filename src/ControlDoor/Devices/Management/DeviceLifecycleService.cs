@@ -23,6 +23,7 @@ namespace ControlDoor.Devices.Management
         private readonly Dictionary<int, int> healthFailureCounts = new Dictionary<int, int>();
 
         private readonly Dictionary<int, int> reArmFailureCounts = new Dictionary<int, int>();
+        private readonly Dictionary<int, int> alarmProbeFailureCounts = new Dictionary<int, int>();
         private bool disposed;
 
         public DeviceLifecycleService(
@@ -286,6 +287,7 @@ namespace ControlDoor.Devices.Management
             CancelDelayedReconnect(deviceId);
             CancelDelayedReArm(deviceId);
             registry.ResetReconnect(deviceId, DateTime.Now);
+            registry.ClearManualAlarmDisarm(deviceId, DateTime.Now);
             var cleanup = CreateDisconnectTask(deviceId, "ReconnectCleanup", DeviceConnectionStatus.Offline, requestId);
             cleanup.Priority = force ? DeviceTaskPriority.Critical : DeviceTaskPriority.High;
             var cleanupResult = dispatcher.SubmitAndWaitAsync(cleanup).GetAwaiter().GetResult();
@@ -314,10 +316,11 @@ namespace ControlDoor.Devices.Management
             CancelDelayedReArm(deviceId);
             if (!lookup.Snapshot.AlarmHandle.HasValue)
             {
-                return DeviceOperationResult.FromSnapshot(true, "OK", "设备未布防，跳过撤防。", lookup.Snapshot);
+                registry.MarkAlarmManuallyDisarmed(deviceId, DateTime.Now);
+                return DeviceOperationResult.FromSnapshot(true, "OK", "设备未布防，跳过撤防。", registry.TryGetByDeviceId(deviceId).Snapshot);
             }
 
-            var result = dispatcher.SubmitAndWaitAsync(CreateDisarmAlarmTask(deviceId, requestId)).GetAwaiter().GetResult();
+            var result = dispatcher.SubmitAndWaitAsync(CreateDisarmAlarmTask(deviceId, requestId, manuallyDisarmed: true)).GetAwaiter().GetResult();
             return FromTaskResult(result);
         }
 
@@ -346,9 +349,10 @@ namespace ControlDoor.Devices.Management
             }
 
             CancelDelayedReArm(deviceId);
+            registry.ClearManualAlarmDisarm(deviceId, DateTime.Now);
             if (lookup.Snapshot.AlarmHandle.HasValue)
             {
-                var disarm = dispatcher.SubmitAndWaitAsync(CreateDisarmAlarmTask(deviceId, requestId)).GetAwaiter().GetResult();
+                var disarm = dispatcher.SubmitAndWaitAsync(CreateDisarmAlarmTask(deviceId, requestId, manuallyDisarmed: false)).GetAwaiter().GetResult();
                 if (!disarm.Success)
                 {
                     return FromTaskResult(disarm);
@@ -522,8 +526,10 @@ namespace ControlDoor.Devices.Management
                 try
                 {
                     await gateway.GetDeviceInfoAsync(new DeviceInfoRequest { UserId = snapshot.SdkUserId.Value }, context.CancellationToken).ConfigureAwait(false);
-                    context.Registry.MarkChecked(deviceId, DateTime.Now, DeviceConnectionStatus.Online);
+                    var checkedAt = DateTime.Now;
+                    context.Registry.MarkChecked(deviceId, checkedAt, DeviceConnectionStatus.Online);
                     ClearHealthFailures(deviceId);
+                    await ProbeAlarmDeploymentAsync(context, snapshot, started).ConfigureAwait(false);
                     return DeviceTaskResult.FromTask(context.Task, true, "OK", "状态检测成功。", DeviceConnectionStatus.Online, started, DateTime.Now);
                 }
                 catch (Exception ex)
@@ -550,6 +556,109 @@ namespace ControlDoor.Devices.Management
             task.TimeoutMilliseconds = options.HealthCheckTimeoutMs;
             task.RequestId = requestId ?? string.Empty;
             return task;
+        }
+
+        private async System.Threading.Tasks.Task ProbeAlarmDeploymentAsync(DeviceTaskContext context, DeviceRuntimeSnapshot snapshot, DateTime started)
+        {
+            var deviceId = context.Task.DeviceId;
+            if (!ShouldProbeAlarmDeployment(snapshot))
+            {
+                ClearAlarmProbeFailures(deviceId);
+                return;
+            }
+
+            try
+            {
+                if (!snapshot.AlarmHandle.HasValue)
+                {
+                    if (snapshot.AlarmManuallyDisarmed)
+                    {
+                        ClearAlarmProbeFailures(deviceId);
+                        return;
+                    }
+
+                    var missingHandleError = DeviceRuntimeError.Create(
+                        "AlarmStatusProbe",
+                        "ALARM_HANDLE_MISSING",
+                        "Local alarm handle is missing for an online ACS device.",
+                        DateTime.Now,
+                        retryable: true);
+                    context.Registry.RecordError(deviceId, missingHandleError, DateTime.Now, DeviceConnectionStatus.Degraded);
+                    ScheduleReArm(deviceId, missingHandleError.Message);
+                    ClearAlarmProbeFailures(deviceId);
+                    return;
+                }
+
+                var status = await gateway.GetAlarmDeploymentStatusAsync(new AlarmDeploymentStatusRequest
+                {
+                    UserId = snapshot.SdkUserId.Value,
+                    Channel = -1,
+                    AlarmInputIndex = 0
+                }, context.CancellationToken).ConfigureAwait(false);
+
+                if (status == null || !status.Known)
+                {
+                    ClearAlarmProbeFailures(deviceId);
+                    LogAlarmProbe(context, "Alarm deployment status is unknown; keeping current AlarmHandle.", status, started);
+                    return;
+                }
+
+                if (status.IsDeployed)
+                {
+                    ClearAlarmProbeFailures(deviceId);
+                    return;
+                }
+
+                var count = IncrementAlarmProbeFailure(deviceId);
+                var threshold = Math.Max(1, options.AlarmStatusProbeFailureThreshold);
+                var notDeployedError = DeviceRuntimeError.Create(
+                    "AlarmStatusProbe",
+                    "ALARM_NOT_DEPLOYED",
+                    "Device-side alarm deployment status is disarmed.",
+                    DateTime.Now,
+                    retryable: true);
+                context.Registry.RecordError(deviceId, notDeployedError, DateTime.Now, DeviceConnectionStatus.Degraded);
+                LogAlarmProbe(context, "Device-side alarm deployment status is disarmed.", status, started, fields =>
+                {
+                    fields.Extra["probeFailureCount"] = count.ToString();
+                    fields.Extra["probeFailureThreshold"] = threshold.ToString();
+                });
+
+                if (count >= threshold)
+                {
+                    context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
+                    ScheduleReArm(deviceId, notDeployedError.Message);
+                    ClearAlarmProbeFailures(deviceId);
+                }
+            }
+            catch (Exception ex)
+            {
+                var probeError = ToRuntimeError("AlarmStatusProbe", ex, DateTime.Now, retryable: true);
+                context.Registry.RecordError(deviceId, probeError, DateTime.Now, DeviceConnectionStatus.Degraded);
+                var fields = new LogFields
+                {
+                    DeviceId = deviceId,
+                    OperationName = context.Task.OperationName,
+                    ErrorCode = probeError.Code
+                };
+                fields.Extra["errorMessage"] = probeError.Message;
+                logger?.Warn("DeviceLifecycle", "Alarm deployment status probe failed; keeping current AlarmHandle.", fields);
+            }
+        }
+
+        private bool ShouldProbeAlarmDeployment(DeviceRuntimeSnapshot snapshot)
+        {
+            if (!options.AlarmEnabled || !options.AlarmStatusProbeEnabled || snapshot == null)
+            {
+                return false;
+            }
+
+            return snapshot.Enabled
+                && !snapshot.IsDeleting
+                && snapshot.IsConnected
+                && snapshot.SdkUserId.HasValue
+                && snapshot.Types != null
+                && snapshot.Types.Contains(DeviceType.Acs);
         }
 
         private DeviceOperationResult SubmitArmAlarm(int deviceId, bool wait, string requestId)
@@ -631,7 +740,7 @@ namespace ControlDoor.Devices.Management
             return task;
         }
 
-        private DeviceSdkTask CreateDisarmAlarmTask(int deviceId, string requestId)
+        private DeviceSdkTask CreateDisarmAlarmTask(int deviceId, string requestId, bool manuallyDisarmed = true)
         {
             var task = new DeviceSdkTask(deviceId, DeviceTaskType.CloseAlarm, "DeviceDisarmAlarm", async context =>
             {
@@ -644,6 +753,11 @@ namespace ControlDoor.Devices.Management
 
                 if (!snapshot.AlarmHandle.HasValue)
                 {
+                    if (snapshot.AlarmManuallyDisarmed)
+                    {
+                        return DeviceTaskResult.FromTask(context.Task, true, "OK", "设备已手动撤防，跳过自动布防。", snapshot.Status, started, DateTime.Now);
+                    }
+
                     return DeviceTaskResult.FromTask(context.Task, true, "OK", "设备未布防，跳过撤防。", snapshot.Status, started, DateTime.Now);
                 }
 
@@ -663,7 +777,14 @@ namespace ControlDoor.Devices.Management
                 }
                 finally
                 {
-                    context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
+                    if (manuallyDisarmed)
+                    {
+                        context.Registry.MarkAlarmManuallyDisarmed(deviceId, DateTime.Now);
+                    }
+                    else
+                    {
+                        context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
+                    }
                 }
 
                 var success = lastError == null;
@@ -855,6 +976,34 @@ namespace ControlDoor.Devices.Management
             logger.Info("DeviceLifecycle", message, fields);
         }
 
+        private void LogAlarmProbe(DeviceTaskContext context, string message, AlarmDeploymentStatus status, DateTime startedAt, Action<LogFields> configure = null)
+        {
+            if (logger == null || context == null || context.Task == null)
+            {
+                return;
+            }
+
+            var now = DateTime.Now;
+            var fields = new LogFields
+            {
+                DeviceId = context.Task.DeviceId,
+                OperationName = "AlarmStatusProbe",
+                RequestId = string.IsNullOrWhiteSpace(context.Task.RequestId) ? context.RequestContext?.RequestId : context.Task.RequestId,
+                TraceId = context.RequestContext?.TraceId,
+                ElapsedMs = Math.Max(0, (long)(now - startedAt).TotalMilliseconds)
+            };
+            if (status != null)
+            {
+                fields.Extra["known"] = status.Known.ToString();
+                fields.Extra["isDeployed"] = status.IsDeployed.ToString();
+                fields.Extra["rawSetupAlarmStatus"] = status.RawSetupAlarmStatus.ToString();
+                fields.Extra["rawSummary"] = status.RawSummary ?? string.Empty;
+            }
+
+            configure?.Invoke(fields);
+            logger.Warn("DeviceLifecycle", message, fields);
+        }
+
         private DeviceOperationResult FromTaskResult(DeviceTaskResult result)
         {
             return new DeviceOperationResult
@@ -948,6 +1097,26 @@ namespace ControlDoor.Devices.Management
             lock (gate)
             {
                 reArmFailureCounts.Remove(deviceId);
+            }
+        }
+
+        private int IncrementAlarmProbeFailure(int deviceId)
+        {
+            lock (gate)
+            {
+                int count;
+                alarmProbeFailureCounts.TryGetValue(deviceId, out count);
+                count++;
+                alarmProbeFailureCounts[deviceId] = count;
+                return count;
+            }
+        }
+
+        private void ClearAlarmProbeFailures(int deviceId)
+        {
+            lock (gate)
+            {
+                alarmProbeFailureCounts.Remove(deviceId);
             }
         }
 

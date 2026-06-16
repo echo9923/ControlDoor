@@ -13,6 +13,10 @@ namespace ControlDoor.Hikvision
     public sealed class HikvisionSdkWrapper : IHikvisionGateway
     {
         private const string FaceSetupUrl = "PUT /ISAPI/Intelligent/FDLib/FDSetUp?format=json";
+        private const string FaceDeleteUrl = "/ISAPI/Intelligent/FDLib/FDSearch/Delete?format=json&FDID=1&faceLibType=blackFD";
+        private const string FaceSearchUrl = "/ISAPI/Intelligent/FDLib/FDSearch?format=json";
+        private const string DefaultFaceLibType = "blackFD";
+        private const string DefaultFaceLibId = "1";
         private const int NetSdkConfigStatusSuccess = 1000;
         private const int NetSdkConfigStatusFinish = 1002;
         private const int NetSdkConfigStatusFailed = 1003;
@@ -129,6 +133,51 @@ namespace ControlDoor.Hikvision
             });
         }
 
+        public Task<AlarmDeploymentStatus> GetAlarmDeploymentStatusAsync(AlarmDeploymentStatusRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            HikvisionGatewayValidator.RequireUserId(request.UserId);
+            if (request.AlarmInputIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(request.AlarmInputIndex), "AlarmInputIndex must be greater than or equal to 0.");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            return Execute("GetAlarmDeploymentStatus", request, () =>
+            {
+                EnsureInitialized();
+                AcsWorkStatus workStatus;
+                if (!nativeClient.GetAcsWorkStatus(request.UserId, request.Channel, out workStatus))
+                {
+                    ThrowLastError("GetAlarmDeploymentStatus");
+                }
+
+                var values = workStatus == null ? null : workStatus.SetupAlarmStatus;
+                if (values == null || request.AlarmInputIndex >= values.Length)
+                {
+                    return new AlarmDeploymentStatus
+                    {
+                        Known = false,
+                        IsDeployed = false,
+                        RawSummary = "Alarm input index is outside ACS work status range."
+                    };
+                }
+
+                var raw = values[request.AlarmInputIndex];
+                return new AlarmDeploymentStatus
+                {
+                    Known = raw == 0 || raw == 1,
+                    IsDeployed = raw == 1,
+                    RawSetupAlarmStatus = raw,
+                    RawSummary = "bySetupAlarmStatus[" + request.AlarmInputIndex + "]=" + raw
+                };
+            });
+        }
+
         public Task AddPersonAsync(AddPersonRequest request, CancellationToken cancellationToken = default)
         {
             if (request == null)
@@ -150,7 +199,9 @@ namespace ControlDoor.Hikvision
 
             HikvisionGatewayValidator.RequireUserId(request.UserId);
             HikvisionGatewayValidator.RequirePerson(request.Person);
-            var body = HikvisionPersonPayloadBuilder.BuildUserInfoSetup(request.Person);
+            var body = request.ProvisioningMode == PersonProvisioningMode.Permission
+                ? HikvisionPersonPayloadBuilder.BuildPermissionUserInfoSetup(request.Person)
+                : HikvisionPersonPayloadBuilder.BuildUserInfoSetup(request.Person);
             return SendIsapiJsonAsync("UpsertPerson", "/ISAPI/AccessControl/UserInfo/SetUp?format=json", IsapiMethod.Put, request.UserId, body, cancellationToken);
         }
 
@@ -248,7 +299,7 @@ namespace ControlDoor.Hikvision
                 throw new ArgumentException("EmployeeId, CardNumber or FaceId is required.");
             }
 
-            return SendIsapiJsonAsync("DeleteFace", "/ISAPI/Intelligent/FDLib/FaceDataRecord/Delete", IsapiMethod.Put, request.UserId, request, cancellationToken);
+            return SendIsapiJsonAsync("DeleteFace", FaceDeleteUrl, IsapiMethod.Put, request.UserId, BuildFaceDeletePayload(request), cancellationToken);
         }
 
         public async Task<QueryFaceResponse> QueryFaceAsync(QueryFaceRequest request, CancellationToken cancellationToken = default)
@@ -259,13 +310,8 @@ namespace ControlDoor.Hikvision
             }
 
             HikvisionGatewayValidator.RequireUserId(request.UserId);
-            var response = await SendIsapiJsonForResponseAsync("QueryFace", "/ISAPI/Intelligent/FDLib/FaceDataRecord/Search", IsapiMethod.Post, request.UserId, request, cancellationToken).ConfigureAwait(false);
-            return new QueryFaceResponse
-            {
-                Exists = response.IsSuccessStatusCode,
-                RawResponse = response.Body,
-                TotalCount = string.IsNullOrWhiteSpace(response.Body) ? 0 : 1
-            };
+            var response = await SendIsapiJsonForResponseAsync("QueryFace", FaceSearchUrl, IsapiMethod.Post, request.UserId, BuildFaceSearchPayload(request), cancellationToken).ConfigureAwait(false);
+            return ParseFaceSearchResponse(response.Body, request.EmployeeId);
         }
 
         public Task SetPermissionAsync(SetPermissionRequest request, CancellationToken cancellationToken = default)
@@ -727,10 +773,189 @@ namespace ControlDoor.Hikvision
         {
             return HikvisionGatewayJson.Serialize(new
             {
-                faceLibType = "blackFD",
-                FDID = "1",
+                faceLibType = DefaultFaceLibType,
+                FDID = DefaultFaceLibId,
                 FPID = employeeId
             });
+        }
+
+        private static object BuildFaceSearchPayload(QueryFaceRequest request)
+        {
+            return new
+            {
+                searchResultPosition = 0,
+                maxResults = 1,
+                faceLibType = DefaultFaceLibType,
+                FDID = DefaultFaceLibId,
+                FPID = request.EmployeeId
+            };
+        }
+
+        private static object BuildFaceDeletePayload(DeleteFaceRequest request)
+        {
+            var value = FirstNonEmpty(request.EmployeeId, request.FaceId, request.CardNumber);
+            return new
+            {
+                FPID = new[]
+                {
+                    new { value }
+                }
+            };
+        }
+
+        private static QueryFaceResponse ParseFaceSearchResponse(string responseBody, string employeeId)
+        {
+            var json = ExtractJsonFromMultipart(responseBody);
+            var response = new QueryFaceResponse
+            {
+                RawResponse = responseBody
+            };
+
+            Dictionary<string, object> values;
+            try
+            {
+                values = HikvisionGatewayJson.Deserialize<Dictionary<string, object>>(json);
+            }
+            catch
+            {
+                return response;
+            }
+
+            if (values == null)
+            {
+                return response;
+            }
+
+            var records = ReadObjectArray(values, "MatchList", "FaceDataRecord");
+            foreach (var record in records)
+            {
+                var faceBase64 = FirstNonEmpty(
+                    TryGetString(record, "facePicBinary"),
+                    TryGetString(record, "FacePicBinary"),
+                    TryGetString(record, "facePic"),
+                    TryGetString(record, "FacePic"),
+                    TryGetString(record, "modelData"));
+                response.Faces.Add(new FaceInfo
+                {
+                    EmployeeId = FirstNonEmpty(TryGetString(record, "FPID"), TryGetString(record, "employeeNo"), employeeId),
+                    FaceId = TryGetString(record, "faceID"),
+                    ImageBase64 = faceBase64,
+                    ImageFormat = "jpg"
+                });
+            }
+
+            var totalMatches = ReadInt(values, "totalMatches");
+            var numOfMatches = ReadInt(values, "numOfMatches");
+            response.TotalCount = Math.Max(Math.Max(totalMatches, numOfMatches), response.Faces.Count);
+            response.Exists = response.TotalCount > 0;
+            return response;
+        }
+
+        private static string ExtractJsonFromMultipart(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response))
+            {
+                return response;
+            }
+
+            var trimmed = response.TrimStart();
+            var jsonStart = response.IndexOf("\r\n\r\n{", StringComparison.Ordinal);
+            if (jsonStart < 0)
+            {
+                jsonStart = response.IndexOf("\n\n{", StringComparison.Ordinal);
+            }
+
+            if (jsonStart < 0 && (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal)))
+            {
+                jsonStart = response.IndexOf(trimmed[0]);
+            }
+
+            if (jsonStart < 0)
+            {
+                return response;
+            }
+
+            jsonStart = response.IndexOf('{', jsonStart);
+            if (jsonStart < 0)
+            {
+                return response;
+            }
+
+            var jsonEnd = FindJsonObjectEnd(response, jsonStart);
+            if (jsonEnd > jsonStart)
+            {
+                return response.Substring(jsonStart, jsonEnd - jsonStart + 1);
+            }
+
+            var lastBrace = response.LastIndexOf('}');
+            return lastBrace > jsonStart ? response.Substring(jsonStart, lastBrace - jsonStart + 1) : response;
+        }
+
+        private static int FindJsonObjectEnd(string value, int start)
+        {
+            if (string.IsNullOrEmpty(value) || start < 0 || start >= value.Length)
+            {
+                return -1;
+            }
+
+            var opening = value[start];
+            var closing = opening == '{' ? '}' : opening == '[' ? ']' : '\0';
+            if (closing == '\0')
+            {
+                return -1;
+            }
+
+            var depth = 0;
+            var inString = false;
+            var escaped = false;
+            for (var index = start; index < value.Length; index++)
+            {
+                var current = value[index];
+                if (inString)
+                {
+                    if (escaped)
+                    {
+                        escaped = false;
+                        continue;
+                    }
+
+                    if (current == '\\')
+                    {
+                        escaped = true;
+                        continue;
+                    }
+
+                    if (current == '"')
+                    {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (current == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+
+                if (current == opening)
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (current == closing)
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        return index;
+                    }
+                }
+            }
+
+            return -1;
         }
 
         private static void EnsureIsapiBodyAccepted(string operationName, string body)
@@ -750,13 +975,28 @@ namespace ControlDoor.Hikvision
                 return;
             }
 
-            if (values == null || !values.ContainsKey("statusCode"))
+            if (values == null)
             {
                 return;
             }
 
+            if (!values.ContainsKey("statusCode"))
+            {
+                if (values.ContainsKey("statusString") || values.ContainsKey("subStatusCode"))
+                {
+                    if (IsIsapiBodyOk(values))
+                    {
+                        return;
+                    }
+
+                    throw new DeviceGatewayException(operationName, SdkError.FromCode(500, BuildIsapiErrorMessage(values, body), "ISAPI"));
+                }
+
+                return;
+            }
+
             var statusCode = Convert.ToString(values["statusCode"]);
-            if (string.Equals(statusCode, "1", StringComparison.Ordinal))
+            if (IsIsapiBodyOk(values))
             {
                 return;
             }
@@ -781,6 +1021,26 @@ namespace ControlDoor.Hikvision
             }.Where(item => !string.IsNullOrWhiteSpace(item)).ToArray();
 
             return parts.Length == 0 ? fallback : string.Join(" / ", parts);
+        }
+
+        private static bool IsIsapiBodyOk(IDictionary<string, object> values)
+        {
+            var statusCode = TryGetString(values, "statusCode");
+            if (string.Equals(statusCode, "1", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(statusCode))
+            {
+                return false;
+            }
+
+            var statusString = TryGetString(values, "statusString");
+            var subStatusCode = TryGetString(values, "subStatusCode");
+            var statusOk = string.Equals(statusString, "OK", StringComparison.OrdinalIgnoreCase);
+            var subOk = string.IsNullOrWhiteSpace(subStatusCode) || string.Equals(subStatusCode, "ok", StringComparison.OrdinalIgnoreCase);
+            return statusOk && subOk;
         }
 
         private static string BuildRemoteConfigErrorMessage(int status, string body)
@@ -810,6 +1070,70 @@ namespace ControlDoor.Hikvision
         {
             object value;
             return values != null && values.TryGetValue(key, out value) ? Convert.ToString(value) : null;
+        }
+
+        private static int ReadInt(IDictionary<string, object> values, string key)
+        {
+            object value;
+            if (values == null || !values.TryGetValue(key, out value) || value == null)
+            {
+                return 0;
+            }
+
+            int parsed;
+            return int.TryParse(Convert.ToString(value), out parsed) ? parsed : 0;
+        }
+
+        private static IEnumerable<IDictionary<string, object>> ReadObjectArray(IDictionary<string, object> values, params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                object raw;
+                if (values == null || !values.TryGetValue(key, out raw) || raw == null)
+                {
+                    continue;
+                }
+
+                var direct = raw as IDictionary<string, object>;
+                if (direct != null)
+                {
+                    yield return direct;
+                    continue;
+                }
+
+                var items = raw as System.Collections.IEnumerable;
+                if (items == null || raw is string)
+                {
+                    continue;
+                }
+
+                foreach (var item in items)
+                {
+                    var record = item as IDictionary<string, object>;
+                    if (record != null)
+                    {
+                        yield return record;
+                    }
+                }
+            }
+        }
+
+        private static string FirstNonEmpty(params string[] values)
+        {
+            if (values == null)
+            {
+                return null;
+            }
+
+            foreach (var value in values)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
 
         private static void TryDelete(string filePath)

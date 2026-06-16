@@ -46,6 +46,10 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("OK", single["code"]);
                 Assert.True(fixture.Gateway.Calls.Count(call => call.MethodName == "UpsertPersonAsync") >= 4);
                 Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
+                Assert.True(fixture.Gateway.Calls
+                    .Where(call => call.MethodName == "UpsertPersonAsync")
+                    .Select(call => (UpsertPersonRequest)call.Request)
+                    .All(request => request.ProvisioningMode == PersonProvisioningMode.Permission));
             }
         }
 
@@ -179,6 +183,8 @@ namespace ControlEntradaSalida.Tests
                 var faceIndex = fixture.Gateway.Calls.ToList().FindIndex(call => call.MethodName == "UploadFaceAsync");
                 Assert.True(modifyIndex >= 0);
                 Assert.True(faceIndex > modifyIndex);
+                var request = (UpsertPersonRequest)fixture.Gateway.Calls[modifyIndex].Request;
+                Assert.Equal(PersonProvisioningMode.Person, request.ProvisioningMode);
             }
         }
 
@@ -380,7 +386,12 @@ namespace ControlEntradaSalida.Tests
 
                 Assert.Equal("OK", response["code"]);
                 Assert.Equal(1, Convert.ToInt32(response["succeeded"]));
-                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
+                var calls = fixture.Gateway.Calls.ToList();
+                var faceIndex = calls.FindIndex(call => call.MethodName == "DeleteFaceAsync");
+                var personIndex = calls.FindIndex(call => call.MethodName == "DeletePersonAsync");
+                Assert.True(faceIndex >= 0);
+                Assert.True(personIndex > faceIndex);
+                Assert.True(fixture.UserWriter.PersonsDeleted.Contains("missing"));
             }
         }
 
@@ -397,6 +408,14 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("OK", response["code"]);
                 Assert.Equal(1, Convert.ToInt32(response["succeeded"]));
                 Assert.Equal(1, Convert.ToInt32(response["targetDevices"]));
+                var items = (ArrayList)response["items"];
+                var item = (Dictionary<string, object>)items[0];
+                var devices = (ArrayList)item["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+                Assert.Equal(1, Convert.ToInt32(device["faceCount"]));
+                Assert.Equal(true, device["exists"]);
+                Assert.True(device.ContainsKey("rawResponse"));
+                Assert.True(device.ContainsKey("faces"));
             }
         }
 

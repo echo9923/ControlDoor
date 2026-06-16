@@ -117,6 +117,13 @@ namespace ControlDoor.Configuration
                 "DeviceConnection.LogoutTimeoutMs",
                 warnings);
 
+            settings.DeviceConnection.AlarmStatusProbeFailureThreshold = MinimumOrDefault(
+                settings.DeviceConnection.AlarmStatusProbeFailureThreshold,
+                1,
+                2,
+                "DeviceConnection.AlarmStatusProbeFailureThreshold",
+                warnings);
+
             if (!string.Equals(settings.HikvisionSdk.Platform, "x86", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(settings.HikvisionSdk.Platform, "x64", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(settings.HikvisionSdk.Platform, "AnyCPU", StringComparison.OrdinalIgnoreCase))

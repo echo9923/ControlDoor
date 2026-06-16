@@ -280,6 +280,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("10001", request.Person.EmployeeId);
                 Assert.Equal("10001", request.Person.Name);
                 Assert.True(request.Person.Enabled);
+                Assert.Equal(PersonProvisioningMode.Permission, request.ProvisioningMode);
                 Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.MarkOperationSuccess"));
                 Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
             }
@@ -387,7 +388,11 @@ namespace ControlEntradaSalida.Tests
                 var result = fixture.Manager.RunOnceAsync("stage6-delete-person").GetAwaiter().GetResult();
 
                 Assert.Equal(1, result.Succeeded);
-                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
+                var calls = fixture.Gateway.Calls.ToList();
+                var faceIndex = calls.FindIndex(call => call.MethodName == "DeleteFaceAsync");
+                var personIndex = calls.FindIndex(call => call.MethodName == "DeletePersonAsync");
+                Assert.True(faceIndex >= 0);
+                Assert.True(personIndex > faceIndex);
                 Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
                 Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "UploadFaceAsync"));
                 Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));

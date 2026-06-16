@@ -332,6 +332,31 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains(@"""employeeNo"":""10001""", native.LastStdXmlInput);
             Assert.Contains(@"""doorRight"":""1""", native.LastStdXmlInput);
             Assert.Contains(@"""RightPlan""", native.LastStdXmlInput);
+            Assert.Contains(@"""userVerifyMode"":""face""", native.LastStdXmlInput);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_UpsertPermission_UsesPermissionOnlyUserInfoPayload()
+        {
+            var native = new Stage3FakeNativeClient { StdXmlOutput = @"{""statusCode"":1}" };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            gateway.UpsertPersonAsync(new UpsertPersonRequest
+            {
+                UserId = login.UserId,
+                Person = Person("10001"),
+                ProvisioningMode = PersonProvisioningMode.Permission
+            }).GetAwaiter().GetResult();
+
+            Assert.Contains("PUT", native.LastStdXmlUrl);
+            Assert.Contains("/ISAPI/AccessControl/UserInfo/SetUp?format=json", native.LastStdXmlUrl);
+            Assert.Contains(@"""UserInfo""", native.LastStdXmlInput);
+            Assert.Contains(@"""employeeNo"":""10001""", native.LastStdXmlInput);
+            Assert.Contains(@"""doorRight"":""1""", native.LastStdXmlInput);
+            Assert.Contains(@"""RightPlan""", native.LastStdXmlInput);
+            Assert.False(native.LastStdXmlInput.Contains(@"""userVerifyMode"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""gender"""));
         }
 
         [TestCase]
@@ -343,8 +368,99 @@ namespace ControlEntradaSalida.Tests
 
             gateway.DeleteFaceAsync(new DeleteFaceRequest { UserId = login.UserId, EmployeeId = "10001" }).GetAwaiter().GetResult();
 
-            Assert.Contains("FaceDataRecord/Delete", native.LastStdXmlUrl);
+            Assert.Contains("/ISAPI/Intelligent/FDLib/FDSearch/Delete?format=json&FDID=1&faceLibType=blackFD", native.LastStdXmlUrl);
             Assert.Contains("PUT", native.LastStdXmlUrl);
+            Assert.Contains(@"""FPID"":[{""value"":""10001""}]", native.LastStdXmlInput);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_QueryFace_UsesFdSearchAndParsesFaceRecords()
+        {
+            var native = new Stage3FakeNativeClient
+            {
+                StdXmlOutput = @"{""statusCode"":1,""numOfMatches"":1,""MatchList"":[{""FPID"":""10001"",""facePicBinary"":""/9j/2Q==""}]}"
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            var response = gateway.QueryFaceAsync(new QueryFaceRequest { UserId = login.UserId, EmployeeId = "10001" }).GetAwaiter().GetResult();
+
+            Assert.Contains("POST", native.LastStdXmlUrl);
+            Assert.Contains("/ISAPI/Intelligent/FDLib/FDSearch?format=json", native.LastStdXmlUrl);
+            Assert.Contains(@"""faceLibType"":""blackFD""", native.LastStdXmlInput);
+            Assert.Contains(@"""FDID"":""1""", native.LastStdXmlInput);
+            Assert.Contains(@"""FPID"":""10001""", native.LastStdXmlInput);
+            Assert.True(response.Exists);
+            Assert.Equal(1, response.TotalCount);
+            Assert.Equal(1, response.Faces.Count);
+            Assert.Equal("/9j/2Q==", response.Faces[0].ImageBase64);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_QueryFace_EmptyAcceptedResponseDoesNotReportExistingFace()
+        {
+            var native = new Stage3FakeNativeClient
+            {
+                StdXmlOutput = @"{""statusCode"":1,""numOfMatches"":0,""MatchList"":[]}"
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            var response = gateway.QueryFaceAsync(new QueryFaceRequest { UserId = login.UserId, EmployeeId = "10001" }).GetAwaiter().GetResult();
+
+            Assert.False(response.Exists);
+            Assert.Equal(0, response.TotalCount);
+            Assert.Equal(0, response.Faces.Count);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_QueryFace_ParsesMultipartFaceDataRecordAndAlternateImageFields()
+        {
+            var native = new Stage3FakeNativeClient
+            {
+                StdXmlOutput = "--boundary\r\nContent-Type: application/json\r\n\r\n" +
+                    @"{""statusString"":""OK"",""subStatusCode"":""ok"",""totalMatches"":1,""FaceDataRecord"":[{""employeeNo"":""10002"",""faceID"":""face-1"",""FacePic"":""BASE64PIC==""}]}" +
+                    "\r\n--boundary--"
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            var response = gateway.QueryFaceAsync(new QueryFaceRequest { UserId = login.UserId, EmployeeId = "10002" }).GetAwaiter().GetResult();
+
+            Assert.True(response.Exists);
+            Assert.Equal(1, response.TotalCount);
+            Assert.Equal(1, response.Faces.Count);
+            Assert.Equal("10002", response.Faces[0].EmployeeId);
+            Assert.Equal("face-1", response.Faces[0].FaceId);
+            Assert.Equal("BASE64PIC==", response.Faces[0].ImageBase64);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_QueryFace_ParsesMultipartMatchListBeforeImagePart()
+        {
+            var native = new Stage3FakeNativeClient
+            {
+                StdXmlOutput = "Content-Type:multipart/form-data;boundary=MIME_boundary\r\n" +
+                    "--MIME_boundary\r\n" +
+                    "Content-Type: application/json\r\n" +
+                    "Content-Length:180\r\n\r\n" +
+                    @"{""statusCode"":1,""statusString"":""OK"",""subStatusCode"":""ok"",""numOfMatches"":1,""totalMatches"":1,""MatchList"":[{""FPID"":""10001"",""modelData"":""MODEL==""}]}" +
+                    "\r\n--MIME_boundary\r\n" +
+                    "Content-Type:image/jpeg\r\n" +
+                    "Content-Length:16\r\n\r\n" +
+                    "\xff\xd8binary}jpeg\r\n" +
+                    "--MIME_boundary--\r\n"
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            var response = gateway.QueryFaceAsync(new QueryFaceRequest { UserId = login.UserId, EmployeeId = "10001" }).GetAwaiter().GetResult();
+
+            Assert.True(response.Exists);
+            Assert.Equal(1, response.TotalCount);
+            Assert.Equal(1, response.Faces.Count);
+            Assert.Equal("10001", response.Faces[0].EmployeeId);
+            Assert.Equal("MODEL==", response.Faces[0].ImageBase64);
         }
 
         [TestCase]
@@ -610,6 +726,15 @@ namespace ControlEntradaSalida.Tests
         public bool CloseAlarm(int alarmHandle)
         {
             return CloseAlarmResult;
+        }
+
+        public bool GetAcsWorkStatus(int userId, int channel, out AcsWorkStatus status)
+        {
+            status = new AcsWorkStatus
+            {
+                SetupAlarmStatus = new byte[] { 1 }
+            };
+            return true;
         }
 
         public bool ControlGateway(int userId, int gateIndex, GateControlCommand command)

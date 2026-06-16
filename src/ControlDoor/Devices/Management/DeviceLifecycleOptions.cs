@@ -27,5 +27,9 @@ namespace ControlDoor.Devices.Management
         public bool AlarmEnabled { get; set; } = true;
 
         public int AlarmDeployType { get; set; }
+
+        public bool AlarmStatusProbeEnabled { get; set; } = true;
+
+        public int AlarmStatusProbeFailureThreshold { get; set; } = 2;
     }
 }

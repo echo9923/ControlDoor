@@ -1,0 +1,6 @@
+﻿Before SQL Server SQLEXPRESS TCP change
+Timestamp=2026-06-15 14:03:41
+Tcp.Enabled=1
+Tcp.ListenOnAllIPs=1
+IPAll.TcpDynamicPorts=51753
+IPAll.TcpPort=

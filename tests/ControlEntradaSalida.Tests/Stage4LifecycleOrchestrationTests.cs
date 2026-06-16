@@ -110,6 +110,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(DeviceConnectionStatus.Online, snapshot.Status);
                 Assert.Equal(userId, snapshot.SdkUserId.Value);
                 Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.True(snapshot.AlarmManuallyDisarmed);
                 Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "CloseAlarmAsync"));
                 Assert.Equal(0, fixture.Gateway.Calls.Count(call => call.MethodName == "LogoutAsync"));
             }
@@ -133,6 +134,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(disarm.Success);
                 Assert.Equal(DeviceConnectionStatus.Online, snapshot.Status);
                 Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.True(snapshot.AlarmManuallyDisarmed);
                 Assert.Equal(closeCount, fixture.Gateway.Calls.Count(call => call.MethodName == "CloseAlarmAsync"));
             }
         }
@@ -338,6 +340,150 @@ namespace ControlEntradaSalida.Tests
 
                 Assert.True(fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm") >= 1);
                 Assert.True(fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue == false);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_HealthCheckAlarmProbeArmed_DoesNotScheduleReArm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReArmBaseDelayMs = 10000;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var before = fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm");
+
+                var check = fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "req-health");
+
+                Assert.True(check.Success);
+                Assert.True(fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue);
+                Assert.Equal(before, fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm"));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "GetAlarmDeploymentStatusAsync"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_HealthCheckAlarmProbeDisarmed_ClearsHandleAndSchedulesReArmAfterThreshold()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReArmBaseDelayMs = 10000;
+                fixture.Options.AlarmStatusProbeFailureThreshold = 2;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                fixture.Gateway.AlarmDeploymentStatus = new AlarmDeploymentStatus
+                {
+                    Known = true,
+                    IsDeployed = false,
+                    RawSetupAlarmStatus = 0,
+                    RawSummary = "not deployed"
+                };
+
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "probe-1");
+                Assert.True(fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue);
+                Assert.Equal(DeviceConnectionStatus.Degraded, fixture.Registry.TryGetByDeviceId(1).Snapshot.Status);
+
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "probe-2");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.Equal(DeviceConnectionStatus.Degraded, snapshot.Status);
+                Assert.True(fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm") >= 1);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_HealthCheckAlarmProbeFailure_KeepsAlarmHandle()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReArmBaseDelayMs = 10000;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var before = fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm");
+                fixture.Gateway.ConfigureException("GetAlarmDeploymentStatusAsync", new DeviceGatewayException("Probe", SdkError.FromCode(52)));
+
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "probe-fail");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(snapshot.AlarmHandle.HasValue);
+                Assert.Equal(DeviceConnectionStatus.Degraded, snapshot.Status);
+                Assert.Equal(before, fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_ManualDisarm_PreventsAutomaticHealthProbeReArm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReArmBaseDelayMs = 10000;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+
+                var disarm = fixture.Lifecycle.DisarmDeviceAlarm(1, "req-disarm");
+                var before = fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm");
+                var check = fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "req-health");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(disarm.Success);
+                Assert.True(check.Success);
+                Assert.True(snapshot.IsConnected);
+                Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.True(snapshot.AlarmManuallyDisarmed);
+                Assert.Equal(before, fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_RearmAfterManualDisarm_ClearsManualMarkerAndArms()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                fixture.Lifecycle.DisarmDeviceAlarm(1, "req-disarm");
+
+                var rearm = fixture.Lifecycle.RearmDeviceAlarm(1, force: false, requestId: "req-rearm");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(rearm.Success);
+                Assert.True(snapshot.AlarmHandle.HasValue);
+                Assert.False(snapshot.AlarmManuallyDisarmed);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_ManualDisconnect_PreventsAutomaticHealthReconnect()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.FailureThreshold = 1;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.SdkUserId.HasValue, "device was not logged in.");
+
+                var disconnect = fixture.Lifecycle.DisconnectDevice(1, "req-disconnect");
+                var before = fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4Reconnect");
+                var check = fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "req-health-after-disconnect");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(disconnect.Success);
+                Assert.True(check.Success);
+                Assert.Equal(DeviceConnectionStatus.Disconnected, snapshot.Status);
+                Assert.True(snapshot.Reconnect.ManualDisconnected);
+                Assert.Equal(before, fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4Reconnect"));
             }
         }
 

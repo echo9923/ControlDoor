@@ -51,6 +51,13 @@ namespace ControlDoor.Hikvision
                 IpAddress = "127.0.0.1"
             };
             PictureBytes = new byte[] { 0xFF, 0xD8, 0x01, 0x02, 0xFF, 0xD9 };
+            AlarmDeploymentStatus = new AlarmDeploymentStatus
+            {
+                Known = true,
+                IsDeployed = true,
+                RawSetupAlarmStatus = 1,
+                RawSummary = "mock deployed"
+            };
         }
 
         public event EventHandler<AlarmEventData> OnAlarmEvent;
@@ -60,6 +67,8 @@ namespace ControlDoor.Hikvision
         public DeviceInfo DeviceInfo { get; set; }
 
         public byte[] PictureBytes { get; set; }
+
+        public AlarmDeploymentStatus AlarmDeploymentStatus { get; set; }
 
         public IReadOnlyList<MockGatewayCall> Calls
         {
@@ -185,6 +194,21 @@ namespace ControlDoor.Hikvision
                 }
 
                 return 0;
+            });
+        }
+
+        public Task<AlarmDeploymentStatus> GetAlarmDeploymentStatusAsync(AlarmDeploymentStatusRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            HikvisionGatewayValidator.RequireUserId(request.UserId);
+            return ExecuteAsync("GetAlarmDeploymentStatusAsync", request, cancellationToken, () =>
+            {
+                RequireSession(request.UserId);
+                return CloneAlarmDeploymentStatus(AlarmDeploymentStatus);
             });
         }
 
@@ -687,6 +711,27 @@ namespace ControlDoor.Hikvision
                 FirmwareVersion = source.FirmwareVersion,
                 RawCapabilities = source.RawCapabilities,
                 LastCheckedAt = source.LastCheckedAt
+            };
+        }
+
+        private static AlarmDeploymentStatus CloneAlarmDeploymentStatus(AlarmDeploymentStatus source)
+        {
+            if (source == null)
+            {
+                return new AlarmDeploymentStatus
+                {
+                    Known = false,
+                    IsDeployed = false,
+                    RawSummary = "mock status unavailable"
+                };
+            }
+
+            return new AlarmDeploymentStatus
+            {
+                Known = source.Known,
+                IsDeployed = source.IsDeployed,
+                RawSetupAlarmStatus = source.RawSetupAlarmStatus,
+                RawSummary = source.RawSummary
             };
         }
 

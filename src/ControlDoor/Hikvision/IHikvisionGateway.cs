@@ -44,6 +44,14 @@ namespace ControlDoor.Hikvision
         Task CloseAlarmAsync(AlarmCloseRequest request, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Queries the device-side alarm deployment status for an ACS alarm input.
+        /// </summary>
+        /// <param name="request">Status request containing user id, channel and alarm input index.</param>
+        /// <param name="cancellationToken">Cancellation token used before the SDK call is started.</param>
+        /// <returns>Alarm deployment status read from ACS work status.</returns>
+        Task<AlarmDeploymentStatus> GetAlarmDeploymentStatusAsync(AlarmDeploymentStatusRequest request, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Adds a person record to the device through SDK remote configuration or ISAPI.
         /// </summary>
         /// <param name="request">Person add request containing user id and person data.</param>

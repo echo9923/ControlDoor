@@ -143,6 +143,7 @@ namespace ControlDoor.Permissions
             switch (operation)
             {
                 case RetryOperation.DeletePerson:
+                    await gateway.DeleteFaceAsync(new DeleteFaceRequest { UserId = userId, EmployeeId = state.EmployeeId }, cancellationToken).ConfigureAwait(false);
                     await gateway.DeletePersonAsync(new DeletePersonRequest { UserId = userId, EmployeeId = state.EmployeeId }, cancellationToken).ConfigureAwait(false);
                     return;
                 case RetryOperation.DeleteFace:
@@ -162,7 +163,8 @@ namespace ControlDoor.Permissions
                     await gateway.UpsertPersonAsync(new UpsertPersonRequest
                     {
                         UserId = userId,
-                        Person = person
+                        Person = person,
+                        ProvisioningMode = PersonProvisioningMode.Permission
                     }, cancellationToken).ConfigureAwait(false);
                     return;
                 case RetryOperation.Face:

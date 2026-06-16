@@ -149,7 +149,9 @@ namespace ControlDoor.Host
                 ReconnectMaxDelayMs = settings.DeviceConnection.ReconnectMaxDelayMs,
                 ReArmBaseDelayMs = settings.DeviceConnection.ReArmBaseDelayMs,
                 ReArmMaxDelayMs = settings.DeviceConnection.ReArmMaxDelayMs,
-                AlarmDeployType = settings.FaceEventLogging.AlarmDeployType
+                AlarmDeployType = settings.FaceEventLogging.AlarmDeployType,
+                AlarmStatusProbeEnabled = settings.DeviceConnection.AlarmStatusProbeEnabled,
+                AlarmStatusProbeFailureThreshold = settings.DeviceConnection.AlarmStatusProbeFailureThreshold
             };
             IDeviceRepository deviceRepository;
             try

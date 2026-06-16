@@ -553,7 +553,8 @@ namespace ControlDoor.GrpcApi
                 await gateway.UpsertPersonAsync(new UpsertPersonRequest
                 {
                     UserId = snapshot.SdkUserId.Value,
-                    Person = command.ToPermissionPersonInfo(snapshot.Description)
+                    Person = command.ToPermissionPersonInfo(snapshot.Description),
+                    ProvisioningMode = PersonProvisioningMode.Permission
                 }, taskContext.CancellationToken).ConfigureAwait(false);
                 return DeviceTaskResult.FromTask(taskContext.Task, true, "OK", "权限同步成功。", snapshot.Status, started, DateTime.Now);
             });
@@ -635,6 +636,7 @@ namespace ControlDoor.GrpcApi
                     return offline;
                 }
 
+                await gateway.DeleteFaceAsync(new DeleteFaceRequest { UserId = snapshot.SdkUserId.Value, EmployeeId = employeeId }, taskContext.CancellationToken).ConfigureAwait(false);
                 await gateway.DeletePersonAsync(new DeletePersonRequest { UserId = snapshot.SdkUserId.Value, EmployeeId = employeeId }, taskContext.CancellationToken).ConfigureAwait(false);
                 return DeviceTaskResult.FromTask(taskContext.Task, true, "OK", "删除人员成功。", snapshot.Status, started, DateTime.Now);
             });

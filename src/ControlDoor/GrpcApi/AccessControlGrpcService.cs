@@ -463,10 +463,13 @@ namespace ControlDoor.GrpcApi
         private IDictionary<string, object> ToAlarmOperationResponse(int deviceId, string message)
         {
             var snapshot = lifecycle.Registry.TryGetByDeviceId(deviceId).Snapshot;
+            var alarmStatus = snapshot == null ? "Unavailable" : ResolveAlarmStatus(snapshot);
             return new Dictionary<string, object>
             {
                 ["deviceId"] = deviceId,
                 ["armed"] = snapshot != null && snapshot.AlarmHandle.HasValue,
+                ["alarmStatus"] = alarmStatus,
+                ["alarmStatusMessage"] = AlarmStatusMessage(alarmStatus),
                 ["alarmHandle"] = snapshot == null ? null : snapshot.AlarmHandle,
                 ["connected"] = snapshot != null && snapshot.IsConnected,
                 ["status"] = snapshot == null ? "Deleted" : snapshot.Status.ToString(),
@@ -538,6 +541,11 @@ namespace ControlDoor.GrpcApi
                 return "Armed";
             }
 
+            if (snapshot.AlarmManuallyDisarmed)
+            {
+                return "ManuallyDisarmed";
+            }
+
             if (snapshot.Enabled && snapshot.IsConnected && !snapshot.IsDeleting)
             {
                 return "NotArmed";
@@ -558,6 +566,11 @@ namespace ControlDoor.GrpcApi
                 return "在线但未布防";
             }
 
+            if (alarmStatus == "ManuallyDisarmed")
+            {
+                return "已手动撤防";
+            }
+
             return "设备不可布防";
         }
 
@@ -574,6 +587,7 @@ namespace ControlDoor.GrpcApi
                 false,
                 null,
                 null,
+                false,
                 string.Empty,
                 DeviceCapabilities.Unknown(),
                 null,

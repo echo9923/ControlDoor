@@ -82,6 +82,30 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("FAILED", response["code"]);
                 Assert.Equal(0, Convert.ToInt32(response["queued"]));
                 Assert.Equal(0, fixture.RetryWriter.Intents.Count);
+                var calls = fixture.Gateway.Calls.ToList();
+                var faceIndex = calls.FindIndex(call => call.MethodName == "DeleteFaceAsync");
+                var personIndex = calls.FindIndex(call => call.MethodName == "DeletePersonAsync");
+                Assert.True(faceIndex >= 0);
+                Assert.True(personIndex > faceIndex);
+            }
+        }
+
+        [TestCase]
+        public static void DeletePersons_DeleteFaceRetryableTimeout_QueuesDeletePersonIntentAndSkipsDeletePerson()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureTimeout("DeleteFaceAsync");
+
+                var response = fixture.Response(fixture.Service.DeletePersons(@"[""10001""]", fixture.Context("delete-person-face-timeout")));
+
+                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
+                Assert.Equal(1, Convert.ToInt32(response["queued"]));
+                Assert.Equal(1, fixture.RetryWriter.Intents.Count);
+                Assert.Equal("DeletePerson", fixture.RetryWriter.Intents[0].Operation);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeleteFaceAsync"));
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
             }
         }
 

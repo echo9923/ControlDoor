@@ -22,6 +22,7 @@ namespace ControlEntradaSalida.Tests
             Assert.True(methods.Contains("LogoutAsync"));
             Assert.True(methods.Contains("SetAlarmAsync"));
             Assert.True(methods.Contains("CloseAlarmAsync"));
+            Assert.True(methods.Contains("GetAlarmDeploymentStatusAsync"));
             Assert.True(methods.Contains("AddPersonAsync"));
             Assert.True(methods.Contains("UpsertPersonAsync"));
             Assert.True(methods.Contains("DeletePersonAsync"));
@@ -492,6 +493,29 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void MockGateway_GetAlarmDeploymentStatus_ReturnsClone()
+        {
+            var gateway = new MockHikvisionGateway
+            {
+                AlarmDeploymentStatus = new AlarmDeploymentStatus
+                {
+                    Known = true,
+                    IsDeployed = false,
+                    RawSetupAlarmStatus = 0,
+                    RawSummary = "not deployed"
+                }
+            };
+            var login = Login(gateway);
+
+            var status = gateway.GetAlarmDeploymentStatusAsync(new AlarmDeploymentStatusRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+            gateway.AlarmDeploymentStatus.IsDeployed = true;
+
+            Assert.True(status.Known);
+            Assert.False(status.IsDeployed);
+            Assert.Equal((byte)0, status.RawSetupAlarmStatus);
+        }
+
+        [TestCase]
         public static void MockGateway_ConfiguredResult_OverridesDefault()
         {
             var gateway = new MockHikvisionGateway();
@@ -818,6 +842,35 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_GetAlarmDeploymentStatus_MapsAcsWorkStatus()
+        {
+            var native = new FakeNativeClient { SetupAlarmStatus = new byte[] { 0 } };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+
+            var status = gateway.GetAlarmDeploymentStatusAsync(new AlarmDeploymentStatusRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+
+            Assert.True(status.Known);
+            Assert.False(status.IsDeployed);
+            Assert.Equal((byte)0, status.RawSetupAlarmStatus);
+            Assert.Equal(login.UserId, native.LastAcsWorkStatusUserId);
+            Assert.Equal(-1, native.LastAcsWorkStatusChannel);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_GetAlarmDeploymentStatusFailure_ThrowsLastError()
+        {
+            var native = new FakeNativeClient { AcsWorkStatusResult = false, LastError = 52 };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+
+            var ex = Expect<DeviceGatewayException>(() => gateway.GetAlarmDeploymentStatusAsync(
+                new AlarmDeploymentStatusRequest { UserId = login.UserId }).GetAwaiter().GetResult());
+
+            Assert.Equal(52, ex.Error.Code);
+        }
+
+        [TestCase]
         public static void SdkWrapper_Dispose_CallsCleanupOnce()
         {
             var native = new FakeNativeClient();
@@ -1095,6 +1148,14 @@ namespace ControlEntradaSalida.Tests
 
             public byte[] LastFaceUploadPictureBytes { get; private set; }
 
+            public bool AcsWorkStatusResult { get; set; } = true;
+
+            public byte[] SetupAlarmStatus { get; set; } = new byte[] { 1 };
+
+            public int LastAcsWorkStatusUserId { get; private set; }
+
+            public int LastAcsWorkStatusChannel { get; private set; }
+
             public bool Init()
             {
                 InitCalled = true;
@@ -1143,6 +1204,17 @@ namespace ControlEntradaSalida.Tests
             public bool CloseAlarm(int alarmHandle)
             {
                 return CloseAlarmResult;
+            }
+
+            public bool GetAcsWorkStatus(int userId, int channel, out AcsWorkStatus status)
+            {
+                LastAcsWorkStatusUserId = userId;
+                LastAcsWorkStatusChannel = channel;
+                status = new AcsWorkStatus
+                {
+                    SetupAlarmStatus = SetupAlarmStatus == null ? null : (byte[])SetupAlarmStatus.Clone()
+                };
+                return AcsWorkStatusResult;
             }
 
             public bool ControlGateway(int userId, int gateIndex, GateControlCommand command)

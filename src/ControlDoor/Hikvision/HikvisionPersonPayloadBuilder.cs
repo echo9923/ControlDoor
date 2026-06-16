@@ -43,6 +43,37 @@ namespace ControlDoor.Hikvision
             };
         }
 
+        public static object BuildPermissionUserInfoSetup(PersonInfo person, int doorCount = 1)
+        {
+            HikvisionGatewayValidator.RequirePerson(person);
+
+            var enabled = person.Enabled;
+            var normalizedDoorCount = NormalizeDoorCount(doorCount);
+            var rightPlans = BuildRightPlans(enabled, normalizedDoorCount);
+            var doorRight = enabled
+                ? string.Join(",", Enumerable.Range(1, normalizedDoorCount).Select(item => item.ToString(CultureInfo.InvariantCulture)))
+                : string.Empty;
+
+            return new
+            {
+                UserInfo = new
+                {
+                    employeeNo = person.EmployeeId,
+                    name = person.Name ?? string.Empty,
+                    userType = "normal",
+                    Valid = new
+                    {
+                        enable = enabled,
+                        beginTime = DefaultBeginTime,
+                        endTime = enabled ? DefaultEndTime : DefaultBeginTime,
+                        timeType = "local"
+                    },
+                    doorRight,
+                    RightPlan = rightPlans
+                }
+            };
+        }
+
         private static object[] BuildRightPlans(bool enabled, int doorCount)
         {
             if (!enabled)
