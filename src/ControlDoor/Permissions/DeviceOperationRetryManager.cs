@@ -171,6 +171,12 @@ namespace ControlDoor.Permissions
 
                     try
                     {
+                        if (!store.TryClaimDueState(state, now))
+                        {
+                            result.ClaimSkipped++;
+                            continue;
+                        }
+
                         await ProcessStateAsync(state, result, now, cancellationToken).ConfigureAwait(false);
                     }
                     finally
@@ -204,6 +210,7 @@ namespace ControlDoor.Permissions
                             ["submitted"] = result.Submitted.ToString(),
                             ["offlineDeferred"] = result.OfflineDeferred.ToString(),
                             ["inFlightSkipped"] = result.InFlightSkipped.ToString(),
+                            ["claimSkipped"] = result.ClaimSkipped.ToString(),
                             ["succeeded"] = result.Succeeded.ToString(),
                             ["failed"] = result.Failed.ToString(),
                             ["terminal"] = result.Terminal.ToString(),
@@ -228,6 +235,7 @@ namespace ControlDoor.Permissions
                 result.Submitted != 0 ||
                 result.OfflineDeferred != 0 ||
                 result.InFlightSkipped != 0 ||
+                result.ClaimSkipped != 0 ||
                 result.Succeeded != 0 ||
                 result.Failed != 0 ||
                 result.Terminal != 0 ||

@@ -84,6 +84,24 @@ namespace ControlDoor.Permissions
             return rows.Select(DeviceOperationRetryState.FromRow).ToList();
         }
 
+        public bool TryClaimDueState(DeviceOperationRetryState state, DateTime now)
+        {
+            if (state == null)
+            {
+                return false;
+            }
+
+            var claimSeconds = Math.Max(60, Math.Max(options.InitialRetryDelaySeconds, options.ScanIntervalSeconds));
+            var claimUntil = now.AddSeconds(claimSeconds);
+            var record = database.ExecuteNonQuery(
+                "DeviceOperationRetryStore.TryClaimDueState",
+                ClaimDueSql,
+                new DatabaseParameter("@id", state.Id),
+                new DatabaseParameter("@now", now),
+                new DatabaseParameter("@claimUntil", claimUntil));
+            return record.Error == null && (!record.RowsAffected.HasValue || record.RowsAffected.Value > 0);
+        }
+
         public void DeleteEmptyState(DeviceOperationRetryState state)
         {
             if (state == null)
@@ -490,7 +508,7 @@ WHERE id = @id;";
 
         private const string LoadDueSql = @"
 SELECT TOP (@batchSize) *
-FROM dbo.device_operation_retry_states
+FROM dbo.device_operation_retry_states WITH (UPDLOCK, READPAST, ROWLOCK)
 WHERE exhausted_at IS NULL
   AND (next_retry_at IS NULL OR next_retry_at <= @now)
   AND (
@@ -501,6 +519,22 @@ WHERE exhausted_at IS NULL
       OR delete_face_pending = 1
   )
 ORDER BY next_retry_at ASC, updated_at ASC, id ASC;";
+
+        private const string ClaimDueSql = @"
+UPDATE dbo.device_operation_retry_states
+SET next_retry_at = @claimUntil,
+    last_attempt_at = @now,
+    updated_at = @now
+WHERE id = @id
+  AND exhausted_at IS NULL
+  AND (next_retry_at IS NULL OR next_retry_at <= @now)
+  AND (
+      permission_pending = 1
+      OR person_pending = 1
+      OR face_pending = 1
+      OR delete_person_pending = 1
+      OR delete_face_pending = 1
+  );";
 
         private const string TransactionalUpsertSql = @"
 SET XACT_ABORT ON;

@@ -276,6 +276,58 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceOperationRetryStore_LoadDueStates_UsesDatabaseLocksToAvoidMultiInstanceDuplicateClaims()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database, new DeviceOperationRetryOptions { BatchSize = 25 });
+
+            store.LoadDueStates(new DateTime(2026, 1, 1));
+
+            var sql = database.Commands.Last().CommandText;
+            Assert.Contains("WITH (UPDLOCK, READPAST, ROWLOCK)", sql);
+            Assert.Contains("@batchSize=25", sql);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_TryClaimDueState_UsesGuardedUpdateToLeaseExistingRow()
+        {
+            var database = new RecordingDatabaseClient { RowsAffected = 1 };
+            var store = new DeviceOperationRetryStore(database, new DeviceOperationRetryOptions { InitialRetryDelaySeconds = 60 });
+            var state = DeviceOperationRetryState.FromRow(Row(id: 12, deviceId: 1, employeeId: "10001", permissionPending: true));
+
+            var claimed = store.TryClaimDueState(state, new DateTime(2026, 1, 1, 10, 0, 0));
+
+            Assert.True(claimed);
+            var sql = database.Commands.Single(item => item.OperationName == "DeviceOperationRetryStore.TryClaimDueState").CommandText;
+            Assert.Contains("UPDATE dbo.device_operation_retry_states", sql);
+            Assert.Contains("next_retry_at = @claimUntil", sql);
+            Assert.Contains("last_attempt_at = @now", sql);
+            Assert.Contains("AND (next_retry_at IS NULL OR next_retry_at <= @now)", sql);
+            Assert.Contains("AND exhausted_at IS NULL", sql);
+            Assert.Contains("@claimUntil=2026/1/1 10:01:00", sql);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_DatabaseClaimMiss_DoesNotSubmitDuplicateRetryTask()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Database.RowsAffected = 0;
+                fixture.Database.QueryRows.Add(Row(id: 13, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+
+                var result = fixture.Manager.RunOnceAsync("stage6-claim-miss").GetAwaiter().GetResult();
+
+                Assert.Equal(1, result.Due);
+                Assert.Equal(1, result.ClaimSkipped);
+                Assert.Equal(0, result.Submitted);
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "UpsertPersonAsync"));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.TryClaimDueState"));
+                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.MarkOperationSuccess"));
+            }
+        }
+
+        [TestCase]
         public static void DeviceOperationRetryManager_OnlinePermission_SubmitsRetryTaskAndDeletesCompletedState()
         {
             using (var fixture = new Stage6Fixture())

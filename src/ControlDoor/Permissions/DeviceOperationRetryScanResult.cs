@@ -12,6 +12,8 @@ namespace ControlDoor.Permissions
 
         public int InFlightSkipped { get; set; }
 
+        public int ClaimSkipped { get; set; }
+
         public int OfflineDeferred { get; set; }
 
         public int Terminal { get; set; }

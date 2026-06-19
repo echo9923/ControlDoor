@@ -33,16 +33,17 @@
 
 ## 领取策略
 
-当前表没有 `locked_at` 或 `owner` 字段，不能做持久化领取锁。阶段 6 采用单服务实例内的内存去重和短事务读取：
+当前表没有 `locked_at` 或 `owner` 字段，不能做严格的持久化领取锁。阶段 6 采用零表结构变更的双层去重策略，尽量避免多个服务实例同时领取同一条到期状态：
 
 | 机制 | 规则 |
 | --- | --- |
 | 单实例扫描 | `DeviceOperationRetryManager` 在当前进程只允许一个扫描循环运行。 |
 | 内存 in-flight | 以 `retryStateId` 或 `deviceId + employeeId` 记录已投递未完成状态。 |
-| 重复扫描跳过 | 如果状态还在 in-flight，本轮不重复投递。 |
-| 服务重启 | in-flight 丢失，但状态仍在表中，下轮重新扫描。 |
+| 到期扫描锁 | `LoadDueStates` 使用 `UPDLOCK, READPAST, ROWLOCK` 读取候选到期行，跳过其它事务正在锁定的行。 |
+| 数据库领取 | 投递前调用 guarded update：仅当 `exhausted_at IS NULL` 且 `next_retry_at IS NULL OR next_retry_at <= now` 时，把 `next_retry_at` 推到一个短租约时间并写入 `last_attempt_at`。若受影响行数为 0，说明已被其它实例领取或状态已变化，本轮跳过。 |
+| 服务重启 | 如果领取后进程退出但未回写成功/失败，短租约到期后状态会再次被扫描。 |
 
-该方案适用于当前 Windows Service 单实例部署。若未来要多实例部署，必须先讨论是否新增领取字段或外部分布式锁；这不属于阶段 6 当前范围。
+该方案不新增字段，能显著降低多实例重复领取概率；但由于没有 `owner`、`locked_at`、`lock_token` 等字段，不能表达严格所有权，也不能在设备调用时间超过短租约时提供绝对 exactly-once 语义。若未来要求严格多实例调度，应新增领取字段或使用外部分布式锁。
 
 ## 扫描流程
 
@@ -97,6 +98,7 @@
 | `scanBatchSize` | 本轮读取数量。 |
 | `dueCount` | 到期状态数量。 |
 | `inFlightSkipped` | 因已在执行而跳过数量。 |
+| `claimSkipped` | 因数据库领取失败而跳过数量，通常表示其它实例已领取或状态已变化。 |
 | `offlineDeferred` | 因设备离线延后数量。 |
 | `submitted` | 成功投递数量。 |
 | `durationMs` | 本轮扫描耗时。 |
@@ -109,6 +111,7 @@
 | 批量限制 | 每轮不超过 `BatchSize`。 |
 | 排序稳定 | next_retry_at、updated_at、id 顺序正确。 |
 | in-flight 去重 | 已投递未完成状态不重复投递。 |
+| 数据库领取去重 | 多实例并发时，guarded update 失败的实例不投递设备任务。 |
 | 离线延后 | 设备离线只更新 next_retry_at，不进入 worker。 |
 | 停用终态 | 停用设备写入 exhausted_at。 |
 | 扫描异常恢复 | 一轮失败不终止后台任务。 |
