@@ -93,6 +93,70 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceLifecycle_Disconnect_CloseAlarmFails_PreservesAlarmHandle()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var originalHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(17, "close failed")));
+
+                var disconnect = fixture.Lifecycle.DisconnectDevice(1, "req-disconnect-fail");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(disconnect.Success);
+                Assert.Equal(originalHandle, snapshot.AlarmHandle.Value);
+                Assert.Equal("SDK_ERROR", snapshot.LastErrorCode);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_DeleteDeviceDisconnectFirst_CloseAlarmFails_PreservesAlarmHandle()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var originalHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(17, "close failed")));
+
+                var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: true, requestId: "req-delete-fail");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(deleted.Success);
+                Assert.Equal(originalHandle, snapshot.AlarmHandle.Value);
+                Assert.Equal("SDK_ERROR", snapshot.LastErrorCode);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_ForceReconnect_CloseAlarmFails_PreservesAlarmHandleAndSkipsLogin()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var originalHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
+                var loginCount = fixture.Gateway.Calls.Count(call => call.MethodName == "LoginAsync");
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(17, "close failed")));
+
+                var reconnect = fixture.Lifecycle.ReconnectDevice(1, force: true, requestId: "req-reconnect-fail");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(reconnect.Success);
+                Assert.Equal(originalHandle, snapshot.AlarmHandle.Value);
+                Assert.Equal(loginCount, fixture.Gateway.Calls.Count(call => call.MethodName == "LoginAsync"));
+            }
+        }
+
+        [TestCase]
         public static void DeviceLifecycle_DisarmDeviceAlarm_ClearsAlarmWithoutLogout()
         {
             using (var fixture = new Stage4Fixture())

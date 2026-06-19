@@ -576,12 +576,17 @@ namespace ControlDoor.GrpcApi
 
         private static DeviceRuntimeSnapshot ToSnapshot(DeviceRecord record)
         {
-            var status = record.Enabled ? DeviceConnectionStatus.Loaded : DeviceConnectionStatus.Disabled;
+            var validation = DeviceRecordValidator.Validate(CloneRecord(record));
+            var invalid = record.Enabled && !validation.Success;
+            var status = invalid ? DeviceConnectionStatus.InvalidConfig : (record.Enabled ? DeviceConnectionStatus.Loaded : DeviceConnectionStatus.Disabled);
+            var error = invalid
+                ? DeviceRuntimeError.Create("ValidateDeviceConfig", "INVALID_CONFIG", validation.Message, DateTime.Now, retryable: false)
+                : null;
             return new DeviceRuntimeSnapshot(
                 record.DeviceId,
                 record.DeviceName,
                 record.IpAddress,
-                record.Port,
+                record.Port <= 0 || record.Port > 65535 ? 8000 : record.Port,
                 record.Enabled,
                 status,
                 false,
@@ -593,12 +598,28 @@ namespace ControlDoor.GrpcApi
                 null,
                 null,
                 null,
-                null,
+                error,
                 ReconnectState.New(),
                 DateTime.Now,
                 null,
                 record.Types,
                 record.Description);
+        }
+
+        private static DeviceRecord CloneRecord(DeviceRecord record)
+        {
+            return new DeviceRecord
+            {
+                DeviceId = record.DeviceId,
+                DeviceName = record.DeviceName,
+                Description = record.Description,
+                IpAddress = record.IpAddress,
+                Port = record.Port,
+                Username = record.Username,
+                Password = record.Password,
+                Enabled = record.Enabled,
+                Types = record.Types == null ? new List<DeviceType>() : record.Types.ToList()
+            };
         }
 
         private static string FormatDate(DateTime? value)

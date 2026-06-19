@@ -116,7 +116,17 @@ namespace ControlDoor.FaceEvents
             }
 
             // 2. 批量预查去重：一条 SELECT id ... WHERE id IN (...) 过滤掉已存在的。
-            var existingIds = QueryExistingIds(pending);
+            HashSet<long> existingIds;
+            try
+            {
+                existingIds = QueryExistingIds(pending);
+            }
+            catch (Exception ex)
+            {
+                MarkFailures(results, pending, pendingIndexes, ex);
+                return results;
+            }
+
             var toInsert = new List<AcsFaceEvent>(pending.Count);
             var toInsertIndexes = new List<int>(pending.Count);
             for (var j = 0; j < pending.Count; j++)
@@ -138,19 +148,37 @@ namespace ControlDoor.FaceEvents
             }
 
             // 3. 批量预查昵称 + 截断字段 + 落盘（落盘 I/O 仍逐条，但路径入参准备好）。
-            var nicknames = LookupNicknames(toInsert);
+            Dictionary<string, string> nicknames;
+            try
+            {
+                nicknames = LookupNicknames(toInsert);
+            }
+            catch (Exception ex)
+            {
+                MarkFailures(results, toInsert, toInsertIndexes, ex);
+                return results;
+            }
+
             var snapshots = new string[toInsert.Count];
             for (var k = 0; k < toInsert.Count; k++)
             {
-                var faceEvent = toInsert[k];
-                if (string.IsNullOrWhiteSpace(faceEvent.Nickname))
+                try
                 {
-                    nicknames.TryGetValue(faceEvent.EmployeeId, out var nickname);
-                    faceEvent.Nickname = nickname;
+                    var faceEvent = toInsert[k];
+                    if (string.IsNullOrWhiteSpace(faceEvent.Nickname))
+                    {
+                        nicknames.TryGetValue(faceEvent.EmployeeId, out var nickname);
+                        faceEvent.Nickname = nickname;
+                    }
+                    TruncateFields(faceEvent);
+                    var snapshot = snapshotStorage.Save(faceEvent);
+                    snapshots[k] = snapshot.Saved ? snapshot.SnapshotPath : null;
                 }
-                TruncateFields(faceEvent);
-                var snapshot = snapshotStorage.Save(faceEvent);
-                snapshots[k] = snapshot.Saved ? snapshot.SnapshotPath : null;
+                catch (Exception ex)
+                {
+                    MarkFailures(results, toInsert, toInsertIndexes, ex);
+                    return results;
+                }
             }
 
             // 4. 单事务内循环插入。
@@ -186,6 +214,38 @@ namespace ControlDoor.FaceEvents
                 }
                 return results;
             }
+            catch (Exception ex)
+            {
+                MarkFailures(results, toInsert, toInsertIndexes, ex);
+                return results;
+            }
+        }
+
+        private static void MarkFailures(
+            FaceEventInsertResult[] results,
+            IReadOnlyList<AcsFaceEvent> events,
+            IReadOnlyList<int> indexes,
+            Exception ex)
+        {
+            var status = IsRetryableFailure(ex)
+                ? FaceEventInsertStatus.RetryableFailure
+                : FaceEventInsertStatus.Failed;
+            var code = status == FaceEventInsertStatus.RetryableFailure ? "RETRYABLE_FAILURE" : "FAILED";
+            for (var i = 0; i < events.Count; i++)
+            {
+                results[indexes[i]] = FaceEventInsertResult.Failure(
+                    status,
+                    events[i].EventId,
+                    code,
+                    ex.Message);
+            }
+        }
+
+        private static bool IsRetryableFailure(Exception ex)
+        {
+            return ex is SqlException ||
+                ex is TimeoutException ||
+                ex is InvalidOperationException;
         }
 
         private void InsertInTransaction(IReadOnlyList<AcsFaceEvent> toInsert, string[] snapshots)

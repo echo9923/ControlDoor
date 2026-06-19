@@ -126,13 +126,13 @@ namespace ControlDoor.GrpcApi
                     employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPermission"));
                 }
 
-                if (onlineDevices.Count > 0 && employeeResults[command.EmployeeId].DeviceResults.Any(item => item.Success))
+                if (IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
                 {
                     TryUpdateUser(dbErrors, () => userSyncWriter.MarkPermissionSynced(command.EmployeeId, command.PermissionCode), command.EmployeeId, "MarkPermissionSynced");
                 }
             }
 
-            var succeededEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Success));
+            var succeededEmployees = employeeResults.Values.Count(IsEmployeeOperationComplete);
             var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
             var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
             var code = DetermineCode(parsed.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
@@ -559,13 +559,13 @@ namespace ControlDoor.GrpcApi
                     employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, operation));
                 }
 
-                if (operation == "DeletePerson" && employeeResults[command.EmployeeId].DeviceResults.Any(item => item.Success))
+                if (operation == "DeletePerson" && IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
                 {
                     TryUpdateUser(dbErrors, () => userSyncWriter.MarkPersonDeleted(command.EmployeeId), command.EmployeeId, "MarkPersonDeleted");
                 }
             }
 
-            var succeededEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Success));
+            var succeededEmployees = employeeResults.Values.Count(IsEmployeeOperationComplete);
             var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
             var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
             var code = DetermineCode(parsed.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
@@ -1091,6 +1091,13 @@ namespace ControlDoor.GrpcApi
             };
         }
 
+        private static bool IsEmployeeOperationComplete(EmployeeOperationSummary summary)
+        {
+            return summary != null &&
+                summary.DeviceResults.Count > 0 &&
+                summary.DeviceResults.All(item => item.Success && !item.Queued);
+        }
+
         private static IDictionary<string, object> ToDeviceError(DeviceRuntimeSnapshot device, string employeeId, DeviceTaskResult result)
         {
             return new Dictionary<string, object>
@@ -1361,10 +1368,11 @@ namespace ControlDoor.GrpcApi
 
             public IDictionary<string, object> ToDictionary()
             {
+                var completed = DeviceResults.Count > 0 && DeviceResults.All(item => item.Success && !item.Queued);
                 return new Dictionary<string, object>
                 {
                     ["employeeId"] = EmployeeId,
-                    ["success"] = DeviceResults.Any(item => item.Success),
+                    ["success"] = completed,
                     ["queued"] = DeviceResults.Any(item => item.Queued),
                     ["devices"] = DeviceResults.Select(item => item.ToDictionary()).ToList()
                 };

@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using ControlDoor.CameraDoorInterlock;
 using ControlDoor.Configuration;
+using ControlDoor.Host;
 using ControlDoor.Hikvision;
 using ControlDoor.Observability;
+using ControlDoor.Runtime;
 
 namespace ControlEntradaSalida.Tests
 {
@@ -206,6 +209,36 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void Stage9HostStop_RestoresActiveDoorBeforeDeviceLogout()
+        {
+            using (var fixture = new Stage9Fixture())
+            using (var host = new ControlDoorHost(TestWorkspace.Create()))
+            {
+                fixture.Service.StartAsync(new BackgroundTaskContext("stage9-host-stop", CancellationToken.None, null)).GetAwaiter().GetResult();
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.SpinForControlGatewayCalls(1);
+                var backgroundHost = new BackgroundTaskHost();
+                backgroundHost.Register(fixture.Service, startOrder: 36, stopOrder: 54, isCritical: false);
+                backgroundHost.StartAsync().GetAwaiter().GetResult();
+                SetHostField(host, "backgroundTaskHost", backgroundHost);
+                SetHostField(host, "deviceLifecycle", fixture.Lifecycle);
+                SetHostField(host, "deviceDispatcher", fixture.Dispatcher);
+                SetHostField(host, "cameraDoorInterlockService", fixture.Service);
+                SetHostField(host, "state", ServiceLifecycleState.Running);
+
+                var stop = host.StopAsync("stage9-host-stop-test").GetAwaiter().GetResult();
+
+                Assert.True(stop.Success);
+                var calls = fixture.Gateway.Calls.ToList();
+                var restoreIndex = calls.FindIndex(c => CommandOf(c) == GateControlCommand.Restore);
+                var logoutIndex = calls.FindIndex(c => c.MethodName == "LogoutAsync");
+                Assert.True(restoreIndex >= 0, "Host stop must restore active Stage9 door targets.");
+                Assert.True(logoutIndex >= 0, "Host stop must still logout devices after restore.");
+                Assert.True(restoreIndex < logoutIndex, "Restore must run before device logout so SdkUserId is still available.");
+            }
+        }
+
+        [TestCase]
         public static void Stage9Service_StopBestEffortRestore_HonorsTimeoutAndReportsUnfinished()
         {
             using (var fixture = new Stage9Fixture())
@@ -359,6 +392,13 @@ namespace ControlEntradaSalida.Tests
         private static int RestoreCount(Stage9Fixture fixture)
         {
             return fixture.Gateway.Calls.Count(c => CommandOf(c) == GateControlCommand.Restore);
+        }
+
+        private static void SetHostField(ControlDoorHost host, string fieldName, object value)
+        {
+            var field = typeof(ControlDoorHost).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            field.SetValue(host, value);
         }
 
         private static void SpinUntil(Func<bool> condition, string failureMessage)

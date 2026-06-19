@@ -58,6 +58,7 @@ namespace ControlDoor.Devices.Management
                 {
                     summary.InvalidCount++;
                     summary.Warnings.Add("设备 " + record.DeviceId + " 配置非法: " + validation.Message);
+                    RegisterInvalidConfigRecord(record, validation.Message);
                     continue;
                 }
 
@@ -96,6 +97,33 @@ namespace ControlDoor.Devices.Management
                 }
             });
             return summary;
+        }
+
+        private void RegisterInvalidConfigRecord(DeviceRecord record, string message)
+        {
+            if (record == null || record.DeviceId <= 0)
+            {
+                return;
+            }
+
+            var options = record.ToRuntimeOptions(DateTime.Now);
+            options.DeviceName = string.IsNullOrWhiteSpace(options.DeviceName) ? "device-" + record.DeviceId : options.DeviceName;
+            options.IpAddress = string.IsNullOrWhiteSpace(options.IpAddress) ? "invalid-" + record.DeviceId : options.IpAddress;
+            options.Port = options.Port <= 0 || options.Port > 65535 ? 8000 : options.Port;
+            options.Username = string.IsNullOrWhiteSpace(options.Username) ? "admin" : options.Username;
+            options.Password = options.Password ?? string.Empty;
+            options.Enabled = true;
+
+            var result = registry.Register(options);
+            if (!result.Success)
+            {
+                return;
+            }
+
+            registry.MarkInvalidConfig(
+                record.DeviceId,
+                DeviceRuntimeError.Create("ValidateDeviceConfig", "INVALID_CONFIG", message, DateTime.Now, retryable: false),
+                DateTime.Now);
         }
 
         public IReadOnlyList<DeviceRuntimeSnapshot> GetDeviceSnapshots(bool includeDisabled)
@@ -293,7 +321,8 @@ namespace ControlDoor.Devices.Management
             var cleanupResult = dispatcher.SubmitAndWaitAsync(cleanup).GetAwaiter().GetResult();
             if (!cleanupResult.Success && cleanupResult.Code != "OK")
             {
-                logger?.Warn("DeviceLifecycle", "重连前清理失败，继续尝试登录。", new LogFields { DeviceId = deviceId, ErrorCode = cleanupResult.Code });
+                logger?.Warn("DeviceLifecycle", "重连前清理失败，已停止重连以保留设备侧布防状态。", new LogFields { DeviceId = deviceId, ErrorCode = cleanupResult.Code });
+                return FromTaskResult(cleanupResult);
             }
 
             return SubmitLogin(deviceId, wait: true, requestId: requestId);
@@ -369,7 +398,11 @@ namespace ControlDoor.Devices.Management
             {
                 var cleanup = CreateDisconnectTask(deviceId, "DeleteDeviceCleanup", DeviceConnectionStatus.Offline, requestId);
                 cleanup.Priority = DeviceTaskPriority.Critical;
-                dispatcher.SubmitAndWaitAsync(cleanup).GetAwaiter().GetResult();
+                var cleanupResult = dispatcher.SubmitAndWaitAsync(cleanup).GetAwaiter().GetResult();
+                if (!cleanupResult.Success && cleanupResult.Code != "OK")
+                {
+                    return FromTaskResult(cleanupResult);
+                }
             }
 
             CancelDelayedReconnect(deviceId);
@@ -815,9 +848,11 @@ namespace ControlDoor.Devices.Management
                 DeviceRuntimeError lastError = null;
                 if (snapshot.AlarmHandle.HasValue)
                 {
+                    var alarmClosed = false;
                     try
                     {
                         await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = snapshot.AlarmHandle.Value }, context.CancellationToken).ConfigureAwait(false);
+                        alarmClosed = true;
                         LogLifecycleSuccess(context, "设备撤防成功。", started, fields =>
                         {
                             fields.Extra["alarmHandle"] = snapshot.AlarmHandle.Value.ToString();
@@ -827,9 +862,15 @@ namespace ControlDoor.Devices.Management
                     {
                         lastError = ToRuntimeError("DeviceCloseAlarm", ex, DateTime.Now, retryable: false);
                     }
-                    finally
+
+                    if (alarmClosed)
                     {
                         context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
+                    }
+                    else
+                    {
+                        context.Registry.RecordError(deviceId, lastError, DateTime.Now, snapshot.Status);
+                        return DeviceTaskResult.FromTask(context.Task, false, lastError.Code, lastError.Message, snapshot.Status, started, DateTime.Now);
                     }
                 }
 

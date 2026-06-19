@@ -157,6 +157,29 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SyncPermissions_OneOfMultipleTargetDevicesQueued_DoesNotMarkPermissionSynced()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(1);
+                fixture.AddOfflineDevice(2);
+
+                var response = fixture.Response(fixture.Service.SyncPermissions(
+                    @"{""items"":[{""employee_id"":""10001"",""permission_code"":7}]}",
+                    fixture.Context("sp-partial-queued")));
+
+                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
+                Assert.Equal(0, Convert.ToInt32(response["updated"]));
+                Assert.Equal(1, Convert.ToInt32(response["queued"]));
+                var items = (ArrayList)response["items"];
+                var item = (IDictionary<string, object>)items[0];
+                Assert.Equal(false, item["success"]);
+                Assert.Equal(true, item["queued"]);
+                Assert.False(fixture.UserWriter.PermissionLevels.ContainsKey("10001"));
+            }
+        }
+
+        [TestCase]
         public static void SyncPermissions_BatchTooLargeReturnsCode()
         {
             using (var fixture = new Stage5Fixture())
@@ -394,6 +417,29 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(faceIndex >= 0);
                 Assert.True(personIndex > faceIndex);
                 Assert.True(fixture.UserWriter.PersonsDeleted.Contains("missing"));
+            }
+        }
+
+        [TestCase]
+        public static void DeletePersons_OneOfMultipleTargetDevicesQueued_DoesNotMarkPersonDeleted()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(1);
+                fixture.AddOfflineDevice(2);
+
+                var response = fixture.Response(fixture.Service.DeletePersons(
+                    @"{""items"":[{""employeeId"":""10001""}]}",
+                    fixture.Context("delete-person-partial-queued")));
+
+                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
+                Assert.Equal(0, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal(1, Convert.ToInt32(response["queued"]));
+                var items = (ArrayList)response["items"];
+                var item = (IDictionary<string, object>)items[0];
+                Assert.Equal(false, item["success"]);
+                Assert.Equal(true, item["queued"]);
+                Assert.False(fixture.UserWriter.PersonsDeleted.Contains("10001"));
             }
         }
 

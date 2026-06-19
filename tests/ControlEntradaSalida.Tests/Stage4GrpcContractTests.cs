@@ -82,6 +82,49 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void AccessControlGrpcService_GetDeviceStatus_InvalidEnabledDevice_ReturnsInvalidConfigNotLoaded()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord(1, "10.0.4.1", enabled: true);
+                var record = fixture.Repository.GetByDeviceId(1);
+                record.Password = string.Empty;
+                fixture.Repository.Add(record);
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.GetDeviceStatus(@"{""includeDisabled"":true}", new GrpcRequestContext { RequestId = "req-invalid-status" }));
+
+                var devices = (System.Collections.ArrayList)response["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+                Assert.Equal("InvalidConfig", device["status"]);
+                Assert.Equal("INVALID_CONFIG", device["lastErrorCode"]);
+                Assert.True(device["lastErrorMessage"].ToString().Contains("password"));
+            }
+        }
+
+        [TestCase]
+        public static void AccessControlGrpcService_GetDeviceStatus_InvalidEnabledRepositoryDevice_KeepsEnabledIntent()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord(1, "10.0.4.1", enabled: true);
+                var record = fixture.Repository.GetByDeviceId(1);
+                record.Password = string.Empty;
+                fixture.Repository.Add(record);
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+
+                var response = Deserialize(service.GetDeviceStatus(@"{""includeDisabled"":true}", new GrpcRequestContext { RequestId = "req-invalid-status-repo" }));
+
+                var devices = (System.Collections.ArrayList)response["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+                Assert.Equal(true, device["enabled"]);
+                Assert.Equal("InvalidConfig", device["status"]);
+                Assert.Equal("INVALID_CONFIG", device["lastErrorCode"]);
+            }
+        }
+
+        [TestCase]
         public static void AccessControlGrpcService_GetDeviceStatus_AlarmHandleReturnsArmedStatus()
         {
             using (var fixture = new Stage4Fixture())

@@ -66,7 +66,87 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(2, inserts.Count);
         }
 
+        [TestCase]
+        public static void FaceEventRepository_InsertEvents_PreQueryFailure_ReturnsRetryableFailures()
+        {
+            var database = new RecordingDatabaseClient();
+            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var connectionFactoryCalls = 0;
+            var repository = new FaceEventRepository(
+                database,
+                storage,
+                new Func<System.Data.SqlClient.SqlConnection>(() =>
+                {
+                    connectionFactoryCalls++;
+                    throw new InvalidOperationException(connectionFactoryCalls == 1
+                        ? "prequery connection failure"
+                        : "unexpected later connection failure");
+                }));
+
+            var results = repository.InsertEvents(new List<AcsFaceEvent>
+            {
+                NewEvent(1101),
+                NewEvent(1102)
+            });
+
+            Assert.Equal(2, results.Count);
+            Assert.True(results.All(r => r.Status == FaceEventInsertStatus.RetryableFailure));
+            Assert.True(results.All(r => r.Code == "RETRYABLE_FAILURE"));
+            Assert.True(results.All(r => r.Message.Contains("prequery connection failure")));
+            Assert.Equal(1, connectionFactoryCalls);
+            Assert.True(!database.Commands.Any(c => c.OperationName == "InsertFaceEvent"));
+        }
+
         // ===== Processor 批量逻辑 =====
+
+        [TestCase]
+        public static void AcsFaceEventProcessor_ProcessBatch_RepositoryException_ReturnsStructuredFailures()
+        {
+            var database = new RecordingDatabaseClient();
+            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var repository = new FaceEventRepository(
+                database,
+                storage,
+                new Func<System.Data.SqlClient.SqlConnection>(() => { throw new InvalidOperationException("transient connection failure"); }));
+            var processor = new AcsFaceEventProcessor(new AcsEventParser(), repository);
+
+            var raw = new List<RawAcsAlarmEvent>
+            {
+                NewRawEvent(2001),
+                NewRawEvent(2002)
+            };
+
+            var results = processor.ProcessBatch(raw);
+
+            Assert.Equal(2, results.Count);
+            Assert.True(results.All(r => !r.Success));
+            Assert.True(results.All(r => r.Code == "RETRYABLE_FAILURE"));
+        }
+
+        [TestCase]
+        public static void AcsFaceEventProcessor_ProcessBatch_UnexpectedRepositoryException_ReturnsStructuredFailures()
+        {
+            var database = new RecordingDatabaseClient();
+            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var repository = new FaceEventRepository(database, storage);
+            var processor = new AcsFaceEventProcessor(
+                new AcsEventParser(),
+                repository,
+                events => { throw new InvalidOperationException("repository escaped"); });
+
+            var raw = new List<RawAcsAlarmEvent>
+            {
+                NewRawEvent(2101),
+                NewRawEvent(2102)
+            };
+
+            var results = processor.ProcessBatch(raw);
+
+            Assert.Equal(2, results.Count);
+            Assert.True(results.All(r => !r.Success));
+            Assert.True(results.All(r => r.Code == "RETRYABLE_FAILURE"));
+            Assert.True(results.All(r => r.Message.Contains("repository escaped")));
+        }
 
         [TestCase]
         public static void AcsFaceEventProcessor_ProcessBatch_ParseFailuresSkippedDb()

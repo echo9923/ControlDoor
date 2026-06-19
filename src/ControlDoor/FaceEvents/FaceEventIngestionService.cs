@@ -27,6 +27,8 @@ namespace ControlDoor.FaceEvents
         private Task worker;
         private bool accepting = true;
         private bool disposed;
+        private long acceptedCount;
+        private long completedCount;
 
         public FaceEventIngestionService(FaceEventLoggingOptions options, IAcsFaceEventProcessor processor = null, ServiceLogger logger = null)
         {
@@ -82,6 +84,7 @@ namespace ControlDoor.FaceEvents
                     return FaceEventEnqueueResult.Rejected("QUEUE_FULL", "face event queue is full", Count, capacity);
                 }
 
+                Interlocked.Increment(ref acceptedCount);
                 var depth = Count;
                 if (depth >= capacity * WarningThresholdRatio)
                 {
@@ -113,6 +116,10 @@ namespace ControlDoor.FaceEvents
             {
                 return FaceEventEnqueueResult.Rejected("STOPPED", "face event queue is disposed", 0, capacity);
             }
+            catch (InvalidOperationException)
+            {
+                return FaceEventEnqueueResult.Rejected("STOPPED", "face event queue is stopped", Count, capacity);
+            }
         }
 
         public Task StartAsync(BackgroundTaskContext context)
@@ -135,10 +142,39 @@ namespace ControlDoor.FaceEvents
         public async Task StopAsync(BackgroundTaskContext context)
         {
             accepting = false;
-            cancellationTokenSource?.Cancel();
+            try
+            {
+                queue.CompleteAdding();
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                // Already completed by an earlier stop/dispose path.
+            }
+
             if (worker != null)
             {
-                await Task.WhenAny(worker, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+                var timeout = TimeSpan.FromSeconds(5);
+                var completed = await Task.WhenAny(worker, Task.Delay(timeout)).ConfigureAwait(false);
+                if (!object.ReferenceEquals(completed, worker))
+                {
+                    var unfinished = Math.Max(0, Interlocked.Read(ref acceptedCount) - Interlocked.Read(ref completedCount));
+                    logger?.Warn("FaceEventIngestion", "ACS event ingestion stop timed out before queue drain completed.", new LogFields
+                    {
+                        RequestId = context?.RequestId,
+                        Extra =
+                        {
+                            ["queueDepth"] = Count.ToString(),
+                            ["unfinishedAccepted"] = unfinished.ToString(),
+                            ["capacity"] = capacity.ToString(),
+                            ["timeoutMs"] = ((int)timeout.TotalMilliseconds).ToString()
+                        }
+                    });
+                    cancellationTokenSource?.Cancel();
+                }
             }
         }
 
@@ -158,6 +194,7 @@ namespace ControlDoor.FaceEvents
 
             disposed = true;
             accepting = false;
+            try { queue.CompleteAdding(); } catch { /* best-effort shutdown */ }
             cancellationTokenSource?.Cancel();
             queue.Dispose();
             cancellationTokenSource?.Dispose();
@@ -169,12 +206,12 @@ namespace ControlDoor.FaceEvents
             RawAcsAlarmEvent lastItem = null;
             try
             {
-                while (!cancellationToken.IsCancellationRequested)
+                while (!queue.IsCompleted && !cancellationToken.IsCancellationRequested)
                 {
                     RawAcsAlarmEvent item = null;
                     try
                     {
-                        var got = queue.TryTake(out item, flushIntervalMs, cancellationToken);
+                        var got = queue.TryTake(out item, flushIntervalMs);
                         lastItem = item;
                         if (got)
                         {
@@ -194,6 +231,10 @@ namespace ControlDoor.FaceEvents
                         }
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (ObjectDisposedException)
                     {
                         break;
                     }
@@ -262,20 +303,34 @@ namespace ControlDoor.FaceEvents
             {
                 var item = batch[0];
                 var watch = Stopwatch.StartNew();
-                var result = processor.Process(item);
-                watch.Stop();
-                LogProcessResult(item, result.Success, result.Code, result.Message, watch.ElapsedMilliseconds);
+                try
+                {
+                    var result = processor.Process(item);
+                    watch.Stop();
+                    LogProcessResult(item, result.Success, result.Code, result.Message, watch.ElapsedMilliseconds);
+                }
+                finally
+                {
+                    Interlocked.Increment(ref completedCount);
+                }
                 return;
             }
 
             var batchWatch = Stopwatch.StartNew();
-            var results = processor.ProcessBatch(batch);
-            batchWatch.Stop();
-            for (var i = 0; i < batch.Count && i < results.Count; i++)
+            try
             {
-                var item = batch[i];
-                var r = results[i];
-                LogProcessResult(item, r.Success, r.Code, r.Message, batchWatch.ElapsedMilliseconds);
+                var results = processor.ProcessBatch(batch);
+                batchWatch.Stop();
+                for (var i = 0; i < batch.Count && i < results.Count; i++)
+                {
+                    var item = batch[i];
+                    var r = results[i];
+                    LogProcessResult(item, r.Success, r.Code, r.Message, batchWatch.ElapsedMilliseconds);
+                }
+            }
+            finally
+            {
+                Interlocked.Add(ref completedCount, batch.Count);
             }
         }
 

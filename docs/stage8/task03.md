@@ -39,6 +39,14 @@
     ControlDoor.exe.config
     Configuration/
       appsettings.json
+      devices.json
+    tools/
+      service/
+        common-service.ps1
+        install-service.ps1
+        start-service.ps1
+        stop-service.ps1
+        uninstall-service.ps1
     sdk/
       Hikvision/
         HCNetSDK.dll
@@ -58,6 +66,8 @@
 | `ControlDoor.exe` | Windows Service 可执行文件。 |
 | `ControlDoor.exe.config` | .NET 框架级配置，不承载业务配置。 |
 | `Configuration/appsettings.json` | 唯一业务配置入口。 |
+| `Configuration/devices.json` | 现场设备清单，供设备生命周期加载和设备管理接口维护。 |
+| `tools/service/` | 现场 Windows Service 安装、启动、停止、卸载脚本及共享参数。 |
 | `sdk/Hikvision/` | Hikvision SDK DLL 和依赖文件。 |
 | `logs/` | 服务日志目录，可为空。 |
 | `snapshots/` | ACS 抓拍保存目录，可为空。 |
@@ -95,7 +105,7 @@
 
 | 检查 | 通过标准 |
 | --- | --- |
-| 文件存在 | exe、config、appsettings、SDK DLL、docs 都存在。 |
+| 文件存在 | exe、config、appsettings、devices、service scripts、SDK DLL、docs 都存在。 |
 | 目录可写 | logs、snapshots 可写。 |
 | 配置可读 | `--validate-config` 能读取 appsettings。 |
 | DLL 可加载 | validate 能定位 SDK 主 DLL 和依赖。 |
@@ -103,7 +113,7 @@
 | 数据库可连 | validate 能连接测试或目标数据库。 |
 | 端口可用 | validate 检查 gRPC 端口未占用。 |
 
-当前仓库提供 `tools\test-service-package.ps1 -PackageRoot 门禁publish\ServicePackage` 作为 L5 发布包结构检查入口。脚本检查 `ControlDoor.exe`、`ControlDoor.exe.config`、`Configuration/appsettings.json`、`logs`、`snapshots`、`docs`、三份现场文档、`HCNetSDK.dll` 和 `SqlServerTypes` 的放置，并验证配置模板包含阶段 8 固定的必要分组。
+当前仓库提供 `tools\test-service-package.ps1 -PackageRoot 门禁publish\ServicePackage` 作为 L5 发布包结构检查入口。脚本检查 `ControlDoor.exe`、`ControlDoor.exe.config`、`Configuration/appsettings.json`、`Configuration/devices.json`、`logs`、`snapshots`、`tools/service`、五份服务脚本、`docs`、三份现场文档、`HCNetSDK.dll` 和 `SqlServerTypes` 的放置，并验证配置模板包含阶段 8 固定的必要分组。
 
 ## 不做的事
 

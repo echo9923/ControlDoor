@@ -30,6 +30,30 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void Stage8ServicePackageChecker_MissingDevicesJson_Fails()
+        {
+            var packageRoot = CreatePackage();
+            File.Delete(Path.Combine(packageRoot, "Configuration", "devices.json"));
+
+            var result = new Stage8ServicePackageChecker().Check(packageRoot);
+
+            Assert.False(result.Success);
+            Assert.True(result.Items.Any(item => item.Name == "Configuration\\devices.json" && !item.Success));
+        }
+
+        [TestCase]
+        public static void Stage8ServicePackageChecker_MissingCommonServiceScript_Fails()
+        {
+            var packageRoot = CreatePackage();
+            File.Delete(Path.Combine(packageRoot, "tools", "service", "common-service.ps1"));
+
+            var result = new Stage8ServicePackageChecker().Check(packageRoot);
+
+            Assert.False(result.Success);
+            Assert.True(result.Items.Any(item => item.Name == "tools\\service\\common-service.ps1" && !item.Success));
+        }
+
+        [TestCase]
         public static void ConfigurationLoader_Stage8AliasGroups_LoadAsRuntimeOptions()
         {
             var packageRoot = CreatePackage();
@@ -51,6 +75,7 @@ namespace ControlEntradaSalida.Tests
             Directory.CreateDirectory(Path.Combine(packageRoot, "logs"));
             Directory.CreateDirectory(Path.Combine(packageRoot, "snapshots"));
             Directory.CreateDirectory(Path.Combine(packageRoot, "docs"));
+            Directory.CreateDirectory(Path.Combine(packageRoot, "tools", "service"));
 
             File.WriteAllText(Path.Combine(packageRoot, "ControlDoor.exe"), "placeholder");
             File.WriteAllText(Path.Combine(packageRoot, "ControlDoor.exe.config"), "<configuration />");
@@ -58,6 +83,11 @@ namespace ControlEntradaSalida.Tests
             File.WriteAllText(Path.Combine(packageRoot, "docs", "部署说明.md"), "部署说明");
             File.WriteAllText(Path.Combine(packageRoot, "docs", "运行前检查.md"), "运行前检查");
             File.WriteAllText(Path.Combine(packageRoot, "docs", "联调记录模板.md"), "联调记录模板");
+            File.WriteAllText(Path.Combine(packageRoot, "Configuration", "devices.json"), @"{""devices"":[]}");
+            foreach (var script in new[] { "common-service.ps1", "install-service.ps1", "start-service.ps1", "stop-service.ps1", "uninstall-service.ps1" })
+            {
+                File.WriteAllText(Path.Combine(packageRoot, "tools", "service", script), "placeholder");
+            }
             TestWorkspace.WriteConfig(packageRoot, @"{
   ""Service"": { ""GrpcListenPort"": 5001, ""GrpcManagementApiKey"": """" },
   ""Database"": { ""ConnectionString"": ""Server=.;Database=test;"" },

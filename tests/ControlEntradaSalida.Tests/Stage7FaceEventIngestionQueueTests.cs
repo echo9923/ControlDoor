@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using ControlDoor.Configuration;
 using ControlDoor.FaceEvents;
+using ControlDoor.Observability;
 using ControlDoor.Runtime;
 
 namespace ControlEntradaSalida.Tests
@@ -95,6 +97,67 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+        [TestCase]
+        public static void FaceEventIngestionService_StopAsync_DrainsAcceptedEventsBeforeReturning()
+        {
+            var processor = new BlockingRecordingProcessor();
+            var service = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 20, BatchSize = 1, FlushIntervalMs = 5000 }, processor);
+            var context = new BackgroundTaskContext("stage7-drain-stop-test", CancellationToken.None, null);
+            service.StartAsync(context).GetAwaiter().GetResult();
+            try
+            {
+                for (var i = 0; i < 5; i++)
+                {
+                    Assert.True(service.TryEnqueue(NewRawEvent()).Accepted);
+                }
+
+                Assert.True(processor.WaitForFirstItem(2000), "first accepted ACS event was not picked up.");
+                var stopTask = service.StopAsync(context);
+                Thread.Sleep(100);
+                Assert.False(stopTask.IsCompleted, "StopAsync returned before the in-flight event was released.");
+
+                processor.Release();
+                stopTask.GetAwaiter().GetResult();
+
+                Assert.Equal(5, processor.ProcessedCount);
+                Assert.Equal(0, service.Count);
+            }
+            finally
+            {
+                processor.Release();
+                service.Dispose();
+            }
+        }
+
+        [TestCase]
+        public static void FaceEventIngestionService_StopAsync_TimeoutLogsUnfinishedAcceptedEvents()
+        {
+            var runDirectory = TestWorkspace.Create();
+            using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" })))
+            {
+                var processor = new NeverReleasingProcessor();
+                var service = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 20, BatchSize = 1, FlushIntervalMs = 5000 }, processor, logger);
+                var context = new BackgroundTaskContext("stage7-drain-timeout-test", CancellationToken.None, logger);
+                service.StartAsync(context).GetAwaiter().GetResult();
+                try
+                {
+                    Assert.True(service.TryEnqueue(NewRawEvent()).Accepted);
+                    Assert.True(processor.WaitForFirstItem(2000), "accepted ACS event was not picked up.");
+
+                    service.StopAsync(context).GetAwaiter().GetResult();
+
+                    var text = File.ReadAllText(logger.CurrentLogPath);
+                    Assert.Contains("ACS event ingestion stop timed out before queue drain completed.", text);
+                    Assert.Contains("unfinishedAccepted=\"1\"", text);
+                    Assert.Contains("queueDepth=\"0\"", text);
+                }
+                finally
+                {
+                    service.Dispose();
+                }
+            }
+        }
+
         private static RawAcsAlarmEvent NewRawEvent()
         {
             return new RawAcsAlarmEvent
@@ -156,6 +219,68 @@ namespace ControlEntradaSalida.Tests
                     results.Add(FaceEventBatchItemResult.Ok(0, result.Code, result.Message));
                 }
                 return results;
+            }
+        }
+
+        private sealed class BlockingRecordingProcessor : IAcsFaceEventProcessor
+        {
+            private readonly ManualResetEventSlim firstItem = new ManualResetEventSlim(false);
+            private readonly ManualResetEventSlim release = new ManualResetEventSlim(false);
+            private int processedCount;
+
+            public int ProcessedCount => processedCount;
+
+            public bool WaitForFirstItem(int timeoutMs)
+            {
+                return firstItem.Wait(timeoutMs);
+            }
+
+            public void Release()
+            {
+                release.Set();
+            }
+
+            public FaceEventProcessResult Process(RawAcsAlarmEvent rawEvent)
+            {
+                firstItem.Set();
+                release.Wait();
+                Interlocked.Increment(ref processedCount);
+                return FaceEventProcessResult.Ok("INSERTED", "ok");
+            }
+
+            public IReadOnlyList<FaceEventBatchItemResult> ProcessBatch(IReadOnlyList<RawAcsAlarmEvent> rawEvents)
+            {
+                var results = new List<FaceEventBatchItemResult>(rawEvents.Count);
+                foreach (var rawEvent in rawEvents)
+                {
+                    var result = Process(rawEvent);
+                    results.Add(FaceEventBatchItemResult.Ok(0, result.Code, result.Message));
+                }
+                return results;
+            }
+        }
+
+        private sealed class NeverReleasingProcessor : IAcsFaceEventProcessor
+        {
+            private readonly ManualResetEventSlim firstItem = new ManualResetEventSlim(false);
+
+            public bool WaitForFirstItem(int timeoutMs)
+            {
+                return firstItem.Wait(timeoutMs);
+            }
+
+            public FaceEventProcessResult Process(RawAcsAlarmEvent rawEvent)
+            {
+                firstItem.Set();
+                Thread.Sleep(Timeout.Infinite);
+                return FaceEventProcessResult.Ok("INSERTED", "ok");
+            }
+
+            public IReadOnlyList<FaceEventBatchItemResult> ProcessBatch(IReadOnlyList<RawAcsAlarmEvent> rawEvents)
+            {
+                firstItem.Set();
+                Thread.Sleep(Timeout.Infinite);
+                return new List<FaceEventBatchItemResult>();
             }
         }
     }

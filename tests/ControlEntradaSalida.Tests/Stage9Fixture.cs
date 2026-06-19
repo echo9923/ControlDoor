@@ -93,6 +93,10 @@ namespace ControlEntradaSalida.Tests
 
         public MockHikvisionGateway Gateway => inner.Gateway;
 
+        public ControlDoor.Devices.Management.DeviceLifecycleService Lifecycle => inner.Lifecycle;
+
+        public ControlDoor.Devices.Workers.DeviceSdkDispatcher Dispatcher => inner.Dispatcher;
+
         public CameraAlarmDoorInterlockOptions Options { get; }
 
         public InterlockMappingResolver Resolver { get; }

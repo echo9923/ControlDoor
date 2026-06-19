@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Web.Script.Serialization;
 using ControlDoor.Configuration;
+using ControlDoor.Devices.Management;
 
 namespace ControlDoor.Runtime.Health.Checks
 {
@@ -66,6 +67,12 @@ namespace ControlDoor.Runtime.Health.Checks
                 if (item == null)
                 {
                     return prefix + " 不能为空。";
+                }
+
+                var validation = DeviceRecordValidator.ValidateStoreItem(item, prefix);
+                if (validation != null)
+                {
+                    return validation;
                 }
 
                 if (item.DeviceId <= 0)

@@ -135,10 +135,29 @@ WHERE id = @id
             if (operation == RetryOperation.Permission &&
                 state.PermissionLevel.HasValue &&
                 record.Error == null &&
-                (!record.RowsAffected.HasValue || record.RowsAffected.Value > 0))
+                (!record.RowsAffected.HasValue || record.RowsAffected.Value > 0) &&
+                !HasBlockingPermissionStateForEmployee(state))
             {
                 userSyncWriter.MarkPermissionSynced(state.EmployeeId, state.PermissionLevel.Value);
             }
+        }
+
+        private bool HasBlockingPermissionStateForEmployee(DeviceOperationRetryState state)
+        {
+            var rows = database.ExecuteQuery(
+                "DeviceOperationRetryStore.HasBlockingPermissionStateForEmployee",
+                @"SELECT TOP 1 id
+FROM dbo.device_operation_retry_states
+WHERE employee_id = @employeeId
+  AND id <> @id
+  AND exhausted_at IS NULL
+  AND (
+      permission_pending = 1
+      OR permission_sync_completion_blocked = 1
+  );",
+                new DatabaseParameter("@employeeId", state.EmployeeId),
+                new DatabaseParameter("@id", state.Id));
+            return rows != null && rows.Count > 0;
         }
 
         public void DeleteIfCompleted(DeviceOperationRetryState state)

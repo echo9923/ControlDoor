@@ -769,6 +769,47 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_NativeAcsAlarm_CopiesCurrentEventFlagFromExtend()
+        {
+            var native = new FakeNativeClient();
+            var gateway = new HikvisionSdkWrapper(native);
+            AlarmEventData eventData = null;
+            gateway.OnAlarmEvent += (sender, data) => eventData = data;
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+            gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+
+            native.EmitAcsAlarmWithCurrentEventFlag(2);
+
+            Assert.NotNull(eventData);
+            Assert.Equal("COMM_ALARM_ACS", eventData.EventType);
+            Assert.True(eventData.CurrentEventFlag.HasValue);
+            Assert.Equal(2, eventData.CurrentEventFlag.Value);
+            Assert.True(eventData.Values.ContainsKey("byCurrentEvent"));
+            Assert.Equal("2", eventData.Values["byCurrentEvent"]);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_NativeAcsAlarm_DocumentedBaseStructParsesWithoutCurrentEventFlag()
+        {
+            var native = new FakeNativeClient();
+            var gateway = new HikvisionSdkWrapper(native);
+            AlarmEventData eventData = null;
+            gateway.OnAlarmEvent += (sender, data) => eventData = data;
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+            gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+
+            native.EmitDocumentedAcsAlarm();
+
+            Assert.NotNull(eventData);
+            Assert.Equal("COMM_ALARM_ACS", eventData.EventType);
+            Assert.Equal("5", eventData.Values["dwMajor"]);
+            Assert.Equal("75", eventData.Values["dwMinor"]);
+            Assert.Equal("1001", eventData.Values["dwEmployeeNo"]);
+            Assert.False(eventData.CurrentEventFlag.HasValue);
+            Assert.False(eventData.Values.ContainsKey("byCurrentEvent"));
+        }
+
+        [TestCase]
         public static void SdkWrapper_NativeAlarm_UsesManagedEventInsteadOfPerAlarmRequestCallback()
         {
             var native = new FakeNativeClient();
@@ -1374,6 +1415,240 @@ namespace ControlEntradaSalida.Tests
                 {
                     handle.Free();
                 }
+            }
+
+            public void EmitAcsAlarmWithCurrentEventFlag(byte currentEventFlag)
+            {
+                var extend = new TestAcsEventInfoExtend
+                {
+                    dwFrontSerialNo = 1234,
+                    byCurrentEvent = currentEventFlag,
+                    byEmployeeNo = new byte[32]
+                };
+                var extendSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestAcsEventInfoExtend));
+                var extendPtr = System.Runtime.InteropServices.Marshal.AllocHGlobal(extendSize);
+                try
+                {
+                    System.Runtime.InteropServices.Marshal.StructureToPtr(extend, extendPtr, false);
+                    var alarm = new TestAcsAlarmInfo
+                    {
+                        dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestAcsAlarmInfo)),
+                        dwMajor = 5,
+                        dwMinor = 75,
+                        struTime = new TestSdkTime
+                        {
+                            dwYear = 2026,
+                            dwMonth = 6,
+                            dwDay = 19,
+                            dwHour = 10,
+                            dwMinute = 30,
+                            dwSecond = 0
+                        },
+                        sNetUser = new byte[16],
+                        struRemoteHostAddr = new TestSdkIpAddress
+                        {
+                            sIpV4 = new byte[16],
+                            sIpV6 = new byte[128]
+                        },
+                        struAcsEventInfo = new TestAcsEventInfo
+                        {
+                            dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestAcsEventInfo)),
+                            byCardNo = new byte[32],
+                            dwDoorNo = 1,
+                            dwEmployeeNo = 1001,
+                            dwSerialNo = 5678,
+                            byMACAddr = new byte[6],
+                            byRes = new byte[4]
+                        },
+                        pAcsEventInfoExtend = extendPtr,
+                        byAcsEventInfoExtend = 1,
+                        byRes = new byte[4]
+                    };
+                    EmitStructAlarm(0x5002, alarm);
+                }
+                finally
+                {
+                    System.Runtime.InteropServices.Marshal.FreeHGlobal(extendPtr);
+                }
+            }
+
+            public void EmitDocumentedAcsAlarm()
+            {
+                var alarm = new TestDocumentedAcsAlarmInfo
+                {
+                    dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestDocumentedAcsAlarmInfo)),
+                    dwMajor = 5,
+                    dwMinor = 75,
+                    struTime = new TestSdkTime
+                    {
+                        dwYear = 2026,
+                        dwMonth = 6,
+                        dwDay = 19,
+                        dwHour = 10,
+                        dwMinute = 30,
+                        dwSecond = 0
+                    },
+                    sNetUser = new byte[16],
+                    struRemoteHostAddr = new TestSdkIpAddress
+                    {
+                        sIpV4 = new byte[16],
+                        sIpV6 = new byte[128]
+                    },
+                    struAcsEventInfo = new TestAcsEventInfo
+                    {
+                        dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestAcsEventInfo)),
+                        byCardNo = new byte[32],
+                        dwDoorNo = 1,
+                        dwEmployeeNo = 1001,
+                        dwSerialNo = 5678,
+                        byMACAddr = new byte[6],
+                        byRes = new byte[4]
+                    },
+                    byRes = new byte[24]
+                };
+                EmitStructAlarm(0x5002, alarm);
+            }
+
+            private void EmitStructAlarm<T>(int command, T value)
+            {
+                var size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(T));
+                var ptr = System.Runtime.InteropServices.Marshal.AllocHGlobal(size);
+                try
+                {
+                    System.Runtime.InteropServices.Marshal.StructureToPtr(value, ptr, false);
+                    callback(command, IntPtr.Zero, ptr, size, IntPtr.Zero);
+                }
+                finally
+                {
+                    System.Runtime.InteropServices.Marshal.FreeHGlobal(ptr);
+                }
+            }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct TestSdkTime
+            {
+                public int dwYear;
+                public int dwMonth;
+                public int dwDay;
+                public int dwHour;
+                public int dwMinute;
+                public int dwSecond;
+            }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct TestSdkIpAddress
+            {
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 16)]
+                public byte[] sIpV4;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 128)]
+                public byte[] sIpV6;
+            }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct TestAcsEventInfo
+            {
+                public int dwSize;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 32)]
+                public byte[] byCardNo;
+
+                public byte byCardType;
+                public byte byWhiteListNo;
+                public byte byReportChannel;
+                public byte byCardReaderKind;
+                public int dwCardReaderNo;
+                public int dwDoorNo;
+                public int dwVerifyNo;
+                public int dwAlarmInNo;
+                public int dwAlarmOutNo;
+                public int dwCaseSensorNo;
+                public int dwRs485No;
+                public int dwMultiCardGroupNo;
+                public ushort wAccessChannel;
+                public byte byDeviceNo;
+                public byte byDistractControlNo;
+                public int dwEmployeeNo;
+                public ushort wLocalControllerID;
+                public byte byInternetAccess;
+                public byte byType;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 6)]
+                public byte[] byMACAddr;
+
+                public byte bySwipeCardType;
+                public byte byRes2;
+                public int dwSerialNo;
+                public byte byChannelControllerID;
+                public byte byChannelControllerLampID;
+                public byte byChannelControllerIRAdaptorID;
+                public byte byChannelControllerIREmitterID;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 4)]
+                public byte[] byRes;
+            }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct TestDocumentedAcsAlarmInfo
+            {
+                public int dwSize;
+                public int dwMajor;
+                public int dwMinor;
+                public TestSdkTime struTime;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 16)]
+                public byte[] sNetUser;
+
+                public TestSdkIpAddress struRemoteHostAddr;
+                public TestAcsEventInfo struAcsEventInfo;
+                public int dwPicDataLen;
+                public IntPtr pPicData;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 24)]
+                public byte[] byRes;
+            }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct TestAcsAlarmInfo
+            {
+                public int dwSize;
+                public int dwMajor;
+                public int dwMinor;
+                public TestSdkTime struTime;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 16)]
+                public byte[] sNetUser;
+
+                public TestSdkIpAddress struRemoteHostAddr;
+                public TestAcsEventInfo struAcsEventInfo;
+                public int dwPicDataLen;
+                public IntPtr pPicData;
+                public ushort wInductiveEventType;
+                public byte byPicTransType;
+                public byte byRes1;
+                public int dwIOTChannelNo;
+                public IntPtr pAcsEventInfoExtend;
+                public byte byAcsEventInfoExtend;
+                public byte byTimeType;
+                public byte byRes2;
+                public byte byAcsEventInfoExtendV20;
+                public IntPtr pAcsEventInfoExtendV20;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 4)]
+                public byte[] byRes;
+            }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct TestAcsEventInfoExtend
+            {
+                public int dwFrontSerialNo;
+                public byte byUserType;
+                public byte byCurrentVerifyMode;
+                public byte byCurrentEvent;
+                public byte byPurePwdVerifyEnable;
+
+                [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 32)]
+                public byte[] byEmployeeNo;
             }
         }
     }

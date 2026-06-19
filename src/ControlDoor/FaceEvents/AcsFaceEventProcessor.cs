@@ -9,12 +9,31 @@ namespace ControlDoor.FaceEvents
         private readonly AcsEventParser parser;
         private readonly FaceEventRepository repository;
         private readonly ServiceLogger logger;
+        private readonly Func<IReadOnlyList<AcsFaceEvent>, IReadOnlyList<FaceEventInsertResult>> insertEvents;
 
         public AcsFaceEventProcessor(AcsEventParser parser, FaceEventRepository repository, ServiceLogger logger = null)
+            : this(parser, repository, logger, null)
+        {
+        }
+
+        internal AcsFaceEventProcessor(
+            AcsEventParser parser,
+            FaceEventRepository repository,
+            Func<IReadOnlyList<AcsFaceEvent>, IReadOnlyList<FaceEventInsertResult>> insertEventsOverride)
+            : this(parser, repository, null, insertEventsOverride)
+        {
+        }
+
+        private AcsFaceEventProcessor(
+            AcsEventParser parser,
+            FaceEventRepository repository,
+            ServiceLogger logger,
+            Func<IReadOnlyList<AcsFaceEvent>, IReadOnlyList<FaceEventInsertResult>> insertEventsOverride)
         {
             this.parser = parser ?? throw new ArgumentNullException(nameof(parser));
             this.repository = repository ?? throw new ArgumentNullException(nameof(repository));
             this.logger = logger;
+            insertEvents = insertEventsOverride ?? repository.InsertEvents;
         }
 
         public FaceEventProcessResult Process(RawAcsAlarmEvent rawEvent)
@@ -77,7 +96,31 @@ namespace ControlDoor.FaceEvents
             }
 
             // 2. 一次性批量插入，把 InsertResult 列表回填到对应位置。
-            var inserted = repository.InsertEvents(parsedEvents);
+            IReadOnlyList<FaceEventInsertResult> inserted;
+            try
+            {
+                inserted = insertEvents(parsedEvents);
+            }
+            catch (Exception ex)
+            {
+                for (var j = 0; j < parsedEvents.Count; j++)
+                {
+                    var targetIndex = parsedIndexes[j];
+                    results[targetIndex] = FaceEventBatchItemResult.Failed(parsedEvents[j].EventId, "RETRYABLE_FAILURE", ex.Message);
+                }
+                return results;
+            }
+
+            if (inserted == null)
+            {
+                for (var j = 0; j < parsedEvents.Count; j++)
+                {
+                    var targetIndex = parsedIndexes[j];
+                    results[targetIndex] = FaceEventBatchItemResult.Failed(parsedEvents[j].EventId, "RETRYABLE_FAILURE", "repository processing failed");
+                }
+                return results;
+            }
+
             for (var j = 0; j < inserted.Count; j++)
             {
                 var insertResult = inserted[j];

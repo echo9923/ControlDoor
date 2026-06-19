@@ -721,34 +721,79 @@ namespace ControlDoor.Hikvision
                 return;
             }
 
-            var minimumSize = Marshal.SizeOf(typeof(NET_DVR_ACS_ALARM_INFO));
-            if (alarmInfoLength < minimumSize)
+            var baseSize = Marshal.SizeOf(typeof(NET_DVR_ACS_ALARM_INFO));
+            if (alarmInfoLength < baseSize)
             {
                 return;
             }
 
             var acs = (NET_DVR_ACS_ALARM_INFO)Marshal.PtrToStructure(alarmInfo, typeof(NET_DVR_ACS_ALARM_INFO));
-            data.EventTime = ToDateTime(acs.struTime) ?? data.EventTime;
-            data.PictureBytes = CopyPointerBytes(acs.pPicData, acs.dwPicDataLen);
+            ApplyAcsAlarmInfo(data, acs.dwMajor, acs.dwMinor, acs.struTime, acs.struAcsEventInfo, acs.dwPicDataLen, acs.pPicData, alarmInfoLength);
+            CopyAcsEventInfoExtend(alarmInfo, alarmInfoLength, data);
+        }
+
+        private static void ApplyAcsAlarmInfo(
+            AlarmEventData data,
+            int major,
+            int minor,
+            NET_DVR_TIME time,
+            NET_DVR_ACS_EVENT_INFO eventInfo,
+            int pictureDataLength,
+            IntPtr pictureData,
+            int alarmInfoLength)
+        {
+            data.EventTime = ToDateTime(time) ?? data.EventTime;
+            data.PictureBytes = CopyPointerBytes(pictureData, pictureDataLength);
             data.RawPayloadSummary = "length=" + Math.Max(0, alarmInfoLength) +
-                "; major=" + acs.dwMajor +
-                "; minor=" + acs.dwMinor +
+                "; major=" + major +
+                "; minor=" + minor +
                 "; pic=" + (data.PictureBytes == null ? 0 : data.PictureBytes.Length);
-            data.CardNumber = GetAnsiString(acs.struAcsEventInfo.byCardNo);
-            if (acs.struAcsEventInfo.dwEmployeeNo > 0)
+            data.CardNumber = GetAnsiString(eventInfo.byCardNo);
+            if (eventInfo.dwEmployeeNo > 0)
             {
-                data.EmployeeId = acs.struAcsEventInfo.dwEmployeeNo.ToString();
+                data.EmployeeId = eventInfo.dwEmployeeNo.ToString();
             }
 
-            data.DoorIndex = acs.struAcsEventInfo.dwDoorNo;
-            data.Success = IsSuccessMinor(acs.dwMinor);
-            data.Values["dwMajor"] = acs.dwMajor.ToString();
-            data.Values["dwMinor"] = acs.dwMinor.ToString();
-            data.Values["dwSerialNo"] = acs.struAcsEventInfo.dwSerialNo.ToString();
-            data.Values["dwDoorNo"] = acs.struAcsEventInfo.dwDoorNo.ToString();
-            data.Values["dwCardReaderNo"] = acs.struAcsEventInfo.dwCardReaderNo.ToString();
-            data.Values["dwEmployeeNo"] = acs.struAcsEventInfo.dwEmployeeNo.ToString();
-            data.Values["dwPicDataLen"] = acs.dwPicDataLen.ToString();
+            data.DoorIndex = eventInfo.dwDoorNo;
+            data.Success = IsSuccessMinor(minor);
+            data.Values["dwMajor"] = major.ToString();
+            data.Values["dwMinor"] = minor.ToString();
+            data.Values["dwSerialNo"] = eventInfo.dwSerialNo.ToString();
+            data.Values["dwDoorNo"] = eventInfo.dwDoorNo.ToString();
+            data.Values["dwCardReaderNo"] = eventInfo.dwCardReaderNo.ToString();
+            data.Values["dwEmployeeNo"] = eventInfo.dwEmployeeNo.ToString();
+            data.Values["dwPicDataLen"] = pictureDataLength.ToString();
+        }
+
+        private static void CopyAcsEventInfoExtend(IntPtr alarmInfo, int alarmInfoLength, AlarmEventData data)
+        {
+            var extendLayoutSize = Marshal.SizeOf(typeof(NET_DVR_ACS_ALARM_INFO_WITH_EXTEND));
+            if (alarmInfoLength < extendLayoutSize)
+            {
+                return;
+            }
+
+            var acs = (NET_DVR_ACS_ALARM_INFO_WITH_EXTEND)Marshal.PtrToStructure(
+                alarmInfo,
+                typeof(NET_DVR_ACS_ALARM_INFO_WITH_EXTEND));
+            if (acs.byAcsEventInfoExtend != 1 || acs.pAcsEventInfoExtend == IntPtr.Zero)
+            {
+                return;
+            }
+
+            try
+            {
+                var extend = (NET_DVR_ACS_EVENT_INFO_EXTEND)Marshal.PtrToStructure(
+                    acs.pAcsEventInfoExtend,
+                    typeof(NET_DVR_ACS_EVENT_INFO_EXTEND));
+                data.CurrentEventFlag = extend.byCurrentEvent;
+                data.Values["byCurrentEvent"] = extend.byCurrentEvent.ToString();
+                data.RawPayloadSummary = data.RawPayloadSummary + "; byCurrentEvent=" + extend.byCurrentEvent;
+            }
+            catch
+            {
+                // Native callback memory is device-owned. Keep the base ACS event if the optional extension cannot be read.
+            }
         }
 
         private void RaiseManagedAlarm(AlarmEventData data)
@@ -1380,6 +1425,69 @@ namespace ControlDoor.Hikvision
 
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 24)]
             public byte[] byRes;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NET_DVR_ACS_ALARM_INFO_WITH_EXTEND
+        {
+            public int dwSize;
+
+            public int dwMajor;
+
+            public int dwMinor;
+
+            public NET_DVR_TIME struTime;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+            public byte[] sNetUser;
+
+            public NET_DVR_IPADDR struRemoteHostAddr;
+
+            public NET_DVR_ACS_EVENT_INFO struAcsEventInfo;
+
+            public int dwPicDataLen;
+
+            public IntPtr pPicData;
+
+            public ushort wInductiveEventType;
+
+            public byte byPicTransType;
+
+            public byte byRes1;
+
+            public int dwIOTChannelNo;
+
+            public IntPtr pAcsEventInfoExtend;
+
+            public byte byAcsEventInfoExtend;
+
+            public byte byTimeType;
+
+            public byte byRes2;
+
+            public byte byAcsEventInfoExtendV20;
+
+            public IntPtr pAcsEventInfoExtendV20;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] byRes;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NET_DVR_ACS_EVENT_INFO_EXTEND
+        {
+            public int dwFrontSerialNo;
+
+            public byte byUserType;
+
+            public byte byCurrentVerifyMode;
+
+            public byte byCurrentEvent;
+
+            public byte byPurePwdVerifyEnable;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+            public byte[] byEmployeeNo;
         }
     }
 }

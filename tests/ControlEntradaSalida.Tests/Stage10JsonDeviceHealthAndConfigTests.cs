@@ -51,6 +51,23 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceStoreHealthCheck_EnabledDeviceMissingRuntimeRequiredFields_FailsClearly()
+        {
+            var runDirectory = TestWorkspace.Create();
+            WriteDevicesJson(runDirectory,
+                "{\"devices\":[" +
+                "{\"deviceId\":1,\"name\":\"\",\"types\":[\"Acs\"],\"ipAddress\":\"10.30.0.1\",\"port\":8000,\"password\":\"pw\",\"enabled\":true}" +
+                "]}");
+            var settings = NewValidSettings();
+            settings.Devices = new DeviceStoreOptions { FilePath = "Configuration\\devices.json" };
+
+            var result = new DeviceStoreHealthCheck().Run(NewContext(runDirectory, settings));
+
+            Assert.Equal(HealthCheckStatus.Failed, result.Status);
+            Assert.Contains("devices[0].name", result.Message);
+        }
+
+        [TestCase]
         public static void DeviceStoreHealthCheck_AbsoluteFilePath_IsSupported()
         {
             var runDirectory = TestWorkspace.Create();

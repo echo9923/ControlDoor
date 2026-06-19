@@ -259,6 +259,30 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceOperationRetryStore_PermissionSuccess_DoesNotUpdateUserWhenEmployeeStillHasBlockingPermissionRows()
+        {
+            var database = new RecordingDatabaseClient { RowsAffected = 1 };
+            database.QueryRowsByOperation["DeviceOperationRetryStore.HasBlockingPermissionStateForEmployee"] =
+                new List<IReadOnlyDictionary<string, object>>
+                {
+                    Row(id: 10, deviceId: 2, employeeId: "10001", permissionPending: true, permissionLevel: 7)
+                };
+            var userWriter = new RecordingUserSyncStatusWriter();
+            var store = new DeviceOperationRetryStore(database, userSyncWriter: userWriter);
+            var state = DeviceOperationRetryState.FromRow(Row(id: 9, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+
+            store.MarkOperationSuccess(state, RetryOperation.Permission);
+
+            Assert.False(userWriter.PermissionLevels.ContainsKey("10001"));
+            var sql = database.Commands.Last(item => item.OperationName == "DeviceOperationRetryStore.HasBlockingPermissionStateForEmployee").CommandText;
+            Assert.Contains("employee_id = @employeeId", sql);
+            Assert.Contains("id <> @id", sql);
+            Assert.Contains("exhausted_at IS NULL", sql);
+            Assert.Contains("permission_pending = 1", sql);
+            Assert.Contains("permission_sync_completion_blocked = 1", sql);
+        }
+
+        [TestCase]
         public static void DeviceOperationRetryStore_LoadDueStates_UsesDueUnterminalPendingFilter()
         {
             var database = new RecordingDatabaseClient();

@@ -288,8 +288,9 @@ namespace ControlDoor.Host
             cancellationToken.ThrowIfCancellationRequested();
 
             logger?.Info("Host", "ControlDoor Host 正在停止。", new LogFields { Extra = { ["reason"] = reason ?? string.Empty } });
-            deviceLifecycle?.StopAllDevicesBestEffort();
             aiopAlarmEventRouter?.Dispose();
+            StopCameraDoorInterlockBeforeDeviceLogout();
+            deviceLifecycle?.StopAllDevicesBestEffort();
             backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
             deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
             acsAlarmEventRouter?.Dispose();
@@ -305,6 +306,26 @@ namespace ControlDoor.Host
             logger?.Info("Host", "ControlDoor Host 停止成功。", new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
 
             return Task.FromResult(HostStopResult.Succeeded(reason, "Host 停止成功。"));
+        }
+
+        private void StopCameraDoorInterlockBeforeDeviceLogout()
+        {
+            if (cameraDoorInterlockService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                cameraDoorInterlockService
+                    .StopAsync(new BackgroundTaskContext(RequestContext.Background("CameraDoorInterlockService").RequestId, CancellationToken.None, logger))
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("Host", "阶段 9 门禁联动停止恢复失败，继续停止设备。", ex);
+            }
         }
 
         public void Dispose()
