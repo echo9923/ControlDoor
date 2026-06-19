@@ -192,6 +192,13 @@
 
 请求格式同 `DeleteFaces`。
 
+处理语义：
+
+- 在线设备会先 best-effort 删除该员工人脸，再删除人员。
+- 前置删除人脸失败不会阻断删除人员；服务记录 `Warn`，包含 `operationName=DeleteFaceBeforePerson`、员工编号、设备 `userId` 和异常摘要。
+- 只有最终删除人员离线或可重试失败时，才进入删除人员补偿队列。
+- 独立调用 `DeleteFaces` 时，删除人脸失败仍按删除人脸操作本身写入补偿。
+
 响应业务字段：
 
 | 字段 | 说明 |
@@ -564,7 +571,8 @@ x-api-key: 配置的APIKey
 处理语义：
 
 - 设备没有 `AlarmHandle` 时幂等成功，返回“设备未布防，跳过撤防。”。
-- 设备已有 `AlarmHandle` 时调用 SDK 关闭报警通道；无论 SDK 成功或失败，都会清理本地 `AlarmHandle` 和反查索引。
+- 设备已有 `AlarmHandle` 时调用 SDK 关闭报警通道；仅 SDK 关闭成功后清理本地 `AlarmHandle` 和反查索引。
+- SDK 关闭失败时返回 SDK 错误，保留本地 `AlarmHandle` 和反查索引，并记录错误，便于后续重试或人工确认。
 - 撤防会取消该设备挂起的 ReArm 延迟任务，避免人工撤防后被后台布防重试重新拉起。
 - 该接口只断开布防，不调用 `LogoutAsync`，设备保持原登录会话。
 
