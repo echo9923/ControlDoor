@@ -91,7 +91,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void DeletePersons_DeleteFaceRetryableTimeout_QueuesDeletePersonIntentAndSkipsDeletePerson()
+        public static void DeletePersons_DeleteFaceRetryableTimeout_StillDeletesPersonWithoutRetryIntent()
         {
             using (var fixture = new Stage5Fixture())
             {
@@ -100,12 +100,13 @@ namespace ControlEntradaSalida.Tests
 
                 var response = fixture.Response(fixture.Service.DeletePersons(@"[""10001""]", fixture.Context("delete-person-face-timeout")));
 
-                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
-                Assert.Equal(1, Convert.ToInt32(response["queued"]));
-                Assert.Equal(1, fixture.RetryWriter.Intents.Count);
-                Assert.Equal("DeletePerson", fixture.RetryWriter.Intents[0].Operation);
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(1, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal(0, Convert.ToInt32(response["queued"]));
+                Assert.Equal(0, fixture.RetryWriter.Intents.Count);
                 Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeleteFaceAsync"));
-                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
+                Assert.True(fixture.UserWriter.PersonsDeleted.Contains("10001"));
             }
         }
 

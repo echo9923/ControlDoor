@@ -7,6 +7,7 @@ using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Tasks;
 using ControlDoor.Devices.Workers;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 using ControlDoor.Permissions;
 
 namespace ControlDoor.GrpcApi
@@ -31,6 +32,7 @@ namespace ControlDoor.GrpcApi
         private readonly IDeviceOperationRetryWriter retryWriter;
         private readonly IUserSyncStatusWriter userSyncWriter;
         private readonly EnrollmentTaskStore enrollmentStore;
+        private readonly ServiceLogger logger;
 
         public PermissionSyncGrpcService(
             DeviceRuntimeRegistry registry,
@@ -38,7 +40,8 @@ namespace ControlDoor.GrpcApi
             IHikvisionGateway gateway,
             IDeviceOperationRetryWriter retryWriter = null,
             IUserSyncStatusWriter userSyncWriter = null,
-            EnrollmentTaskStore enrollmentStore = null)
+            EnrollmentTaskStore enrollmentStore = null,
+            ServiceLogger logger = null)
         {
             this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
             this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -46,6 +49,7 @@ namespace ControlDoor.GrpcApi
             this.retryWriter = retryWriter ?? new NullDeviceOperationRetryWriter();
             this.userSyncWriter = userSyncWriter ?? new NullUserSyncStatusWriter();
             this.enrollmentStore = enrollmentStore ?? new EnrollmentTaskStore();
+            this.logger = logger;
         }
 
         public IReadOnlyList<string> MethodFullNames { get; } = new[]
@@ -636,10 +640,50 @@ namespace ControlDoor.GrpcApi
                     return offline;
                 }
 
-                await gateway.DeleteFaceAsync(new DeleteFaceRequest { UserId = snapshot.SdkUserId.Value, EmployeeId = employeeId }, taskContext.CancellationToken).ConfigureAwait(false);
+                await DeleteFaceBeforePersonBestEffortAsync(snapshot.SdkUserId.Value, employeeId, taskContext.CancellationToken).ConfigureAwait(false);
                 await gateway.DeletePersonAsync(new DeletePersonRequest { UserId = snapshot.SdkUserId.Value, EmployeeId = employeeId }, taskContext.CancellationToken).ConfigureAwait(false);
                 return DeviceTaskResult.FromTask(taskContext.Task, true, "OK", "删除人员成功。", snapshot.Status, started, DateTime.Now);
             });
+        }
+
+        private async System.Threading.Tasks.Task DeleteFaceBeforePersonBestEffortAsync(int userId, string employeeId, System.Threading.CancellationToken cancellationToken)
+        {
+            try
+            {
+                await gateway.DeleteFaceAsync(new DeleteFaceRequest { UserId = userId, EmployeeId = employeeId }, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger?.Warn("PermissionSync", "删除人员前删除人脸失败，忽略并继续删除人员。", CreateBestEffortDeleteFaceLogFields(userId, employeeId, "DeleteFaceBeforePerson", ex));
+            }
+        }
+
+        private static LogFields CreateBestEffortDeleteFaceLogFields(int userId, string employeeId, string operationName, Exception ex)
+        {
+            var fields = new LogFields
+            {
+                EmployeeId = employeeId,
+                OperationName = operationName,
+                ErrorCode = ResolveErrorCode(ex),
+                Exception = ex == null ? string.Empty : ex.GetType().Name + ": " + ex.Message
+            };
+            fields.Extra["userId"] = userId.ToString();
+            return fields;
+        }
+
+        private static string ResolveErrorCode(Exception ex)
+        {
+            var gatewayEx = ex as DeviceGatewayException;
+            if (gatewayEx != null && gatewayEx.Error != null)
+            {
+                return gatewayEx.Error.Code.ToString();
+            }
+
+            return ex == null ? string.Empty : ex.GetType().Name;
         }
 
         private DeviceTaskResult ExecuteQueryFaceTask(DeviceRuntimeSnapshot device, string employeeId, GrpcRequestContext context)

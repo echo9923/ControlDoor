@@ -7,7 +7,9 @@ using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.GrpcApi;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 using ControlDoor.Permissions;
+using ControlDoor.Configuration;
 
 namespace ControlEntradaSalida.Tests
 {
@@ -396,6 +398,35 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeletePersons_DeleteFaceFailure_StillDeletesPersonAndWritesWarnLog()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureException("DeleteFaceAsync", new DeviceGatewayException("DeleteFace", SdkError.FromCode(17, "face missing")));
+
+                var response = fixture.Response(fixture.Service.DeletePersons(@"{""items"":[{""employeeId"":""10001""}]}", fixture.Context("delete-person-face-fail")));
+                var deviceErrors = (ArrayList)response["deviceErrors"];
+
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(1, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal(0, Convert.ToInt32(response["failed"]));
+                Assert.Equal(0, Convert.ToInt32(response["queued"]));
+                Assert.Equal(0, deviceErrors.Count);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeleteFaceAsync"));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
+                Assert.True(fixture.UserWriter.PersonsDeleted.Contains("10001"));
+                Assert.False(fixture.RetryWriter.Intents.Any(intent => intent.Operation == "DeletePerson"));
+                var log = fixture.ReadLog();
+                Assert.Contains("level=Warn", log);
+                Assert.Contains("operationName=\"DeleteFaceBeforePerson\"", log);
+                Assert.Contains("employeeId=\"10001\"", log);
+                Assert.Contains("userId", log);
+                Assert.Contains("DeviceGatewayException", log);
+            }
+        }
+
+        [TestCase]
         public static void GetFaces_ReturnsEmployeeAndDeviceDetails()
         {
             using (var fixture = new Stage5Fixture())
@@ -484,15 +515,19 @@ namespace ControlEntradaSalida.Tests
 
     internal sealed class Stage5Fixture : IDisposable
     {
-        private readonly Stage4Fixture inner = new Stage4Fixture();
+        private readonly string runDirectory = TestWorkspace.Create();
+        private readonly ServiceLogger logger;
+        private readonly Stage4Fixture inner;
         private readonly JavaScriptSerializer serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
 
         public Stage5Fixture()
         {
+            logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" }));
+            inner = new Stage4Fixture(logger);
             RetryWriter = new RecordingRetryWriter();
             UserWriter = new RecordingUserSyncStatusWriter();
             EnrollmentStore = new EnrollmentTaskStore();
-            Service = new PermissionSyncGrpcService(inner.Registry, inner.Dispatcher, inner.Gateway, RetryWriter, UserWriter, EnrollmentStore);
+            Service = new PermissionSyncGrpcService(inner.Registry, inner.Dispatcher, inner.Gateway, RetryWriter, UserWriter, EnrollmentStore, logger);
         }
 
         public PermissionSyncGrpcService Service { get; }
@@ -567,9 +602,17 @@ namespace ControlEntradaSalida.Tests
             return serializer.Deserialize<Dictionary<string, object>>(json);
         }
 
+        public string ReadLog()
+        {
+            return System.IO.File.Exists(logger.CurrentLogPath)
+                ? System.IO.File.ReadAllText(logger.CurrentLogPath)
+                : string.Empty;
+        }
+
         public void Dispose()
         {
             inner.Dispose();
+            logger.Dispose();
         }
 
     }

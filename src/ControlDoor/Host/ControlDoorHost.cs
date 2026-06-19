@@ -184,7 +184,8 @@ namespace ControlDoor.Host
                 hikvisionGateway,
                 retryStore,
                 new SystemUserSyncStatusWriter(database),
-                new EnrollmentTaskStore());
+                new EnrollmentTaskStore(),
+                logger);
             if (settings.FaceEventLogging.Enabled)
             {
                 var snapshotStorage = new SnapshotStorage(runDirectory, settings.FaceEventLogging, logger);
