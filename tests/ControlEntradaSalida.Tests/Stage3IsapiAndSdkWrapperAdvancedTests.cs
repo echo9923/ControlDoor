@@ -234,15 +234,15 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SdkWrapper_SetAlarmCallbackFailure_ThrowsBeforeSetup()
+        public static void SdkWrapper_InitCallbackFailure_ThrowsBeforeLoginCompletes()
         {
             var native = new Stage3FakeNativeClient { SetCallbackResult = false, LastError = 23 };
             var gateway = new HikvisionSdkWrapper(native);
-            var login = Login(gateway);
 
-            var ex = Stage3TestReflection.Expect<DeviceGatewayException>(() => gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId }).GetAwaiter().GetResult());
+            var ex = Stage3TestReflection.Expect<DeviceGatewayException>(() => Login(gateway));
 
             Assert.Equal(23, ex.Error.Code);
+            Assert.Equal(1, native.CallbackRegisterCount);
             Assert.Equal(0, native.SetupAlarmCallCount);
         }
 
@@ -663,6 +663,13 @@ namespace ControlEntradaSalida.Tests
 
         public int SetupAlarmCallCount { get; private set; }
 
+        public int CallbackRegisterCount { get; private set; }
+
+        public HikvisionAlarmNativeCallback RegisteredCallback
+        {
+            get { return callback; }
+        }
+
         public int LastAlarmDeployType { get; private set; }
 
         public int CleanupCallCount { get; private set; }
@@ -712,8 +719,14 @@ namespace ControlEntradaSalida.Tests
 
         public bool SetMessageCallback(HikvisionAlarmNativeCallback callback)
         {
+            CallbackRegisterCount++;
+            if (!SetCallbackResult)
+            {
+                return false;
+            }
+
             this.callback = callback;
-            return SetCallbackResult;
+            return true;
         }
 
         public int SetupAlarm(int userId, int level, int alarmInfoType, int deployType)

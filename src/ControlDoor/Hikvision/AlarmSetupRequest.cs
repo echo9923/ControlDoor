@@ -17,6 +17,11 @@ namespace ControlDoor.Hikvision
 
         public int DeployType { get; set; }
 
+        /// <summary>
+        /// Kept only for source compatibility. The Hikvision SDK alarm callback is process-wide
+        /// and is registered once by <see cref="HikvisionSdkWrapper"/>; production alarm delivery
+        /// uses <see cref="IHikvisionGateway.OnAlarmEvent"/>.
+        /// </summary>
         public AlarmCallbackDelegate Callback { get; set; }
     }
 }

@@ -24,7 +24,9 @@ namespace ControlDoor.Hikvision
         private readonly IHikvisionSdkNativeClient nativeClient;
         private readonly HikvisionIsapiClient isapiClient;
         private readonly SdkTraceLogger traceLogger;
-        private bool initialized;
+        private readonly object initializationGate = new object();
+        private HikvisionAlarmNativeCallback alarmCallback;
+        private volatile bool initialized;
         private bool disposed;
 
         public HikvisionSdkWrapper()
@@ -95,12 +97,6 @@ namespace ControlDoor.Hikvision
             return Execute("SetAlarm", request, () =>
             {
                 EnsureInitialized();
-                if (!nativeClient.SetMessageCallback((command, alarmer, alarmInfo, alarmInfoLength, userData) =>
-                    HandleNativeAlarm(command, alarmer, alarmInfo, alarmInfoLength, userData, request.Callback)))
-                {
-                    ThrowLastError("SetAlarmCallback");
-                }
-
                 var handle = nativeClient.SetupAlarm(request.UserId, request.Level, request.AlarmInfoType, request.DeployType);
                 if (handle < 0)
                 {
@@ -623,12 +619,27 @@ namespace ControlDoor.Hikvision
                 return;
             }
 
-            if (!nativeClient.Init())
+            lock (initializationGate)
             {
-                ThrowLastError("NET_DVR_Init");
-            }
+                if (initialized)
+                {
+                    return;
+                }
 
-            initialized = true;
+                if (!nativeClient.Init())
+                {
+                    ThrowLastError("NET_DVR_Init");
+                }
+
+                alarmCallback = HandleNativeAlarm;
+                if (!nativeClient.SetMessageCallback(alarmCallback))
+                {
+                    alarmCallback = null;
+                    ThrowLastError("SetAlarmCallback");
+                }
+
+                initialized = true;
+            }
         }
 
         private void ThrowLastError(string operationName)
@@ -637,7 +648,7 @@ namespace ControlDoor.Hikvision
             throw new DeviceGatewayException(operationName, SdkError.FromCode(code, GetErrorMessage(code)));
         }
 
-        private bool HandleNativeAlarm(int command, IntPtr alarmer, IntPtr alarmInfo, int alarmInfoLength, IntPtr userData, AlarmCallbackDelegate callback)
+        private bool HandleNativeAlarm(int command, IntPtr alarmer, IntPtr alarmInfo, int alarmInfoLength, IntPtr userData)
         {
             try
             {
@@ -658,12 +669,12 @@ namespace ControlDoor.Hikvision
                 CopyAlarmer(alarmer, data);
                 CopyAcsAlarmInfo(command, alarmInfo, alarmInfoLength, data);
 
-                callback?.Invoke(data);
                 RaiseManagedAlarm(data);
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                traceLogger?.Trace("NativeAlarmCallback", null, false, 0, null, ex.Message);
                 return true;
             }
         }

@@ -7,7 +7,9 @@ using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using ControlDoor.Configuration;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 
 namespace ControlEntradaSalida.Tests
 {
@@ -731,16 +733,21 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SdkWrapper_SetAlarm_RegistersCallbackAndReturnsHandle()
+        public static void SdkWrapper_SetAlarm_RegistersGlobalCallbackOnceAndReturnsHandle()
         {
             var native = new FakeNativeClient();
             var gateway = new HikvisionSdkWrapper(native);
             var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+            var registeredCallback = native.RegisteredCallback;
 
             var alarm = gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId, DeployType = 0 }).GetAwaiter().GetResult();
+            gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId, DeployType = 0 }).GetAwaiter().GetResult();
 
             Assert.Equal(77, alarm.AlarmHandle);
             Assert.True(native.CallbackRegistered);
+            Assert.Equal(1, native.CallbackRegisterCount);
+            Assert.True(object.ReferenceEquals(registeredCallback, native.RegisteredCallback));
+            Assert.Equal(2, native.SetupAlarmCallCount);
             Assert.Equal(0, native.LastAlarmDeployType);
         }
 
@@ -759,6 +766,49 @@ namespace ControlEntradaSalida.Tests
             Assert.NotNull(eventData);
             Assert.Equal("COMM_ALARM_ACS", eventData.EventType);
             Assert.Equal(2, eventData.RawPayload.Length);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_NativeAlarm_UsesManagedEventInsteadOfPerAlarmRequestCallback()
+        {
+            var native = new FakeNativeClient();
+            var gateway = new HikvisionSdkWrapper(native);
+            AlarmEventData eventData = null;
+            var legacyCallbackInvoked = false;
+            gateway.OnAlarmEvent += (sender, data) => eventData = data;
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+
+            gateway.SetAlarmAsync(new AlarmSetupRequest
+            {
+                UserId = login.UserId,
+                Callback = data => legacyCallbackInvoked = true
+            }).GetAwaiter().GetResult();
+
+            native.EmitAlarm(0x5002, new byte[] { 7, 8 });
+
+            Assert.False(legacyCallbackInvoked);
+            Assert.NotNull(eventData);
+            Assert.Equal("COMM_ALARM_ACS", eventData.EventType);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_NativeAlarm_HandlerExceptionWritesTraceAndDoesNotEscape()
+        {
+            var native = new FakeNativeClient();
+            var runDirectory = TestWorkspace.Create();
+            using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" })))
+            {
+                var gateway = new HikvisionSdkWrapper(native, null, new SdkTraceLogger(logger, true));
+                gateway.OnAlarmEvent += (sender, data) => { throw new InvalidOperationException("callback exploded"); };
+                var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+                gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+
+                native.EmitAlarm(0x5002, new byte[] { 7, 8 });
+
+                var text = File.ReadAllText(logger.CurrentLogPath);
+                Assert.Contains("operationName=\"NativeAlarmCallback\"", text);
+                Assert.Contains("callback exploded", text);
+            }
         }
 
         [TestCase]
@@ -1128,7 +1178,17 @@ namespace ControlEntradaSalida.Tests
 
             public bool InitCalled { get; private set; }
 
-            public bool CallbackRegistered { get; private set; }
+            public bool CallbackRegistered
+            {
+                get { return CallbackRegisterCount > 0; }
+            }
+
+            public int CallbackRegisterCount { get; private set; }
+
+            public HikvisionAlarmNativeCallback RegisteredCallback
+            {
+                get { return callback; }
+            }
 
             public int LoginCallCount { get; private set; }
 
@@ -1188,15 +1248,18 @@ namespace ControlEntradaSalida.Tests
 
             public bool SetMessageCallback(HikvisionAlarmNativeCallback callback)
             {
+                CallbackRegisterCount++;
                 this.callback = callback;
-                CallbackRegistered = true;
                 return true;
             }
 
             public int LastAlarmDeployType { get; private set; }
 
+            public int SetupAlarmCallCount { get; private set; }
+
             public int SetupAlarm(int userId, int level, int alarmInfoType, int deployType)
             {
+                SetupAlarmCallCount++;
                 LastAlarmDeployType = deployType;
                 return 77;
             }
