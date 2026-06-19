@@ -334,11 +334,12 @@ namespace ControlDoor.Hikvision
             }
         }
 
-        public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, out byte[] faceImage, out byte faceQuality, out int errorCode)
+        public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, CancellationToken cancellationToken, out byte[] faceImage, out byte faceQuality, out int errorCode)
         {
             faceImage = null;
             faceQuality = 0;
             errorCode = 0;
+            cancellationToken.ThrowIfCancellationRequested();
 
             var cond = new NativeMethods.NET_DVR_CAPTURE_FACE_COND();
             cond.Init();
@@ -369,6 +370,7 @@ namespace ControlDoor.Hikvision
                 var cfgSize = Marshal.SizeOf(typeof(NativeMethods.NET_DVR_CAPTURE_FACE_CFG));
                 for (var attempt = 0; attempt < maxAttempts; attempt++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var faceCfg = new NativeMethods.NET_DVR_CAPTURE_FACE_CFG();
                     faceCfg.Init();
                     faceCfg.dwSize = cfgSize;
@@ -395,7 +397,11 @@ namespace ControlDoor.Hikvision
 
                     if (status == NativeMethods.NET_SDK_GET_NEXT_STATUS_NEED_WAIT)
                     {
-                        Thread.Sleep(waitIntervalMs);
+                        if (cancellationToken.WaitHandle.WaitOne(Math.Max(1, waitIntervalMs)))
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                        }
+
                         continue;
                     }
 

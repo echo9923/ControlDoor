@@ -975,6 +975,27 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_CaptureFace_CancellationDoesNotWaitForNativePollingWindow()
+        {
+            var native = new FakeNativeClient
+            {
+                FaceCaptureStatus = 1001,
+                FaceCaptureDelay = TimeSpan.FromSeconds(5)
+            };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+            var cancellation = new CancellationTokenSource();
+            cancellation.CancelAfter(TimeSpan.FromMilliseconds(50));
+            var started = DateTime.UtcNow;
+
+            Expect<OperationCanceledException>(() => gateway.CaptureFaceAsync(
+                new CaptureRequest { UserId = login.UserId },
+                cancellation.Token).GetAwaiter().GetResult());
+
+            Assert.True((DateTime.UtcNow - started) < TimeSpan.FromSeconds(2), "CaptureFaceAsync should observe caller cancellation before the full native polling window elapses.");
+        }
+
+        [TestCase]
         public static void SdkWrapper_CaptureFaceFailed_ThrowsLastError()
         {
             var native = new FakeNativeClient
@@ -1170,6 +1191,8 @@ namespace ControlEntradaSalida.Tests
 
             public int FaceCaptureErrorCode { get; set; }
 
+            public TimeSpan FaceCaptureDelay { get; set; }
+
             public int LastFaceCaptureUserId { get; private set; }
 
             public int LastFaceCaptureMaxAttempts { get; private set; }
@@ -1309,11 +1332,19 @@ namespace ControlEntradaSalida.Tests
                 return FaceUploadStatus;
             }
 
-            public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, out byte[] faceImage, out byte faceQuality, out int errorCode)
+            public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, CancellationToken cancellationToken, out byte[] faceImage, out byte faceQuality, out int errorCode)
             {
                 LastFaceCaptureUserId = userId;
                 LastFaceCaptureMaxAttempts = maxAttempts;
                 LastFaceCaptureWaitIntervalMs = waitIntervalMs;
+                if (FaceCaptureDelay > TimeSpan.Zero)
+                {
+                    if (cancellationToken.WaitHandle.WaitOne(FaceCaptureDelay))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+                }
+
                 faceImage = FaceCaptureStatus == 1000 && FaceCaptureImage != null
                     ? (byte[])FaceCaptureImage.Clone()
                     : null;

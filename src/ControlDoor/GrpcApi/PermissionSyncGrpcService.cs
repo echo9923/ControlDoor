@@ -151,6 +151,12 @@ namespace ControlDoor.GrpcApi
             });
         }
 
+        public System.Threading.Tasks.Task<string> SyncPermissionsAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run(() => SyncPermissions(requestJson, context), context.CancellationToken);
+        }
+
         public string SyncPersons(string requestJson, GrpcRequestContext context = null)
         {
             context = EnsureContext(context);
@@ -267,14 +273,32 @@ namespace ControlDoor.GrpcApi
             });
         }
 
+        public System.Threading.Tasks.Task<string> SyncPersonsAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run(() => SyncPersons(requestJson, context), context.CancellationToken);
+        }
+
         public string DeleteFaces(string requestJson, GrpcRequestContext context = null)
         {
             return DeleteEmployees(requestJson, context, "DeleteFace");
         }
 
+        public System.Threading.Tasks.Task<string> DeleteFacesAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run(() => DeleteFaces(requestJson, context), context.CancellationToken);
+        }
+
         public string DeletePersons(string requestJson, GrpcRequestContext context = null)
         {
             return DeleteEmployees(requestJson, context, "DeletePerson");
+        }
+
+        public System.Threading.Tasks.Task<string> DeletePersonsAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run(() => DeletePersons(requestJson, context), context.CancellationToken);
         }
 
         public string GetFaces(string requestJson, GrpcRequestContext context = null)
@@ -338,6 +362,12 @@ namespace ControlDoor.GrpcApi
                 ["targetDevices"] = onlineDevices.Count,
                 ["items"] = results.Values.Select(item => item.ToDictionary()).ToList()
             });
+        }
+
+        public System.Threading.Tasks.Task<string> GetFacesAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run(() => GetFaces(requestJson, context), context.CancellationToken);
         }
 
         public IEnumerable<string> CaptureFaceStream(string requestJson, GrpcRequestContext context = null)
@@ -432,6 +462,12 @@ namespace ControlDoor.GrpcApi
             return frames;
         }
 
+        public System.Threading.Tasks.Task<IReadOnlyList<string>> CaptureFaceStreamAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run<IReadOnlyList<string>>(() => CaptureFaceStream(requestJson, context).ToList(), context.CancellationToken);
+        }
+
         public string GetEnrollmentStatus(string requestJson, GrpcRequestContext context = null)
         {
             context = EnsureContext(context);
@@ -455,6 +491,12 @@ namespace ControlDoor.GrpcApi
             {
                 return Error(context, "INVALID_ARGUMENT", ex.Message);
             }
+        }
+
+        public System.Threading.Tasks.Task<string> GetEnrollmentStatusAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run(() => GetEnrollmentStatus(requestJson, context), context.CancellationToken);
         }
 
         private string DeleteEmployees(string requestJson, GrpcRequestContext context, string operation)
@@ -743,7 +785,7 @@ namespace ControlDoor.GrpcApi
             task.WaitMode = DeviceTaskWaitMode.WaitForResult;
             task.RequestId = context.RequestId ?? string.Empty;
             task.CorrelationId = context.CorrelationId ?? context.RequestId ?? string.Empty;
-            return dispatcher.SubmitAndWaitAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+            return dispatcher.SubmitAndWaitAsync(task, context.CancellationToken).GetAwaiter().GetResult();
         }
 
         private DeviceTaskResult MapGatewayException(DeviceSdkTask task, Exception ex, DeviceRuntimeSnapshot snapshot)

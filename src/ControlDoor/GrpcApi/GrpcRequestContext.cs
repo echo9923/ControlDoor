@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 
 namespace ControlDoor.GrpcApi
 {
@@ -9,6 +10,8 @@ namespace ControlDoor.GrpcApi
         public string CorrelationId { get; set; } = string.Empty;
 
         public IDictionary<string, string> Metadata { get; } = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase);
+
+        public CancellationToken CancellationToken { get; set; }
 
         public static GrpcRequestContext Empty()
         {

@@ -411,6 +411,7 @@ namespace ControlDoor.Hikvision
                 int errorCode;
                 var status = nativeClient.CaptureFace(
                     request.UserId, maxAttempts, waitIntervalMs,
+                    cancellationToken,
                     out faceImage, out faceQuality, out errorCode);
 
                 if (status == NetSdkConfigStatusSuccess)

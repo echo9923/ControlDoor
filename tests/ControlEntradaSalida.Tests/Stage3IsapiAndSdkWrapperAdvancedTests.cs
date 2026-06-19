@@ -781,7 +781,7 @@ namespace ControlEntradaSalida.Tests
             return FaceUploadStatus;
         }
 
-        public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, out byte[] faceImage, out byte faceQuality, out int errorCode)
+        public int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, CancellationToken cancellationToken, out byte[] faceImage, out byte faceQuality, out int errorCode)
         {
             LastFaceCaptureUserId = userId;
             LastFaceCaptureMaxAttempts = maxAttempts;

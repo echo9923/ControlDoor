@@ -53,32 +53,33 @@ namespace ControlDoor.GrpcApi
 
         private Task<string> HandleSyncPermissions(string request, ServerCallContext context)
         {
-            return Task.FromResult(service.SyncPermissions(request, ToContext(context)));
+            return service.SyncPermissionsAsync(request, ToContext(context));
         }
 
         private Task<string> HandleSyncPersons(string request, ServerCallContext context)
         {
-            return Task.FromResult(service.SyncPersons(request, ToContext(context)));
+            return service.SyncPersonsAsync(request, ToContext(context));
         }
 
         private Task<string> HandleDeleteFaces(string request, ServerCallContext context)
         {
-            return Task.FromResult(service.DeleteFaces(request, ToContext(context)));
+            return service.DeleteFacesAsync(request, ToContext(context));
         }
 
         private Task<string> HandleDeletePersons(string request, ServerCallContext context)
         {
-            return Task.FromResult(service.DeletePersons(request, ToContext(context)));
+            return service.DeletePersonsAsync(request, ToContext(context));
         }
 
         private Task<string> HandleGetFaces(string request, ServerCallContext context)
         {
-            return Task.FromResult(service.GetFaces(request, ToContext(context)));
+            return service.GetFacesAsync(request, ToContext(context));
         }
 
         private async Task HandleCaptureFaceStream(string request, IServerStreamWriter<string> responseStream, ServerCallContext context)
         {
-            foreach (var item in service.CaptureFaceStream(request, ToContext(context)))
+            var items = await service.CaptureFaceStreamAsync(request, ToContext(context)).ConfigureAwait(false);
+            foreach (var item in items)
             {
                 await responseStream.WriteAsync(item).ConfigureAwait(false);
             }
@@ -86,12 +87,15 @@ namespace ControlDoor.GrpcApi
 
         private Task<string> HandleGetEnrollmentStatus(string request, ServerCallContext context)
         {
-            return Task.FromResult(service.GetEnrollmentStatus(request, ToContext(context)));
+            return service.GetEnrollmentStatusAsync(request, ToContext(context));
         }
 
         private static GrpcRequestContext ToContext(ServerCallContext callContext)
         {
-            var context = new GrpcRequestContext();
+            var context = new GrpcRequestContext
+            {
+                CancellationToken = callContext.CancellationToken
+            };
             foreach (var entry in callContext.RequestHeaders)
             {
                 context.Metadata[entry.Key] = entry.Value;

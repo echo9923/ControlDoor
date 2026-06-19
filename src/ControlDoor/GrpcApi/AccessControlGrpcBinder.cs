@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading.Tasks;
 using Grpc.Core;
 
 namespace ControlDoor.GrpcApi
@@ -40,49 +41,58 @@ namespace ControlDoor.GrpcApi
                 StringMarshaller);
         }
 
-        private System.Threading.Tasks.Task<string> HandleGetDeviceStatus(string request, ServerCallContext context)
+        private Task<string> HandleGetDeviceStatus(string request, ServerCallContext context)
         {
-            return System.Threading.Tasks.Task.FromResult(service.GetDeviceStatus(request, ToContext(context)));
+            return RunUnary(context, callContext => service.GetDeviceStatus(request, callContext));
         }
 
-        private System.Threading.Tasks.Task<string> HandleAddDevice(string request, ServerCallContext context)
+        private Task<string> HandleAddDevice(string request, ServerCallContext context)
         {
-            return System.Threading.Tasks.Task.FromResult(service.AddDevice(request, ToContext(context)));
+            return RunUnary(context, callContext => service.AddDevice(request, callContext));
         }
 
-        private System.Threading.Tasks.Task<string> HandleDeleteDevice(string request, ServerCallContext context)
+        private Task<string> HandleDeleteDevice(string request, ServerCallContext context)
         {
-            return System.Threading.Tasks.Task.FromResult(service.DeleteDevice(request, ToContext(context)));
+            return RunUnary(context, callContext => service.DeleteDevice(request, callContext));
         }
 
-        private System.Threading.Tasks.Task<string> HandleDisconnectDevice(string request, ServerCallContext context)
+        private Task<string> HandleDisconnectDevice(string request, ServerCallContext context)
         {
-            return System.Threading.Tasks.Task.FromResult(service.DisconnectDevice(request, ToContext(context)));
+            return RunUnary(context, callContext => service.DisconnectDevice(request, callContext));
         }
 
-        private System.Threading.Tasks.Task<string> HandleReconnectDevice(string request, ServerCallContext context)
+        private Task<string> HandleReconnectDevice(string request, ServerCallContext context)
         {
-            return System.Threading.Tasks.Task.FromResult(service.ReconnectDevice(request, ToContext(context)));
+            return RunUnary(context, callContext => service.ReconnectDevice(request, callContext));
         }
 
-        private System.Threading.Tasks.Task<string> HandleRearmDeviceAlarm(string request, ServerCallContext context)
+        private Task<string> HandleRearmDeviceAlarm(string request, ServerCallContext context)
         {
-            return System.Threading.Tasks.Task.FromResult(service.RearmDeviceAlarm(request, ToContext(context)));
+            return RunUnary(context, callContext => service.RearmDeviceAlarm(request, callContext));
         }
 
-        private System.Threading.Tasks.Task<string> HandleDisarmDeviceAlarm(string request, ServerCallContext context)
+        private Task<string> HandleDisarmDeviceAlarm(string request, ServerCallContext context)
         {
-            return System.Threading.Tasks.Task.FromResult(service.DisarmDeviceAlarm(request, ToContext(context)));
+            return RunUnary(context, callContext => service.DisarmDeviceAlarm(request, callContext));
         }
 
-        private System.Threading.Tasks.Task<string> HandleGetDeviceAlarmStatus(string request, ServerCallContext context)
+        private Task<string> HandleGetDeviceAlarmStatus(string request, ServerCallContext context)
         {
-            return System.Threading.Tasks.Task.FromResult(service.GetDeviceAlarmStatus(request, ToContext(context)));
+            return RunUnary(context, callContext => service.GetDeviceAlarmStatus(request, callContext));
+        }
+
+        private static Task<string> RunUnary(ServerCallContext serverContext, System.Func<GrpcRequestContext, string> handler)
+        {
+            var requestContext = ToContext(serverContext);
+            return Task.Run(() => handler(requestContext), requestContext.CancellationToken);
         }
 
         private static GrpcRequestContext ToContext(ServerCallContext callContext)
         {
-            var context = new GrpcRequestContext();
+            var context = new GrpcRequestContext
+            {
+                CancellationToken = callContext.CancellationToken
+            };
             foreach (var entry in callContext.RequestHeaders)
             {
                 context.Metadata[entry.Key] = entry.Value;

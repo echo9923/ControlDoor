@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 
 namespace ControlDoor.Hikvision
 {
@@ -28,7 +29,7 @@ namespace ControlDoor.Hikvision
 
         int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody);
 
-        int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, out byte[] faceImage, out byte faceQuality, out int errorCode);
+        int CaptureFace(int userId, int maxAttempts, int waitIntervalMs, CancellationToken cancellationToken, out byte[] faceImage, out byte faceQuality, out int errorCode);
 
         int GetLastError();
 

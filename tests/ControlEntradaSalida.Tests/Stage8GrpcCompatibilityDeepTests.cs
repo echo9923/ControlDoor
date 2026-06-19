@@ -112,6 +112,29 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(200 * 1024, ReadPrivateStaticInt(typeof(PermissionSyncGrpcService), "MaxFaceBytes"));
         }
 
+        [TestCase]
+        public static void Stage8GrpcCompatibility_Binders_DoNotCompleteUnaryHandlersWithTaskFromResult()
+        {
+            var accessBinder = System.IO.File.ReadAllText(
+                System.IO.Path.Combine("src", "ControlDoor", "GrpcApi", "AccessControlGrpcBinder.cs"),
+                Encoding.UTF8);
+            var permissionBinder = System.IO.File.ReadAllText(
+                System.IO.Path.Combine("src", "ControlDoor", "GrpcApi", "PermissionSyncGrpcBinder.cs"),
+                Encoding.UTF8);
+            var permissionService = System.IO.File.ReadAllText(
+                System.IO.Path.Combine("src", "ControlDoor", "GrpcApi", "PermissionSyncGrpcService.cs"),
+                Encoding.UTF8);
+
+            Assert.False(accessBinder.Contains("Task.FromResult(service."));
+            Assert.False(permissionBinder.Contains("Task.FromResult(service."));
+            Assert.Contains("Task.Run", accessBinder);
+            Assert.Contains("SyncPermissionsAsync", permissionBinder);
+            Assert.Contains("Task.Run", permissionService);
+            Assert.Contains("context.CancellationToken", permissionService);
+            Assert.Contains("CancellationToken = callContext.CancellationToken", accessBinder);
+            Assert.Contains("CancellationToken = callContext.CancellationToken", permissionBinder);
+        }
+
         private static void AssertUtf8StringMarshaller(Marshaller<string> marshaller)
         {
             var text = "json-string-\u95e8\u7981";
