@@ -198,6 +198,14 @@ namespace ControlDoor.Database
                 throw new InvalidOperationException("阶段 1 数据库健康检查只允许 SELECT 只读语句。");
             }
 
+            if (trimmed.IndexOf(';') >= 0 ||
+                trimmed.IndexOf("--", StringComparison.Ordinal) >= 0 ||
+                trimmed.IndexOf("/*", StringComparison.Ordinal) >= 0 ||
+                trimmed.IndexOf("*/", StringComparison.Ordinal) >= 0)
+            {
+                throw new InvalidOperationException("Read-only SQL must be a single uncommented SELECT statement.");
+            }
+
             var forbidden = new[] { "INSERT", "UPDATE", "DELETE", "MERGE", "ALTER", "CREATE", "DROP", "TRUNCATE", "EXEC", "EXECUTE" };
             foreach (var keyword in forbidden)
             {

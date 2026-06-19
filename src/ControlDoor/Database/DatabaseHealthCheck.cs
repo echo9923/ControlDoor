@@ -9,7 +9,9 @@ namespace ControlDoor.Database
 
         public DatabaseHealthCheck(IDatabaseClient database)
         {
-            this.database = database ?? throw new ArgumentNullException(nameof(database));
+            this.database = database is ReadOnlyDatabaseClient
+                ? database
+                : new ReadOnlyDatabaseClient(database ?? throw new ArgumentNullException(nameof(database)));
         }
 
         public DatabaseHealthReport Run()
