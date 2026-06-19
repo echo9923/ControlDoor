@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 using ControlDoor.Permissions;
 
 namespace ControlEntradaSalida.Tests
@@ -49,21 +50,28 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void RetryExecutionCoordinator_DeletePersonFaceFailure_StopsBeforeDeletePerson()
+        public static void RetryExecutionCoordinator_DeletePersonFaceFailure_StillDeletesPersonAndWritesWarnLog()
         {
             using (var fixture = new Stage6Fixture())
             {
                 fixture.AddOnlineDevice();
-                fixture.Gateway.ConfigureTimeout("DeleteFaceAsync");
+                fixture.Gateway.ConfigureException("DeleteFaceAsync", new InvalidOperationException("face delete failed"));
                 fixture.Database.QueryRows.Add(Row(id: 2, deviceId: 1, employeeId: "10001", deletePersonPending: true));
 
                 var result = fixture.Manager.RunOnceAsync("stage6-delete-person-face-timeout").GetAwaiter().GetResult();
 
-                Assert.Equal(1, result.Failed);
+                Assert.Equal(1, result.Succeeded);
+                Assert.Equal(0, result.Failed);
                 Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeleteFaceAsync"));
-                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
-                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.ScheduleRetry"));
-                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "DeletePersonAsync"));
+                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.ScheduleRetry"));
+                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
+                var log = fixture.ReadLog();
+                Assert.Contains("level=Warn", log);
+                Assert.Contains("operationName=\"RetryDeleteFaceBeforePerson\"", log);
+                Assert.Contains("employeeId=\"10001\"", log);
+                Assert.Contains("InvalidOperationException", log);
+                Assert.Contains("face delete failed", log);
             }
         }
 

@@ -37,6 +37,7 @@
 | 人员失败 | 人脸不执行，状态保留。 |
 | 人员成功人脸失败 | 人员 pending 清除，人脸 pending 保留并退避。 |
 | 删除人员 pending | 删除人员成功后状态行删除，不执行其他 pending。 |
+| 删除人员 pending 且前置删人脸失败 | 删除人员仍继续执行；成功后状态行删除，Warn 日志可查。 |
 | 队列满 | 状态不丢失，next_retry_at 后移。 |
 | 设备停用 | 标记终态失败。 |
 | 达到最大次数 | 写入 exhausted_at，不再被扫描。 |
@@ -71,6 +72,7 @@
 | 补偿写入日志 | 能看到 requestId、deviceId、employeeId、operation。 |
 | 扫描日志 | 能看到本轮 due、submitted、offlineDeferred。 |
 | 失败日志 | 能看到 attempt、nextRetryAt、lastError。 |
+| 删除人员前置删人脸失败日志 | 能看到 `RetryDeleteFaceBeforePerson`、employeeId、userId、异常类型或 SDK 错误码。 |
 | 终态日志 | 能看到 exhaustedAt 和 terminal code。 |
 | 清理日志 | 能看到删除数量和保留天数。 |
 

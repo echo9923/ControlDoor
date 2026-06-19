@@ -143,7 +143,7 @@ namespace ControlDoor.Permissions
             switch (operation)
             {
                 case RetryOperation.DeletePerson:
-                    await gateway.DeleteFaceAsync(new DeleteFaceRequest { UserId = userId, EmployeeId = state.EmployeeId }, cancellationToken).ConfigureAwait(false);
+                    await DeleteFaceBeforePersonBestEffortAsync(userId, state.EmployeeId, cancellationToken).ConfigureAwait(false);
                     await gateway.DeletePersonAsync(new DeletePersonRequest { UserId = userId, EmployeeId = state.EmployeeId }, cancellationToken).ConfigureAwait(false);
                     return;
                 case RetryOperation.DeleteFace:
@@ -178,6 +178,46 @@ namespace ControlDoor.Permissions
                 default:
                     throw new ArgumentOutOfRangeException(nameof(operation));
             }
+        }
+
+        private async Task DeleteFaceBeforePersonBestEffortAsync(int userId, string employeeId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await gateway.DeleteFaceAsync(new DeleteFaceRequest { UserId = userId, EmployeeId = employeeId }, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger?.Warn("RetryExecution", "删除人员补偿前删除人脸失败，忽略并继续删除人员。", CreateBestEffortDeleteFaceLogFields(userId, employeeId, ex));
+            }
+        }
+
+        private static LogFields CreateBestEffortDeleteFaceLogFields(int userId, string employeeId, Exception ex)
+        {
+            var fields = new LogFields
+            {
+                EmployeeId = employeeId,
+                OperationName = "RetryDeleteFaceBeforePerson",
+                ErrorCode = ResolveErrorCode(ex),
+                Exception = ex == null ? string.Empty : ex.GetType().Name + ": " + ex.Message
+            };
+            fields.Extra["userId"] = userId.ToString();
+            return fields;
+        }
+
+        private static string ResolveErrorCode(Exception ex)
+        {
+            var gatewayEx = ex as DeviceGatewayException;
+            if (gatewayEx != null && gatewayEx.Error != null)
+            {
+                return gatewayEx.Error.Code.ToString();
+            }
+
+            return ex == null ? string.Empty : ex.GetType().Name;
         }
 
         private static DeviceTaskResult MapGatewayException(DeviceSdkTask task, RetryOperation operation, Exception ex, DeviceRuntimeSnapshot snapshot, DateTime started)

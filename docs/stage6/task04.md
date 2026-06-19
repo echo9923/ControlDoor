@@ -30,7 +30,7 @@
 | 4 | 权限同步 | `permission_pending = 1`。 |
 | 5 | 人脸下发 | `face_pending = 1` 且人员下发成功或设备已有人员。 |
 
-删除人员优先级最高。删除人员成功后，不再执行同一行中的其他人员、人脸、权限下发动作。
+删除人员优先级最高。删除人员执行时会先 best-effort 删除同一员工的人脸；前置删人脸失败必须记录 `Warn` 日志，字段至少包含 `operationName=RetryDeleteFaceBeforePerson`、`employeeId`、`userId` 和异常摘要，但不阻断后续删除人员。删除人员成功后，不再执行同一行中的其他人员、人脸、权限下发动作。
 
 ## 设备任务参数
 
@@ -80,6 +80,8 @@
 | 人员成功、人脸失败 | 清除 `person_pending`，保留 `face_pending`。 |
 | 权限成功、人脸失败 | 清除 `permission_pending`，保留 `face_pending`。 |
 | 删除人脸成功 | 清除 `delete_face_pending`。 |
+| 删除人员前置删人脸失败、删除人员成功 | 清除所有该行 pending，并删除状态行；前置失败只通过日志观测。 |
+| 删除人员失败 | 保留删除人员 pending，按失败结果退避或终态。 |
 | 删除人员成功 | 清除所有该行 pending，并删除状态行。 |
 
 部分成功必须回写已经成功的 pending，避免下次重复执行已成功操作。
@@ -97,6 +99,8 @@
 
 权限补偿执行时不再调用设备端 `UserRight/SetUp`。后台任务读取状态行中的 `permission_level` 和可选 `permission_payload`，按当前设备快照 `Description` 识别办公、生产或 Other 区域，计算该员工在本设备上是否启用，然后通过 `UserInfo/SetUp` 的人员写入能力更新 `Valid.enable`、`doorRight` 和 `RightPlan`。旧补偿数据没有 `permission_payload` 或没有姓名时，设备端姓名使用员工号兜底。
 
+删除人员补偿与阶段 5 的在线删除保持同一折中语义：前置删人脸是可观测的 best-effort 步骤，失败只记录日志；只有最终 `DeletePersonAsync` 离线、超时或可重试失败时，才回写删除人员补偿状态。
+
 ## 不做的事
 
 | 不做内容 | 原因 |
@@ -112,6 +116,7 @@
 | --- | --- |
 | 操作顺序 | 删除、人员、权限、人脸顺序固定。 |
 | 删除人员短路 | 删除人员成功后不再执行其他操作。 |
+| 删除人员前置删人脸失败 | 仍执行删除人员，并写入 Warn 日志。 |
 | 部分成功 | 已成功 pending 被清除，失败 pending 保留。 |
 | 队列满 | 状态未丢失并延后重试。 |
 | 优先级 | 补偿任务使用 `Retry` 优先级。 |

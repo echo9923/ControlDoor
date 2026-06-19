@@ -6,6 +6,7 @@ using ControlDoor.Configuration;
 using ControlDoor.Database;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 using ControlDoor.Permissions;
 
 namespace ControlEntradaSalida.Tests
@@ -525,10 +526,14 @@ namespace ControlEntradaSalida.Tests
 
     internal sealed class Stage6Fixture : IDisposable
     {
-        private readonly Stage4Fixture inner = new Stage4Fixture();
+        private readonly string runDirectory = TestWorkspace.Create();
+        private readonly ServiceLogger logger;
+        private readonly Stage4Fixture inner;
 
         public Stage6Fixture()
         {
+            logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" }));
+            inner = new Stage4Fixture(logger);
             Database = new RecordingDatabaseClient();
             Options = new DeviceOperationRetryOptions
             {
@@ -543,8 +548,9 @@ namespace ControlEntradaSalida.Tests
             Manager = new DeviceOperationRetryManager(
                 Store,
                 inner.Registry,
-                new RetryExecutionCoordinator(inner.Dispatcher, inner.Gateway),
-                Options);
+                new RetryExecutionCoordinator(inner.Dispatcher, inner.Gateway, logger),
+                Options,
+                logger);
         }
 
         public RecordingDatabaseClient Database { get; }
@@ -556,6 +562,13 @@ namespace ControlEntradaSalida.Tests
         public DeviceOperationRetryManager Manager { get; }
 
         public MockHikvisionGateway Gateway => inner.Gateway;
+
+        public string ReadLog()
+        {
+            return System.IO.File.Exists(logger.CurrentLogPath)
+                ? System.IO.File.ReadAllText(logger.CurrentLogPath)
+                : string.Empty;
+        }
 
         public void AddOnlineDevice(string description = "测试设备")
         {
@@ -596,6 +609,7 @@ namespace ControlEntradaSalida.Tests
         public void Dispose()
         {
             inner.Dispose();
+            logger.Dispose();
         }
     }
 }
