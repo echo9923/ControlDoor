@@ -66,7 +66,7 @@ namespace ControlDoor.Observability
             fields = fields ?? new LogFields();
             if (exception != null)
             {
-                fields.Exception = exception.GetType().Name + ": " + exception.Message;
+                fields.Exception = exception.ToString();
             }
 
             Write(LogLevel.Error, component, message, fields);
@@ -205,7 +205,12 @@ namespace ControlDoor.Observability
                 return string.Empty;
             }
 
-            return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace(Environment.NewLine, " ") + "\"";
+            return "\"" + value
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\r\n", " ")
+                .Replace("\r", " ")
+                .Replace("\n", " ") + "\"";
         }
     }
 

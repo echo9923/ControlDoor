@@ -9,7 +9,24 @@ namespace ControlDoor.Observability
     public sealed class PayloadLogFormatter
     {
         private static readonly HashSet<string> CredentialFields = new HashSet<string>(
-            new[] { "password", "apiKey", "api_key", "x-api-key", "GrpcManagementApiKey" },
+            new[]
+            {
+                "password",
+                "apiKey",
+                "api_key",
+                "x-api-key",
+                "secret",
+                "token",
+                "accessToken",
+                "access_token",
+                "refreshToken",
+                "refresh_token",
+                "connectionString",
+                "connection_string",
+                "credential",
+                "credentials",
+                "GrpcManagementApiKey"
+            },
             StringComparer.OrdinalIgnoreCase);
 
         private static readonly HashSet<string> FaceImageFields = new HashSet<string>(

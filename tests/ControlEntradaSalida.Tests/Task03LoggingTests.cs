@@ -90,6 +90,43 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void ServiceLogger_Error_WritesFullExceptionToString()
+        {
+            var runDirectory = TestWorkspace.Create();
+            var options = LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" });
+
+            using (var logger = new ServiceLogger(options))
+            {
+                var exception = BuildNestedException();
+
+                logger.Error("Host", "服务启动失败", exception);
+
+                var text = File.ReadAllText(logger.CurrentLogPath);
+                Assert.Contains("InvalidOperationException", text);
+                Assert.Contains("outer failure", text);
+                Assert.Contains("ApplicationException", text);
+                Assert.Contains("inner failure", text);
+                Assert.Contains("BuildNestedException", text);
+            }
+        }
+
+        [TestCase]
+        public static void ServiceLogger_Escape_ReplacesStandaloneCarriageReturnAndLineFeed()
+        {
+            var runDirectory = TestWorkspace.Create();
+            var options = LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" });
+
+            using (var logger = new ServiceLogger(options))
+            {
+                logger.Info("Host", "first\rsecond\nthird\r\nfourth");
+
+                var lines = File.ReadAllLines(logger.CurrentLogPath);
+                Assert.Equal(1, lines.Length);
+                Assert.Contains("message=\"first second third fourth\"", lines[0]);
+            }
+        }
+
+        [TestCase]
         public static void ServiceLogger_RemovesExpiredLogFiles()
         {
             var runDirectory = TestWorkspace.Create();
@@ -161,6 +198,58 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains(@"""password"":""***""", result);
             Assert.Contains("base64Length=6", result);
             Assert.False(result.Contains("abcdef"));
+        }
+
+        [TestCase]
+        public static void PayloadLogFormatter_Full_RedactsCommonCredentialFieldsByDefault()
+        {
+            var formatter = new PayloadLogFormatter();
+
+            var result = formatter.Format(
+                @"{""password"":""p1"",""apiKey"":""a1"",""secret"":""s1"",""token"":""t1"",""accessToken"":""at1"",""refreshToken"":""rt1"",""connectionString"":""cs1"",""credential"":""c1""}",
+                new LogOptions
+                {
+                    EnableGrpcPayloadLogging = true,
+                    GrpcPayloadLogMode = "Full"
+                });
+
+            Assert.Contains(@"""password"":""***""", result);
+            Assert.Contains(@"""apiKey"":""***""", result);
+            Assert.Contains(@"""secret"":""***""", result);
+            Assert.Contains(@"""token"":""***""", result);
+            Assert.Contains(@"""accessToken"":""***""", result);
+            Assert.Contains(@"""refreshToken"":""***""", result);
+            Assert.Contains(@"""connectionString"":""***""", result);
+            Assert.Contains(@"""credential"":""***""", result);
+            Assert.False(result.Contains("p1"));
+            Assert.False(result.Contains("cs1"));
+        }
+
+        [TestCase]
+        public static void LogOptions_FromSettings_DisablesCredentialFieldsByDefault()
+        {
+            var options = LogOptions.FromSettings(TestWorkspace.Create(), new LoggingOptions { LogDirectory = "logs" });
+
+            Assert.False(options.IncludeCredentialFields);
+        }
+
+        private static Exception BuildNestedException()
+        {
+            try
+            {
+                try
+                {
+                    throw new ApplicationException("inner failure");
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException("outer failure", ex);
+                }
+            }
+            catch (Exception ex)
+            {
+                return ex;
+            }
         }
 
         private static int CountOccurrences(string text, string value)

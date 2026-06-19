@@ -18,7 +18,7 @@ namespace ControlDoor.Observability
 
         public string GrpcPayloadLogMode { get; set; } = "Summary";
 
-        public bool IncludeCredentialFields { get; set; } = true;
+        public bool IncludeCredentialFields { get; set; }
 
         public bool IncludeFaceImageBase64 { get; set; }
 
