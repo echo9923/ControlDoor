@@ -28,16 +28,17 @@ namespace ControlEntradaSalida.Tests
                 DateTime now = t0.AddSeconds(6);
                 for (var i = 2; i <= 8; i++)
                 {
+                    now = activity.RestoreNextRetryAt.Value;
                     var retry = fixture.Service.ProcessRestoreRetries(now);
                     Assert.Equal(1, retry.RetriesProcessed);
                     Assert.True(fixture.TargetManager.TryGetActivity("10:1", out activity), "活动门目标必须保留，不能因重试次数转终态。");
                     Assert.Equal(i, activity.PendingRestoreAttempt);
                     Assert.True(activity.RestoreNextRetryAt.HasValue, "可重试错误必须始终排下一次重试，不得有最大次数限制。");
-                    now = now.AddSeconds(1);
                 }
 
                 // 设备恢复在线，下一次重试应成功，并清除门目标活动。
                 fixture.Gateway.ConfigureResult<GateControlResponse>("ControlGatewayAsync", new GateControlResponse { Success = true, Code = "OK", Message = "ok", GateIndex = 1, Command = GateControlCommand.Restore });
+                now = activity.RestoreNextRetryAt.Value;
                 var successRetry = fixture.Service.ProcessRestoreRetries(now);
                 Assert.Equal(1, successRetry.RetriesProcessed);
                 Assert.False(fixture.TargetManager.TryGetActivity("10:1", out var cleared), "恢复成功应清除门目标活动。");
@@ -64,6 +65,29 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void Stage9RestoreRetry_NonRetryableError_IsTerminalAndExcludedFromStopRestore()
+        {
+            using (var fixture = new Stage9Fixture(windowSeconds: 5, restoreRetryIntervalMs: 1000))
+            {
+                fixture.Gateway.ConfigureException("ControlGatewayAsync", new DeviceGatewayException("ControlGateway", SdkError.FromCode(4, "invalid door")));
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                fixture.Service.ExpireWindows(t0.AddSeconds(5));
+
+                Assert.True(fixture.TargetManager.TryGetActivity("10:1", out var activity));
+                Assert.True(activity.RestoreTerminalFailed, "non-retryable restore failure must be explicit terminal state.");
+
+                var beforeStopRestoreCount = fixture.Gateway.Calls.Count;
+                var result = fixture.Service.RestoreActiveTargetsBestEffort(TimeSpan.FromSeconds(5));
+
+                Assert.Equal(0, result.Total);
+                Assert.Equal(beforeStopRestoreCount, fixture.Gateway.Calls.Count);
+            }
+        }
+
+        [TestCase]
         public static void Stage9RestoreRetry_RetrySucceeds_ClearsPendingState()
         {
             using (var fixture = new Stage9Fixture(windowSeconds: 5, restoreRetryIntervalMs: 1000))
@@ -82,6 +106,30 @@ namespace ControlEntradaSalida.Tests
 
                 Assert.Equal(1, retry.RetriesProcessed);
                 Assert.False(fixture.TargetManager.TryGetActivity("10:1", out var cleared), "恢复成功应清除门目标活动。");
+            }
+        }
+
+        [TestCase]
+        public static void Stage9RestoreRetry_RetryableFailure_UsesBackoffDelay()
+        {
+            using (var fixture = new Stage9Fixture(windowSeconds: 5, restoreRetryIntervalMs: 1000))
+            {
+                fixture.Gateway.ConfigureException("ControlGatewayAsync", new DeviceGatewayException("ControlGateway", SdkError.FromCode(7, "busy")));
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                fixture.Service.ExpireWindows(t0.AddSeconds(5));
+
+                Assert.True(fixture.TargetManager.TryGetActivity("10:1", out var firstFailure));
+                var firstRetryAt = firstFailure.RestoreNextRetryAt.Value;
+
+                fixture.Service.ProcessRestoreRetries(firstRetryAt);
+
+                Assert.True(fixture.TargetManager.TryGetActivity("10:1", out var secondFailure));
+                Assert.True(
+                    secondFailure.RestoreNextRetryAt.Value >= firstRetryAt.AddSeconds(2),
+                    "second retry should back off beyond the fixed first retry interval.");
             }
         }
     }

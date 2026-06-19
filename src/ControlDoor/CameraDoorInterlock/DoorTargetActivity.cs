@@ -32,6 +32,8 @@ namespace ControlDoor.CameraDoorInterlock
 
         public DateTime? RestoreNextRetryAt { get; set; }
 
+        public bool RestoreTerminalFailed { get; set; }
+
         public bool IsActive => ActiveCameraKeys.Count > 0;
     }
 }

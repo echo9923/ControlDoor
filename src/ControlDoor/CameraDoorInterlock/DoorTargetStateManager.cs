@@ -46,6 +46,7 @@ namespace ControlDoor.CameraDoorInterlock
                     activity.RestoreSubmittedAt = null;
                     activity.PendingRestoreAttempt = null;
                     activity.RestoreNextRetryAt = null;
+                    activity.RestoreTerminalFailed = false;
                 }
                 else if (string.IsNullOrWhiteSpace(activity.InterlockId) && !string.IsNullOrWhiteSpace(interlockId))
                 {
@@ -112,6 +113,7 @@ namespace ControlDoor.CameraDoorInterlock
                 activity.RestoreSubmittedAt = now;
                 activity.PendingRestoreAttempt = null;
                 activity.RestoreNextRetryAt = null;
+                activity.RestoreTerminalFailed = false;
                 if (activity.ActiveCameraKeys.Count == 0)
                 {
                     activitiesByKey.Remove(targetKey);
@@ -132,6 +134,7 @@ namespace ControlDoor.CameraDoorInterlock
                 activity.RestoreSubmittedAt = now;
                 activity.PendingRestoreAttempt = attempt;
                 activity.RestoreNextRetryAt = nextRetryAt;
+                activity.RestoreTerminalFailed = !nextRetryAt.HasValue;
             }
         }
 
@@ -140,7 +143,7 @@ namespace ControlDoor.CameraDoorInterlock
             lock (gate)
             {
                 return activitiesByKey.Values
-                    .Where(a => a.PendingRestoreAttempt.HasValue && a.RestoreNextRetryAt.HasValue && a.RestoreNextRetryAt.Value <= now)
+                    .Where(a => !a.RestoreTerminalFailed && a.PendingRestoreAttempt.HasValue && a.RestoreNextRetryAt.HasValue && a.RestoreNextRetryAt.Value <= now)
                     .ToList();
             }
         }
@@ -149,7 +152,7 @@ namespace ControlDoor.CameraDoorInterlock
         {
             lock (gate)
             {
-                return activitiesByKey.Values.ToList();
+                return activitiesByKey.Values.Where(a => !a.RestoreTerminalFailed).ToList();
             }
         }
 

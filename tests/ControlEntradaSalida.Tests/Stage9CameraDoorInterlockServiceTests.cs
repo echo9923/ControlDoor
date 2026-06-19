@@ -206,6 +206,28 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void Stage9Service_StopBestEffortRestore_HonorsTimeoutAndReportsUnfinished()
+        {
+            using (var fixture = new Stage9Fixture())
+            {
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                fixture.SpinForControlGatewayCalls(1);
+                fixture.Gateway.ConfigureDelay("ControlGatewayAsync", TimeSpan.FromSeconds(2));
+
+                var startedAt = DateTime.UtcNow;
+                var result = fixture.Service.RestoreActiveTargetsBestEffort(TimeSpan.FromMilliseconds(100));
+                var elapsed = DateTime.UtcNow - startedAt;
+
+                Assert.True(elapsed < TimeSpan.FromSeconds(1), "best-effort restore must return when timeout expires.");
+                Assert.Equal(1, result.Total);
+                Assert.Equal(1, result.Unfinished);
+                Assert.Equal(0, result.Succeeded);
+            }
+        }
+
+        [TestCase]
         public static void Stage9Service_RestorePriority_CriticalHigherThanAlwaysClose()
         {
             using (var fixture = new Stage9Fixture())
@@ -239,6 +261,43 @@ namespace ControlEntradaSalida.Tests
                 Assert.Contains("level=Warn", text);
                 Assert.Contains("CameraDoorInterlockDispose", text);
                 Assert.Contains("loop exploded", text);
+            }
+        }
+
+        [TestCase]
+        public static void Stage9Service_TryEnqueueDuringDispose_DoesNotThrowFromCallbackThread()
+        {
+            using (var fixture = new Stage9Fixture())
+            {
+                fixture.Service.Dispose();
+
+                Exception callbackException = null;
+                AiopAlarmEnqueueResult result = null;
+                var callback = new Thread(() =>
+                {
+                    try
+                    {
+                        result = fixture.Service.TryEnqueue(new RawAiopAlarmEvent
+                        {
+                            CameraKey = fixture.CameraIp,
+                            CameraIp = fixture.CameraIp,
+                            Command = AiopAlarmEventRouter.CommUploadAiopVideo,
+                            RawPayload = new byte[0]
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        callbackException = ex;
+                    }
+                });
+
+                callback.Start();
+                callback.Join();
+
+                Assert.Equal(null, callbackException);
+                Assert.NotNull(result);
+                Assert.False(result.Accepted);
+                Assert.Equal("DISPOSED", result.Code);
             }
         }
 

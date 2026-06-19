@@ -99,7 +99,9 @@ namespace ControlEntradaSalida.Tests
             manager.RecordRestoreFailure("10:1", 3, null, now);
 
             Assert.Equal(0, manager.GetDueRestoreRetries(now.AddDays(1)).Count);
-            Assert.Equal(1, manager.GetOutstandingTargets().Count);
+            Assert.True(manager.TryGetActivity("10:1", out var activity));
+            Assert.True(activity.RestoreTerminalFailed);
+            Assert.Equal(0, manager.GetOutstandingTargets().Count);
         }
 
         [TestCase]

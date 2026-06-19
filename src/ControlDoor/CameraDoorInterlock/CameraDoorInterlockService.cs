@@ -155,22 +155,37 @@ namespace ControlDoor.CameraDoorInterlock
         {
             if (alarmEvent == null)
             {
-                return AiopAlarmEnqueueResult.Rejected("INVALID_ARGUMENT", "alarm event is required", 0, queue.BoundedCapacity);
+                return AiopAlarmEnqueueResult.Rejected("INVALID_ARGUMENT", "alarm event is required", 0, SafeQueueCapacity());
             }
 
             if (disabled)
             {
-                return AiopAlarmEnqueueResult.Rejected("DISABLED", "camera door interlock is disabled", queue.Count, queue.BoundedCapacity);
+                return AiopAlarmEnqueueResult.Rejected("DISABLED", "camera door interlock is disabled", SafeQueueDepth(), SafeQueueCapacity());
             }
 
             if (disposed)
             {
-                return AiopAlarmEnqueueResult.Rejected("DISPOSED", "camera door interlock service is disposed", queue.Count, queue.BoundedCapacity);
+                return AiopAlarmEnqueueResult.Rejected("DISPOSED", "camera door interlock service is disposed", 0, 0);
             }
 
-            if (queue.TryAdd(alarmEvent, 0))
+            lock (gate)
             {
-                return AiopAlarmEnqueueResult.AcceptedResult(queue.Count, queue.BoundedCapacity);
+                if (disposed)
+                {
+                    return AiopAlarmEnqueueResult.Rejected("DISPOSED", "camera door interlock service is disposed", 0, 0);
+                }
+
+                try
+                {
+                    if (queue.TryAdd(alarmEvent, 0))
+                    {
+                        return AiopAlarmEnqueueResult.AcceptedResult(queue.Count, queue.BoundedCapacity);
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    return AiopAlarmEnqueueResult.Rejected("DISPOSED", "camera door interlock service is disposed", 0, 0);
+                }
             }
 
             logger?.Warn("CameraDoorInterlock", "AIOP 报警队列已满，丢弃事件。", new LogFields
@@ -179,10 +194,10 @@ namespace ControlDoor.CameraDoorInterlock
                 {
                     ["cameraKey"] = alarmEvent.CameraKey ?? string.Empty,
                     ["cameraIp"] = alarmEvent.CameraIp ?? string.Empty,
-                    ["queueDepth"] = queue.Count.ToString()
+                    ["queueDepth"] = SafeQueueDepth().ToString()
                 }
             });
-            return AiopAlarmEnqueueResult.Rejected("QUEUE_FULL", "AIOP alarm queue is full", queue.Count, queue.BoundedCapacity);
+            return AiopAlarmEnqueueResult.Rejected("QUEUE_FULL", "AIOP alarm queue is full", SafeQueueDepth(), SafeQueueCapacity());
         }
 
         /// <summary>消费队列中的 AIOP 报警：解析载荷、开窗、对新增活动门目标投递常闭任务。</summary>
@@ -618,7 +633,7 @@ namespace ControlDoor.CameraDoorInterlock
             if (retryable)
             {
                 var nextAttempt = attempt + 1;
-                var nextRetryAt = now.AddMilliseconds(Math.Max(100, options.RestoreRetryIntervalMs));
+                var nextRetryAt = now.AddMilliseconds(CalculateRestoreRetryDelayMilliseconds(nextAttempt));
                 targetManager.RecordRestoreFailure(activity.TargetKey, nextAttempt, nextRetryAt, now);
                 logger?.Info("CameraDoorInterlock", "恢复失败将持续重试直至成功。", new LogFields
                 {
@@ -661,6 +676,14 @@ namespace ControlDoor.CameraDoorInterlock
             }
         }
 
+        private int CalculateRestoreRetryDelayMilliseconds(int nextAttempt)
+        {
+            var initial = Math.Max(1000, options.RestoreRetryIntervalMs);
+            var exponent = Math.Max(0, Math.Min(6, nextAttempt - 1));
+            var delay = (long)initial * (1 << exponent);
+            return (int)Math.Min(delay, 60000);
+        }
+
         /// <summary>服务停止时对活动门目标 best-effort 恢复（task05）。</summary>
         public RestoreActiveTargetsBestEffortResult RestoreActiveTargetsBestEffort(TimeSpan timeout)
         {
@@ -678,10 +701,11 @@ namespace ControlDoor.CameraDoorInterlock
                 return result;
             }
 
-            var deadline = nowForBestEffort().Add(timeout);
+            var deadlineUtc = DateTime.UtcNow.Add(timeout <= TimeSpan.Zero ? TimeSpan.Zero : timeout);
             foreach (var activity in outstanding)
             {
-                if (nowForBestEffort() >= deadline)
+                var remaining = deadlineUtc - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero)
                 {
                     result.Unfinished++;
                     continue;
@@ -690,8 +714,12 @@ namespace ControlDoor.CameraDoorInterlock
                 try
                 {
                     var task = taskFactory.CreateRestore(activity.DoorDeviceId, activity.DoorNo, activity.TargetKey, "restore-stop-" + Guid.NewGuid().ToString("N"), 0);
-                    var taskResult = dispatcher.SubmitAndWaitAsync(task, CancellationToken.None).GetAwaiter().GetResult();
-                    if (taskResult != null && taskResult.Success)
+                    var taskResult = SubmitBestEffortRestore(task, remaining);
+                    if (IsBestEffortRestoreUnfinished(taskResult))
+                    {
+                        result.Unfinished++;
+                    }
+                    else if (taskResult != null && taskResult.Success)
                     {
                         result.Succeeded++;
                         targetManager.MarkRestoreSucceeded(activity.TargetKey, nowForBestEffort());
@@ -710,6 +738,10 @@ namespace ControlDoor.CameraDoorInterlock
                             }
                         });
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    result.Unfinished++;
                 }
                 catch (Exception ex)
                 {
@@ -740,9 +772,71 @@ namespace ControlDoor.CameraDoorInterlock
             return result;
         }
 
+        private Devices.Tasks.DeviceTaskResult SubmitBestEffortRestore(Devices.Tasks.DeviceSdkTask task, TimeSpan remaining)
+        {
+            var waitMilliseconds = ToPositiveMilliseconds(remaining);
+            if (waitMilliseconds <= 0)
+            {
+                return Devices.Tasks.DeviceTaskResult.Timeout(task, "Stop restore wait timed out before task submission.");
+            }
+
+            task.TimeoutMilliseconds = waitMilliseconds;
+            using (var cancellation = new CancellationTokenSource())
+            {
+                cancellation.CancelAfter(waitMilliseconds);
+                return dispatcher.SubmitAndWaitAsync(task, cancellation.Token).GetAwaiter().GetResult();
+            }
+        }
+
+        private static bool IsBestEffortRestoreUnfinished(Devices.Tasks.DeviceTaskResult result)
+        {
+            return result == null ||
+                string.Equals(result.Code, "CANCELLED", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(result.Code, "TIMEOUT", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int ToPositiveMilliseconds(TimeSpan remaining)
+        {
+            if (remaining <= TimeSpan.Zero)
+            {
+                return 0;
+            }
+
+            if (remaining.TotalMilliseconds >= int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            return Math.Max(1, (int)Math.Ceiling(remaining.TotalMilliseconds));
+        }
+
         private DateTime nowForBestEffort()
         {
             return clock();
+        }
+
+        private int SafeQueueCapacity()
+        {
+            try
+            {
+                return queue.BoundedCapacity;
+            }
+            catch (ObjectDisposedException)
+            {
+                return 0;
+            }
+        }
+
+        private int SafeQueueDepth()
+        {
+            try
+            {
+                return queue.Count;
+            }
+            catch (ObjectDisposedException)
+            {
+                return 0;
+            }
         }
 
         private static string RestoreRequestId(DoorTargetActivity activity)
