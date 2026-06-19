@@ -657,12 +657,54 @@ namespace ControlDoor.CameraDoorInterlock
 
             if (stopSource != null)
             {
-                try { stopSource.Cancel(); } catch { }
+                try
+                {
+                    stopSource.Cancel();
+                }
+                catch (Exception ex)
+                {
+                    logger?.Warn("CameraDoorInterlockDispose", "停止阶段 9 后台扫描取消令牌失败，已忽略并继续清理。", new LogFields
+                    {
+                        OperationName = "DisposeCancel",
+                        Exception = ex.GetType().Name + ": " + ex.Message,
+                        ErrorCode = ex.GetType().Name
+                    });
+                }
             }
 
             if (loopTask != null)
             {
-                try { Task.WhenAny(loopTask, Task.Delay(TimeSpan.FromSeconds(2))).GetAwaiter().GetResult(); } catch { }
+                try
+                {
+                    Task.WhenAny(loopTask, Task.Delay(TimeSpan.FromSeconds(2))).GetAwaiter().GetResult();
+                    if (loopTask.IsFaulted && loopTask.Exception != null)
+                    {
+                        logger?.Warn("CameraDoorInterlockDispose", "阶段 9 后台扫描循环已异常结束。", new LogFields
+                        {
+                            OperationName = "DisposeWaitLoop",
+                            Exception = loopTask.Exception.GetBaseException().GetType().Name + ": " + loopTask.Exception.GetBaseException().Message,
+                            ErrorCode = loopTask.Exception.GetBaseException().GetType().Name
+                        });
+                    }
+                    else if (loopTask.IsCompleted && !string.IsNullOrWhiteSpace(status.LastError))
+                    {
+                        logger?.Warn("CameraDoorInterlockDispose", "阶段 9 后台扫描循环已带错误状态结束。", new LogFields
+                        {
+                            OperationName = "DisposeWaitLoop",
+                            Exception = status.LastError,
+                            ErrorCode = "LoopFailed"
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.Warn("CameraDoorInterlockDispose", "等待阶段 9 后台扫描循环停止失败，已忽略并继续清理。", new LogFields
+                    {
+                        OperationName = "DisposeWaitLoop",
+                        Exception = ex.GetType().Name + ": " + ex.Message,
+                        ErrorCode = ex.GetType().Name
+                    });
+                }
             }
 
             queue.CompleteAdding();

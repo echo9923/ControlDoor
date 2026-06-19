@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using ControlDoor.CameraDoorInterlock;
 using ControlDoor.Configuration;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 
 namespace ControlEntradaSalida.Tests
 {
@@ -219,6 +221,27 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+        [TestCase]
+        public static void Stage9Service_DisposeLoopWaitFailure_WritesWarnLog()
+        {
+            var runDirectory = TestWorkspace.Create();
+            using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" })))
+            using (var fixture = new Stage9Fixture(
+                clock: () => { throw new InvalidOperationException("loop exploded"); },
+                logger: logger))
+            {
+                fixture.Service.StartAsync(new ControlDoor.Runtime.BackgroundTaskContext("stage9-dispose-fault", CancellationToken.None, logger)).GetAwaiter().GetResult();
+                SpinUntil(() => fixture.Service.GetStatus().LastError != null, "loop fault was not observed.");
+
+                fixture.Service.Dispose();
+
+                var text = System.IO.File.ReadAllText(logger.CurrentLogPath);
+                Assert.Contains("level=Warn", text);
+                Assert.Contains("CameraDoorInterlockDispose", text);
+                Assert.Contains("loop exploded", text);
+            }
+        }
+
         private static GateControlRequest AlwaysCloseRequest(Stage9Fixture fixture)
         {
             return fixture.Gateway.Calls
@@ -248,6 +271,22 @@ namespace ControlEntradaSalida.Tests
         private static int RestoreCount(Stage9Fixture fixture)
         {
             return fixture.Gateway.Calls.Count(c => CommandOf(c) == GateControlCommand.Restore);
+        }
+
+        private static void SpinUntil(Func<bool> condition, string failureMessage)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(2);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (condition())
+                {
+                    return;
+                }
+
+                System.Threading.Thread.Sleep(5);
+            }
+
+            Assert.True(false, failureMessage);
         }
 
         private static byte[] BuildAiopBuffer(string json)

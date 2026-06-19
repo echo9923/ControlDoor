@@ -4,6 +4,7 @@ using System.Threading;
 using ControlDoor.CameraDoorInterlock;
 using ControlDoor.Configuration;
 using ControlDoor.Hikvision;
+using ControlDoor.Observability;
 
 namespace ControlEntradaSalida.Tests
 {
@@ -20,9 +21,10 @@ namespace ControlEntradaSalida.Tests
             Func<DateTime> clock = null,
             string secondCameraIp = null,
             int[] doorNos = null,
-            bool enabled = true)
+            bool enabled = true,
+            ServiceLogger logger = null)
         {
-            inner = new Stage4Fixture();
+            inner = new Stage4Fixture(logger);
             DoorDeviceId = doorDeviceId;
             DoorIp = doorIp;
             CameraIp = cameraIp;
@@ -62,10 +64,10 @@ namespace ControlEntradaSalida.Tests
                 Mappings = mappings
             };
 
-            Resolver = new InterlockMappingResolver(Options, inner.Registry);
+            Resolver = new InterlockMappingResolver(Options, inner.Registry, logger);
             WindowManager = new CameraAlarmWindowManager(Options.WindowSeconds);
             TargetManager = new DoorTargetStateManager();
-            TaskFactory = new DoorControlTaskFactory(inner.Gateway);
+            TaskFactory = new DoorControlTaskFactory(inner.Gateway, logger);
             Service = new CameraDoorInterlockService(
                 Options,
                 Resolver,
@@ -75,8 +77,9 @@ namespace ControlEntradaSalida.Tests
                 TaskFactory,
                 inner.Dispatcher,
                 clock,
+                logger,
                 scanIntervalMs: 15);
-            Router = new AiopAlarmEventRouter(inner.Registry, Service, Options, Resolver);
+            Router = new AiopAlarmEventRouter(inner.Registry, Service, Options, Resolver, logger);
             Router.Attach(inner.Gateway);
         }
 

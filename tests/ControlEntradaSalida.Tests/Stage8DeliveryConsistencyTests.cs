@@ -90,6 +90,17 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void Stage8Delivery_RestoreProps_EnableStaticGraphRestore()
+        {
+            foreach (var path in new[] { "Directory.Build.props", "Directory.Solution.props" })
+            {
+                var props = File.ReadAllText(path, Encoding.UTF8);
+
+                Assert.Contains("<RestoreUseStaticGraphEvaluation>true</RestoreUseStaticGraphEvaluation>", props);
+            }
+        }
+
+        [TestCase]
         public static void Stage8Delivery_AgentsDirectoryReferencesEveryStage8TaskAndPackageTemplate()
         {
             var agents = File.ReadAllText("AGENTS.md", Encoding.UTF8);
