@@ -117,6 +117,29 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceLifecycle_DisarmDeviceAlarm_CloseAlarmFails_PreservesAlarmHandleAndManualFlag()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var originalHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(17, "close failed")));
+
+                var disarm = fixture.Lifecycle.DisarmDeviceAlarm(1, "req-disarm-fail");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(disarm.Success);
+                Assert.Equal("SDK_ERROR", disarm.Code);
+                Assert.Equal(originalHandle, snapshot.AlarmHandle.Value);
+                Assert.False(snapshot.AlarmManuallyDisarmed);
+                Assert.Equal("SDK_ERROR", snapshot.LastErrorCode);
+            }
+        }
+
+        [TestCase]
         public static void DeviceLifecycle_DisarmDeviceAlarm_IsIdempotentWhenAlreadyDisarmed()
         {
             using (var fixture = new Stage4Fixture())
@@ -161,6 +184,30 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(DeviceConnectionStatus.Online, snapshot.Status);
                 Assert.True(closeIndex >= 0);
                 Assert.True(lastSetIndex > closeIndex);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_RearmDeviceAlarmForce_CloseOldAlarmFails_DoesNotSetNewAlarm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var originalHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
+                var setCount = fixture.Gateway.Calls.Count(call => call.MethodName == "SetAlarmAsync");
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(17, "close failed")));
+
+                var rearm = fixture.Lifecycle.RearmDeviceAlarm(1, force: true, requestId: "req-rearm-fail");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(rearm.Success);
+                Assert.Equal("SDK_ERROR", rearm.Code);
+                Assert.Equal(originalHandle, snapshot.AlarmHandle.Value);
+                Assert.False(snapshot.AlarmManuallyDisarmed);
+                Assert.Equal(setCount, fixture.Gateway.Calls.Count(call => call.MethodName == "SetAlarmAsync"));
             }
         }
 

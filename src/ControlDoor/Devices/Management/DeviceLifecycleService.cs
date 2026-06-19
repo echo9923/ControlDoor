@@ -765,6 +765,15 @@ namespace ControlDoor.Devices.Management
                 try
                 {
                     await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = snapshot.AlarmHandle.Value }, context.CancellationToken).ConfigureAwait(false);
+                    if (manuallyDisarmed)
+                    {
+                        context.Registry.MarkAlarmManuallyDisarmed(deviceId, DateTime.Now);
+                    }
+                    else
+                    {
+                        context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
+                    }
+
                     LogLifecycleSuccess(context, "设备撤防成功。", started, fields =>
                     {
                         fields.Extra["alarmHandle"] = snapshot.AlarmHandle.Value.ToString();
@@ -774,17 +783,6 @@ namespace ControlDoor.Devices.Management
                 {
                     lastError = ToRuntimeError("DeviceCloseAlarm", ex, DateTime.Now, retryable: false);
                     context.Registry.RecordError(deviceId, lastError, DateTime.Now, snapshot.Status);
-                }
-                finally
-                {
-                    if (manuallyDisarmed)
-                    {
-                        context.Registry.MarkAlarmManuallyDisarmed(deviceId, DateTime.Now);
-                    }
-                    else
-                    {
-                        context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
-                    }
                 }
 
                 var success = lastError == null;
