@@ -15,7 +15,7 @@ namespace ControlDoor.CameraDoorInterlock
         private readonly Dictionary<string, DoorTargetActivity> activitiesByKey =
             new Dictionary<string, DoorTargetActivity>(StringComparer.OrdinalIgnoreCase);
 
-        public DoorTargetChange OnCameraWindowOpened(string cameraKey, DoorTarget target, DateTime now)
+        public DoorTargetChange OnCameraWindowOpened(string cameraKey, DoorTarget target, DateTime now, string interlockId = null)
         {
             if (target == null)
             {
@@ -41,10 +41,15 @@ namespace ControlDoor.CameraDoorInterlock
                 activity.ActiveCameraKeys.Add(cameraKey ?? string.Empty);
                 if (wasEmpty)
                 {
+                    activity.InterlockId = interlockId ?? string.Empty;
                     activity.AlwaysCloseSubmittedAt = now;
                     activity.RestoreSubmittedAt = null;
                     activity.PendingRestoreAttempt = null;
                     activity.RestoreNextRetryAt = null;
+                }
+                else if (string.IsNullOrWhiteSpace(activity.InterlockId) && !string.IsNullOrWhiteSpace(interlockId))
+                {
+                    activity.InterlockId = interlockId;
                 }
 
                 return new DoorTargetChange

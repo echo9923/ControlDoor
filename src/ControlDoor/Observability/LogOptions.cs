@@ -10,6 +10,10 @@ namespace ControlDoor.Observability
 
         public int RetentionDays { get; set; } = 30;
 
+        public LogLevel MinimumLevel { get; set; } = LogLevel.Info;
+
+        public int SlowOperationThresholdMs { get; set; } = 1000;
+
         public bool EnableGrpcPayloadLogging { get; set; }
 
         public string GrpcPayloadLogMode { get; set; } = "Summary";
@@ -40,6 +44,8 @@ namespace ControlDoor.Observability
             {
                 LogDirectory = directory,
                 RetentionDays = options.RetentionDays < 1 ? 30 : options.RetentionDays,
+                MinimumLevel = LogLevelParser.ParseOrDefault(options.MinimumLevel, LogLevel.Info),
+                SlowOperationThresholdMs = options.SlowOperationThresholdMs < 1 ? 1000 : options.SlowOperationThresholdMs,
                 EnableGrpcPayloadLogging = options.EnableGrpcPayloadLogging,
                 GrpcPayloadLogMode = options.GrpcPayloadLogMode,
                 IncludeCredentialFields = options.IncludeCredentialFields,

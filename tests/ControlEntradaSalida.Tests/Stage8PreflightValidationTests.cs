@@ -4,6 +4,7 @@ using System.Threading;
 using System.Collections.Generic;
 using ControlDoor.Configuration;
 using ControlDoor.Database;
+using ControlDoor.Observability;
 using ControlDoor.Runtime.Health;
 using ControlDoor.Runtime.Health.Checks;
 
@@ -117,6 +118,62 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void HealthCheckService_Run_WritesDetailWithoutDuplicateMessageField()
+        {
+            var runDirectory = TestWorkspace.Create();
+            Directory.CreateDirectory(Path.Combine(runDirectory, "Configuration"));
+            File.WriteAllText(Path.Combine(runDirectory, "Configuration", "appsettings.json"), "{}");
+            var settings = NewSettings();
+            using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, settings.Logging)))
+            {
+                var service = new HealthCheckService(new IHealthCheck[] { new ConfigurationFileHealthCheck() });
+
+                service.Run(new HealthCheckContext(runDirectory, settings, logger, CancellationToken.None));
+
+                var text = File.ReadAllText(logger.CurrentLogPath);
+                Assert.Equal(1, CountOccurrences(text, "message="));
+                Assert.Contains("detail=", text);
+            }
+        }
+
+        [TestCase]
+        public static void HealthCheckService_Run_SlowCheckWritesWarnWithThreshold()
+        {
+            var runDirectory = TestWorkspace.Create();
+            var settings = NewSettings();
+            settings.Logging.SlowOperationThresholdMs = 1;
+            using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, settings.Logging)))
+            {
+                var service = new HealthCheckService(new IHealthCheck[] { new SlowHealthCheck() });
+
+                service.Run(new HealthCheckContext(runDirectory, settings, logger, CancellationToken.None));
+
+                var text = File.ReadAllText(logger.CurrentLogPath);
+                Assert.Contains("level=Warn", text);
+                Assert.Contains("thresholdMs=\"1\"", text);
+                Assert.Contains("detail=", text);
+            }
+        }
+
+        [TestCase]
+        public static void DatabaseHealthCheckItem_ConnectionFailure_StopsAfterConnectionTest()
+        {
+            var database = new RecordingDatabaseClient
+            {
+                FailOperationName = "ConnectionTest",
+                FailSqlErrorNumber = 18456
+            };
+            var check = new DatabaseHealthCheckItem(database);
+
+            var result = check.Run(NewContext(TestWorkspace.Create()));
+
+            Assert.Equal(HealthCheckStatus.Failed, result.Status);
+            Assert.Equal(1, database.Commands.Count);
+            Assert.Equal("ConnectionTest", database.Commands[0].OperationName);
+            Assert.Contains("18456", result.Message);
+        }
+
+        [TestCase]
         public static void ConfigurationValidator_HikvisionSdkOptions_NormalizeDefaults()
         {
             var settings = NewSettings();
@@ -147,6 +204,30 @@ namespace ControlEntradaSalida.Tests
                 FaceEventLogging = new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots", Enabled = true },
                 HikvisionSdk = new HikvisionSdkOptions { DllDirectory = "sdk\\Hikvision", SdkLogDirectory = "logs\\sdk" }
             };
+        }
+
+        private static int CountOccurrences(string text, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = text.IndexOf(value, index, System.StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
+        }
+
+        private sealed class SlowHealthCheck : IHealthCheck
+        {
+            public string Name => "SlowHealthCheck";
+
+            public HealthCheckResult Run(HealthCheckContext context)
+            {
+                Thread.Sleep(5);
+                return HealthCheckResult.Ok(Name, "slow ok");
+            }
         }
     }
 }

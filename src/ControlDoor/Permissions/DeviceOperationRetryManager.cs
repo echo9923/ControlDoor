@@ -191,27 +191,48 @@ namespace ControlDoor.Permissions
                 stopwatch.Stop();
                 result.ElapsedMs = stopwatch.ElapsedMilliseconds;
                 status.Heartbeat();
-                logger?.Info("DeviceOperationRetry", "补偿扫描完成。", new LogFields
+                if (HasObservableRetryScanWork(result))
                 {
-                    RequestId = result.RequestId,
-                    OperationName = "ScanRetryStates",
-                    ElapsedMs = result.ElapsedMs,
-                    Extra =
+                    logger?.Info("DeviceOperationRetry", "补偿扫描完成。", new LogFields
                     {
-                        ["due"] = result.Due.ToString(),
-                        ["submitted"] = result.Submitted.ToString(),
-                        ["offlineDeferred"] = result.OfflineDeferred.ToString(),
-                        ["inFlightSkipped"] = result.InFlightSkipped.ToString(),
-                        ["succeeded"] = result.Succeeded.ToString(),
-                        ["failed"] = result.Failed.ToString(),
-                        ["terminal"] = result.Terminal.ToString(),
-                        ["emptyDeleted"] = result.EmptyDeleted.ToString(),
-                        ["cleanupDeleted"] = result.CleanupDeleted.ToString()
-                    }
-                });
+                        RequestId = result.RequestId,
+                        OperationName = "ScanRetryStates",
+                        ElapsedMs = result.ElapsedMs,
+                        Extra =
+                        {
+                            ["due"] = result.Due.ToString(),
+                            ["submitted"] = result.Submitted.ToString(),
+                            ["offlineDeferred"] = result.OfflineDeferred.ToString(),
+                            ["inFlightSkipped"] = result.InFlightSkipped.ToString(),
+                            ["succeeded"] = result.Succeeded.ToString(),
+                            ["failed"] = result.Failed.ToString(),
+                            ["terminal"] = result.Terminal.ToString(),
+                            ["emptyDeleted"] = result.EmptyDeleted.ToString(),
+                            ["cleanupDeleted"] = result.CleanupDeleted.ToString()
+                        }
+                    });
+                }
             }
 
             return result;
+        }
+
+        private static bool HasObservableRetryScanWork(DeviceOperationRetryScanResult result)
+        {
+            if (result == null)
+            {
+                return false;
+            }
+
+            return result.Due != 0 ||
+                result.Submitted != 0 ||
+                result.OfflineDeferred != 0 ||
+                result.InFlightSkipped != 0 ||
+                result.Succeeded != 0 ||
+                result.Failed != 0 ||
+                result.Terminal != 0 ||
+                result.EmptyDeleted != 0 ||
+                result.CleanupDeleted != 0;
         }
 
         private async Task ProcessStateAsync(DeviceOperationRetryState state, DeviceOperationRetryScanResult scan, DateTime now, CancellationToken cancellationToken)

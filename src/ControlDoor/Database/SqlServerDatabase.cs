@@ -106,11 +106,23 @@ namespace ControlDoor.Database
                 }
 
                 record.ElapsedMs = stopwatch.ElapsedMilliseconds;
-                logger?.Info("Database", "数据库只读命令执行成功。", new LogFields
+                if (logger == null || !logger.IsSlowOperation(record.ElapsedMs))
                 {
-                    OperationName = operationName,
-                    ElapsedMs = record.ElapsedMs
-                });
+                    logger?.Debug("Database", "数据库只读命令执行成功。", new LogFields
+                    {
+                        OperationName = operationName,
+                        ElapsedMs = record.ElapsedMs
+                    });
+                }
+                else
+                {
+                    logger.Warn("Database", "数据库命令执行较慢。", new LogFields
+                    {
+                        OperationName = operationName,
+                        ElapsedMs = record.ElapsedMs,
+                        Extra = { ["thresholdMs"] = logger.SlowOperationThresholdMs.ToString() }
+                    });
+                }
             }
             catch (SqlException ex)
             {

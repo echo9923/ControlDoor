@@ -9,6 +9,22 @@ namespace ControlDoor.Observability
 {
     public sealed class ServiceLogger : IDisposable
     {
+        private static readonly ISet<string> ReservedFieldNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "timestamp",
+            "level",
+            "component",
+            "message",
+            "requestId",
+            "traceId",
+            "deviceId",
+            "employeeId",
+            "operationName",
+            "elapsedMs",
+            "errorCode",
+            "exception"
+        };
+
         private readonly object gate = new object();
         private readonly LogOptions options;
         private bool disposed;
@@ -22,6 +38,13 @@ namespace ControlDoor.Observability
         }
 
         public string CurrentLogPath => Path.Combine(options.LogDirectory, "ControlDoor-" + DateTime.Now.ToString("yyyyMMdd") + ".log");
+
+        public int SlowOperationThresholdMs => options.SlowOperationThresholdMs;
+
+        public bool IsSlowOperation(long elapsedMs)
+        {
+            return elapsedMs >= options.SlowOperationThresholdMs;
+        }
 
         public void Debug(string component, string message, LogFields fields = null)
         {
@@ -63,6 +86,11 @@ namespace ControlDoor.Observability
         public void Write(LogLevel level, string component, string message, LogFields fields = null)
         {
             if (disposed)
+            {
+                return;
+            }
+
+            if (level < options.MinimumLevel)
             {
                 return;
             }
@@ -120,7 +148,7 @@ namespace ControlDoor.Observability
 
             foreach (var extra in fields.Extra)
             {
-                Add(parts, extra.Key, extra.Value);
+                Add(parts, NormalizeExtraKey(extra.Key), extra.Value);
             }
 
             return string.Join(" ", parts);
@@ -157,6 +185,17 @@ namespace ControlDoor.Observability
             {
                 parts.Add(key + "=" + Escape(value));
             }
+        }
+
+        private static string NormalizeExtraKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return "extra";
+            }
+
+            var trimmed = key.Trim();
+            return ReservedFieldNames.Contains(trimmed) ? "extra_" + trimmed : trimmed;
         }
 
         private static string Escape(string value)

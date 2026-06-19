@@ -27,6 +27,69 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void ServiceLogger_MinimumLevelInfo_FiltersDebug()
+        {
+            var runDirectory = TestWorkspace.Create();
+            var options = new LogOptions
+            {
+                LogDirectory = Path.Combine(runDirectory, "logs"),
+                MinimumLevel = LogLevel.Info
+            };
+
+            using (var logger = new ServiceLogger(options))
+            {
+                logger.Debug("Database", "数据库只读命令执行成功。", new LogFields { OperationName = "ConnectionTest" });
+                logger.Info("Host", "启动完成");
+
+                var text = File.ReadAllText(logger.CurrentLogPath);
+                Assert.False(text.Contains("数据库只读命令执行成功。"));
+                Assert.Contains("启动完成", text);
+            }
+        }
+
+        [TestCase]
+        public static void ServiceLogger_MinimumLevelDebug_WritesDebug()
+        {
+            var runDirectory = TestWorkspace.Create();
+            var options = new LogOptions
+            {
+                LogDirectory = Path.Combine(runDirectory, "logs"),
+                MinimumLevel = LogLevel.Debug
+            };
+
+            using (var logger = new ServiceLogger(options))
+            {
+                logger.Debug("Database", "数据库只读命令执行成功。", new LogFields { OperationName = "ConnectionTest" });
+
+                var text = File.ReadAllText(logger.CurrentLogPath);
+                Assert.Contains("level=Debug", text);
+                Assert.Contains("数据库只读命令执行成功。", text);
+            }
+        }
+
+        [TestCase]
+        public static void ServiceLogger_ExtraReservedMessage_WritesSingleMessageField()
+        {
+            var runDirectory = TestWorkspace.Create();
+            var options = LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" });
+
+            using (var logger = new ServiceLogger(options))
+            {
+                logger.Info("HealthCheck", "健康检查完成。", new LogFields
+                {
+                    Extra =
+                    {
+                        ["message"] = "配置文件可读取并解析。"
+                    }
+                });
+
+                var text = File.ReadAllText(logger.CurrentLogPath);
+                Assert.Equal(1, CountOccurrences(text, " message="));
+                Assert.Contains("extra_message=\"配置文件可读取并解析。\"", text);
+            }
+        }
+
+        [TestCase]
         public static void ServiceLogger_RemovesExpiredLogFiles()
         {
             var runDirectory = TestWorkspace.Create();
@@ -98,6 +161,19 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains(@"""password"":""***""", result);
             Assert.Contains("base64Length=6", result);
             Assert.False(result.Contains("abcdef"));
+        }
+
+        private static int CountOccurrences(string text, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
         }
     }
 }

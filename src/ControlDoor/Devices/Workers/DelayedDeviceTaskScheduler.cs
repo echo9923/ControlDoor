@@ -105,7 +105,7 @@ namespace ControlDoor.Devices.Workers
 
             if (result.Accepted)
             {
-                logger?.Info("DelayedDeviceTaskScheduler", result.Coalesced ? "Delayed task coalesced." : "Delayed task scheduled.", new LogFields
+                logger?.Debug("DelayedDeviceTaskScheduler", result.Coalesced ? "延迟任务已合并。" : "延迟任务已调度。", new LogFields
                 {
                     DeviceId = task.DeviceId,
                     OperationName = task.TaskType.ToString()

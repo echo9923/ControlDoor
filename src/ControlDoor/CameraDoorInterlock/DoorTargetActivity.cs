@@ -20,6 +20,8 @@ namespace ControlDoor.CameraDoorInterlock
 
         public int DoorNo { get; set; }
 
+        public string InterlockId { get; set; } = string.Empty;
+
         public ISet<string> ActiveCameraKeys { get; private set; }
 
         public DateTime? AlwaysCloseSubmittedAt { get; set; }

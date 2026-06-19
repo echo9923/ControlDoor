@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ControlDoor.Observability;
 
 namespace ControlDoor.Configuration
 {
@@ -58,6 +59,20 @@ namespace ControlDoor.Configuration
                 1,
                 30,
                 "Logging.RetentionDays",
+                warnings);
+
+            var normalizedMinimumLevel = LogLevelParser.NormalizeOrDefault(settings.Logging.MinimumLevel, "Info");
+            if (!string.Equals(settings.Logging.MinimumLevel, normalizedMinimumLevel, StringComparison.Ordinal))
+            {
+                warnings.Add("Logging.MinimumLevel 非法，已回退为 Info。");
+                settings.Logging.MinimumLevel = normalizedMinimumLevel;
+            }
+
+            settings.Logging.SlowOperationThresholdMs = MinimumOrDefault(
+                settings.Logging.SlowOperationThresholdMs,
+                1,
+                1000,
+                "Logging.SlowOperationThresholdMs",
                 warnings);
 
             if (!string.Equals(settings.Logging.GrpcPayloadLogMode, "Summary", StringComparison.OrdinalIgnoreCase) &&

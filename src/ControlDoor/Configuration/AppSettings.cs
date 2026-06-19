@@ -67,6 +67,10 @@ namespace ControlDoor.Configuration
 
         public int RetentionDays { get; set; } = 30;
 
+        public string MinimumLevel { get; set; } = "Info";
+
+        public int SlowOperationThresholdMs { get; set; } = 1000;
+
         public bool EnableGrpcPayloadLogging { get; set; }
 
         public string GrpcPayloadLogMode { get; set; } = "Summary";

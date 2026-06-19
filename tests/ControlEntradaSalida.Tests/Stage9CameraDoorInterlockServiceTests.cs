@@ -242,6 +242,35 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+        [TestCase]
+        public static void Stage9Service_AiopInterlockLogsShareInterlockIdAndOperationalFailureFields()
+        {
+            var runDirectory = TestWorkspace.Create();
+            using (var logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" })))
+            using (var fixture = new Stage9Fixture(windowSeconds: 5, restoreRetryIntervalMs: 1000, logger: logger))
+            {
+                fixture.Gateway.ConfigureException("ControlGatewayAsync", new DeviceGatewayException("ControlGateway", SdkError.FromCode(7, "busy")));
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                fixture.Service.ExpireWindows(t0.AddSeconds(5));
+
+                var text = System.IO.File.ReadAllText(logger.CurrentLogPath);
+                var interlockId = ExtractField(text, "interlockId");
+                Assert.False(string.IsNullOrWhiteSpace(interlockId));
+                Assert.True(CountOccurrences(text, "interlockId=\"" + interlockId + "\"") >= 4);
+                Assert.Contains("operationName=\"AlwaysClose\"", text);
+                Assert.Contains("operationName=\"RestoreDoor\"", text);
+                Assert.Contains("deviceId=\"10\"", text);
+                Assert.Contains("doorNo=\"1\"", text);
+                Assert.Contains("sdkOperation=\"ControlGateway\"", text);
+                Assert.Contains("sdkErrorCode=\"7\"", text);
+                Assert.Contains("retryable=\"True\"", text);
+                Assert.Contains("manualActionRequired=\"False\"", text);
+            }
+        }
+
         private static GateControlRequest AlwaysCloseRequest(Stage9Fixture fixture)
         {
             return fixture.Gateway.Calls
@@ -287,6 +316,33 @@ namespace ControlEntradaSalida.Tests
             }
 
             Assert.True(false, failureMessage);
+        }
+
+        private static string ExtractField(string text, string field)
+        {
+            var prefix = field + "=\"";
+            var start = text.IndexOf(prefix, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return string.Empty;
+            }
+
+            start += prefix.Length;
+            var end = text.IndexOf("\"", start, StringComparison.Ordinal);
+            return end < 0 ? string.Empty : text.Substring(start, end - start);
+        }
+
+        private static int CountOccurrences(string text, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
         }
 
         private static byte[] BuildAiopBuffer(string json)

@@ -166,6 +166,19 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceOperationRetryManager_RunOnce_EmptyScanDoesNotWriteInfoNoise()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.Manager.RunOnceAsync("scan-empty").GetAwaiter().GetResult();
+
+                var text = fixture.ReadLog();
+                Assert.False(text.Contains("补偿扫描完成。"));
+                Assert.False(text.Contains("ScanRetryStates"));
+            }
+        }
+
+        [TestCase]
         public static void DeviceOperationRetryStore_UpsertIntent_UsesTransactionalUpsertAndMergedState()
         {
             var database = new RecordingDatabaseClient();

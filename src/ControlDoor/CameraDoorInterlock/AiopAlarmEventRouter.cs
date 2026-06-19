@@ -112,8 +112,11 @@ namespace ControlDoor.CameraDoorInterlock
                 {
                     logger?.Warn("AiopAlarmEventRouter", "AIOP 报警入队失败: " + result.Code, new LogFields
                     {
+                        RequestId = rawEvent.InterlockId,
+                        OperationName = "AiopAlarmRoute",
                         Extra =
                         {
+                            ["interlockId"] = rawEvent.InterlockId,
                             ["cameraKey"] = cameraKey,
                             ["cameraIp"] = rawEvent.CameraIp,
                             ["queueDepth"] = result.QueueDepth.ToString(),
@@ -125,8 +128,11 @@ namespace ControlDoor.CameraDoorInterlock
                 {
                     logger?.Info("AiopAlarmEventRouter", "AIOP 报警已入队。", new LogFields
                     {
+                        RequestId = rawEvent.InterlockId,
+                        OperationName = "AiopAlarmRoute",
                         Extra =
                         {
+                            ["interlockId"] = rawEvent.InterlockId,
                             ["cameraKey"] = cameraKey,
                             ["cameraIp"] = rawEvent.CameraIp,
                             ["cameraDeviceId"] = rawEvent.CameraDeviceId.ToString(),

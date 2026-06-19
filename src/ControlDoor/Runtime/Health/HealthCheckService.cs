@@ -35,13 +35,30 @@ namespace ControlDoor.Runtime.Health
                 }
 
                 summary.Add(result);
-                context.Logger?.Info("HealthCheck", "健康检查完成。", new LogFields
+                if (context.Logger != null && context.Logger.IsSlowOperation(result.ElapsedMs))
                 {
-                    OperationName = check.Name,
-                    ElapsedMs = result.ElapsedMs,
-                    ErrorCode = result.Status.ToString(),
-                    Extra = { ["message"] = result.Message }
-                });
+                    context.Logger.Warn("HealthCheck", "健康检查执行较慢。", new LogFields
+                    {
+                        OperationName = check.Name,
+                        ElapsedMs = result.ElapsedMs,
+                        ErrorCode = result.Status.ToString(),
+                        Extra =
+                        {
+                            ["detail"] = result.Message,
+                            ["thresholdMs"] = context.Logger.SlowOperationThresholdMs.ToString()
+                        }
+                    });
+                }
+                else
+                {
+                    context.Logger?.Info("HealthCheck", "健康检查完成。", new LogFields
+                    {
+                        OperationName = check.Name,
+                        ElapsedMs = result.ElapsedMs,
+                        ErrorCode = result.Status.ToString(),
+                        Extra = { ["detail"] = result.Message }
+                    });
+                }
             }
 
             return summary;

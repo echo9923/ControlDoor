@@ -15,7 +15,13 @@ namespace ControlDoor.Database
         public DatabaseHealthReport Run()
         {
             var report = new DatabaseHealthReport();
-            report.Commands.Add(database.ExecuteScalar("ConnectionTest", "SELECT 1"));
+            var connectionTest = database.ExecuteScalar("ConnectionTest", "SELECT 1");
+            report.Commands.Add(connectionTest);
+            if (connectionTest.Error != null)
+            {
+                return report;
+            }
+
             report.Commands.Add(database.ExecuteScalar("CurrentDatabase", "SELECT DB_NAME()"));
 
             foreach (var table in RequiredTables)

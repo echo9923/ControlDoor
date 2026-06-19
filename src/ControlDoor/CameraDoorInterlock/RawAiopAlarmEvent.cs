@@ -27,5 +27,7 @@ namespace ControlDoor.CameraDoorInterlock
         public byte[] RawPayload { get; set; }
 
         public string RequestId { get; set; } = string.Empty;
+
+        public string InterlockId => RequestId;
     }
 }
