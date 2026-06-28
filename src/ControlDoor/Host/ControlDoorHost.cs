@@ -185,7 +185,8 @@ namespace ControlDoor.Host
                 retryStore,
                 new SystemUserSyncStatusWriter(database),
                 new EnrollmentTaskStore(),
-                logger);
+                logger,
+                settings.Devices.DefaultFaceCaptureDeviceId);
             if (settings.FaceEventLogging.Enabled)
             {
                 var snapshotStorage = new SnapshotStorage(runDirectory, settings.FaceEventLogging, logger);

@@ -33,6 +33,7 @@ namespace ControlDoor.GrpcApi
         private readonly IUserSyncStatusWriter userSyncWriter;
         private readonly EnrollmentTaskStore enrollmentStore;
         private readonly ServiceLogger logger;
+        private readonly int? defaultFaceCaptureDeviceId;
 
         public PermissionSyncGrpcService(
             DeviceRuntimeRegistry registry,
@@ -41,7 +42,8 @@ namespace ControlDoor.GrpcApi
             IDeviceOperationRetryWriter retryWriter = null,
             IUserSyncStatusWriter userSyncWriter = null,
             EnrollmentTaskStore enrollmentStore = null,
-            ServiceLogger logger = null)
+            ServiceLogger logger = null,
+            int? defaultFaceCaptureDeviceId = null)
         {
             this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
             this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -50,6 +52,7 @@ namespace ControlDoor.GrpcApi
             this.userSyncWriter = userSyncWriter ?? new NullUserSyncStatusWriter();
             this.enrollmentStore = enrollmentStore ?? new EnrollmentTaskStore();
             this.logger = logger;
+            this.defaultFaceCaptureDeviceId = defaultFaceCaptureDeviceId;
         }
 
         public IReadOnlyList<string> MethodFullNames { get; } = new[]
@@ -392,15 +395,44 @@ namespace ControlDoor.GrpcApi
 
             var taskId = Guid.NewGuid().ToString("N");
             enrollmentStore.Start(taskId, employeeId);
-            var device = GetFaceCaptureTargetDevices().FirstOrDefault(item =>
-                item.Enabled &&
-                item.IsConnected &&
-                item.SdkUserId.HasValue &&
-                (!item.Capabilities.Known || item.Capabilities.SupportsFaceCapture));
+            var candidates = GetFaceCaptureTargetDevices();
+            DeviceRuntimeSnapshot device = null;
+            var failCode = "DEVICE_ERROR";
+            var failMessage = "没有可用的人脸采集设备。";
+            if (defaultFaceCaptureDeviceId.HasValue)
+            {
+                // 配置了默认采集设备：固定使用它，离线时严格失败、不回退到其他设备。
+                var configured = candidates.FirstOrDefault(item => item.DeviceId == defaultFaceCaptureDeviceId.Value);
+                if (configured == null)
+                {
+                    failMessage = "默认人脸采集设备(deviceId=" + defaultFaceCaptureDeviceId.Value + ")未注册或不属于人脸采集设备。";
+                }
+                else if (!configured.Enabled ||
+                    !configured.IsConnected ||
+                    !configured.SdkUserId.HasValue ||
+                    (configured.Capabilities.Known && !configured.Capabilities.SupportsFaceCapture))
+                {
+                    failMessage = "默认人脸采集设备(deviceId=" + configured.DeviceId + ")当前不可用。";
+                }
+                else
+                {
+                    device = configured;
+                }
+            }
+            else
+            {
+                // 未配置默认设备：维持"按类型取第一个在线设备"的旧行为。
+                device = candidates.FirstOrDefault(item =>
+                    item.Enabled &&
+                    item.IsConnected &&
+                    item.SdkUserId.HasValue &&
+                    (!item.Capabilities.Known || item.Capabilities.SupportsFaceCapture));
+            }
+
             if (device == null)
             {
-                enrollmentStore.Fail(taskId, "DEVICE_ERROR", "没有可用的人脸采集设备。");
-                frames.Add(JsonResponse.Create(context.RequestId, false, "DEVICE_ERROR", "没有可用的人脸采集设备。", new Dictionary<string, object>
+                enrollmentStore.Fail(taskId, failCode, failMessage);
+                frames.Add(JsonResponse.Create(context.RequestId, false, failCode, failMessage, new Dictionary<string, object>
                 {
                     ["taskId"] = taskId,
                     ["employeeId"] = employeeId,
@@ -409,7 +441,7 @@ namespace ControlDoor.GrpcApi
                     ["faceImageFormat"] = "jpg",
                     ["qualityScore"] = 0,
                     ["recommend"] = false
-                }, new List<string> { "没有可用的人脸采集设备。" }));
+                }, new List<string> { failMessage }));
                 return frames;
             }
 

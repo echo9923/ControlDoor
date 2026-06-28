@@ -505,6 +505,28 @@ namespace ControlDoor.Configuration
                     item.Types = normalized;
                 }
             }
+
+            // 校验可选的默认人脸采集设备引用：必须存在、且声明了 FaceCapture 类型。
+            if (section.DefaultFaceCaptureDeviceId.HasValue)
+            {
+                var defaultId = section.DefaultFaceCaptureDeviceId.Value;
+                if (defaultId <= 0)
+                {
+                    errors.Add("Devices.DefaultFaceCaptureDeviceId 必须大于 0。");
+                }
+                else
+                {
+                    var target = section.Items.FirstOrDefault(item => item != null && item.DeviceId == defaultId);
+                    if (target == null)
+                    {
+                        errors.Add("Devices.DefaultFaceCaptureDeviceId=" + defaultId + " 引用的设备不存在。");
+                    }
+                    else if (!target.Types.Any(t => string.Equals(t, "FaceCapture", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        errors.Add("Devices.DefaultFaceCaptureDeviceId=" + defaultId + " 指向的设备未声明 FaceCapture 类型，无法用于人脸采集。");
+                    }
+                }
+            }
         }
 
         private static string NormalizeDeviceType(string raw)

@@ -97,7 +97,7 @@
 | `DeletePersons` | `Acs` |
 | `DeleteFaces` | `Acs` |
 | `GetFaces` | `Acs` |
-| `CaptureFaceStream` | `FaceCapture` |
+| `CaptureFaceStream` | `FaceCapture`（若 `Devices.DefaultFaceCaptureDeviceId` 已配置，则固定使用该设备，离线严格失败不回退；留空时取第一个在线 `FaceCapture` 设备） |
 | `CameraAlarmDoorInterlock` 摄像头来源 | `Camera` |
 | `CameraAlarmDoorInterlock` 门禁目标 | `Acs` |
 

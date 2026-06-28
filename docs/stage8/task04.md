@@ -37,7 +37,7 @@
 | 2 | 检查 `Configuration/appsettings.json` 是否存在。 |
 | 3 | 解析 JSON 并加载配置模型。 |
 | 4 | 校验必填项，补齐可选默认值。 |
-| 5 | 检查 `Configuration/devices.json` 或内联 `Devices.Items` 设备清单是否存在、可解析且 `types` 合法。 |
+| 5 | 检查 `Configuration/devices.json` 或内联 `Devices.Items` 设备清单是否存在、可解析且 `types` 合法。若 `Devices.DefaultFaceCaptureDeviceId` 已配置，校验其引用的设备存在且声明了 `FaceCapture` 类型。 |
 | 6 | 检查日志目录、SDK 日志目录、抓拍目录是否可创建和写入。 |
 | 7 | 检查数据库连接和当前仍使用的核心表可读。 |
 | 8 | 检查 gRPC 端口是否可用。 |

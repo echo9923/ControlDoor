@@ -567,16 +567,23 @@ namespace ControlEntradaSalida.Tests
         private readonly JavaScriptSerializer serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
 
         public Stage5Fixture()
+            : this(defaultFaceCaptureDeviceId: null)
+        {
+        }
+
+        public Stage5Fixture(int? defaultFaceCaptureDeviceId)
         {
             logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" }));
             inner = new Stage4Fixture(logger);
             RetryWriter = new RecordingRetryWriter();
             UserWriter = new RecordingUserSyncStatusWriter();
             EnrollmentStore = new EnrollmentTaskStore();
-            Service = new PermissionSyncGrpcService(inner.Registry, inner.Dispatcher, inner.Gateway, RetryWriter, UserWriter, EnrollmentStore, logger);
+            Service = new PermissionSyncGrpcService(inner.Registry, inner.Dispatcher, inner.Gateway, RetryWriter, UserWriter, EnrollmentStore, logger, defaultFaceCaptureDeviceId);
         }
 
         public PermissionSyncGrpcService Service { get; }
+
+        public ControlDoor.Devices.Runtime.DeviceRuntimeRegistry Registry => inner.Registry;
 
         public RecordingRetryWriter RetryWriter { get; }
 
