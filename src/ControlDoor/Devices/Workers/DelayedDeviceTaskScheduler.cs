@@ -8,7 +8,7 @@ using ControlDoor.Runtime;
 
 namespace ControlDoor.Devices.Workers
 {
-    public sealed class DelayedDeviceTaskScheduler : IBackgroundTask
+    public sealed class DelayedDeviceTaskScheduler : IBackgroundTask, IDisposable
     {
         private readonly object gate = new object();
         private readonly DeviceSdkDispatcher dispatcher;
@@ -22,6 +22,7 @@ namespace ControlDoor.Devices.Workers
         private bool running;
         private bool stopping;
         private bool stopped;
+        private bool disposed;
         private long dispatchSuccessCount;
         private long dispatchFailureCount;
         private long cancelledDelayedTaskCount;
@@ -190,19 +191,23 @@ namespace ControlDoor.Devices.Workers
 
         public void Start()
         {
+            CancellationTokenSource previousStopSource = null;
             lock (gate)
             {
-                if (!options.Enabled || running || stopped)
+                if (disposed || !options.Enabled || running || stopped)
                 {
                     return;
                 }
 
                 stopping = false;
                 running = true;
+                previousStopSource = stopSource;
                 stopSource = new CancellationTokenSource();
                 loopTask = Task.Run(() => RunLoop(stopSource.Token));
                 Monitor.PulseAll(gate);
             }
+
+            DisposeStopSource(previousStopSource);
         }
 
         public Task StartAsync(BackgroundTaskContext context)
@@ -221,6 +226,7 @@ namespace ControlDoor.Devices.Workers
         public async Task StopAsync(TimeSpan waitTimeout)
         {
             Task runningLoop;
+            CancellationTokenSource source;
             lock (gate)
             {
                 if (stopped)
@@ -229,7 +235,8 @@ namespace ControlDoor.Devices.Workers
                 }
 
                 stopping = true;
-                stopSource?.Cancel();
+                source = stopSource;
+                CancelStopSource(source);
                 Monitor.PulseAll(gate);
                 runningLoop = loopTask;
             }
@@ -248,9 +255,16 @@ namespace ControlDoor.Devices.Workers
                 running = false;
                 stopped = true;
                 stopping = false;
+                if (object.ReferenceEquals(stopSource, source))
+                {
+                    stopSource = null;
+                }
+
                 status.MarkStopped();
                 Monitor.PulseAll(gate);
             }
+
+            DisposeStopSource(source);
         }
 
         public DelayedTaskSnapshot GetSnapshot(DateTime? now = null)
@@ -284,6 +298,44 @@ namespace ControlDoor.Devices.Workers
         public BackgroundTaskStatus GetStatus()
         {
             return status.Clone();
+        }
+
+        public void Dispose()
+        {
+            Task runningLoop;
+            CancellationTokenSource source;
+            lock (gate)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                disposed = true;
+                stopping = true;
+                source = stopSource;
+                CancelStopSource(source);
+                runningLoop = loopTask;
+                Monitor.PulseAll(gate);
+            }
+
+            WaitForLoopBestEffort(runningLoop);
+
+            lock (gate)
+            {
+                running = false;
+                stopped = true;
+                stopping = false;
+                if (object.ReferenceEquals(stopSource, source))
+                {
+                    stopSource = null;
+                }
+
+                status.MarkStopped();
+                Monitor.PulseAll(gate);
+            }
+
+            DisposeStopSource(source);
         }
 
         private void RunLoop(CancellationToken cancellationToken)
@@ -380,6 +432,57 @@ namespace ControlDoor.Devices.Workers
             else
             {
                 dispatchFailureCount++;
+            }
+        }
+
+        private static void CancelStopSource(CancellationTokenSource source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            try
+            {
+                source.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        private static void DisposeStopSource(CancellationTokenSource source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            try
+            {
+                source.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        private static void WaitForLoopBestEffort(Task runningLoop)
+        {
+            if (runningLoop == null)
+            {
+                return;
+            }
+
+            try
+            {
+                runningLoop.Wait(TimeSpan.FromMilliseconds(100));
+            }
+            catch (AggregateException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
             }
         }
     }

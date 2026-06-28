@@ -9,7 +9,7 @@ using ControlDoor.Observability;
 
 namespace ControlDoor.Devices.Workers
 {
-    public sealed class DeviceSdkDispatcher
+    public sealed class DeviceSdkDispatcher : IDisposable
     {
         private readonly object gate = new object();
         private readonly DeviceRuntimeRegistry registry;
@@ -18,6 +18,7 @@ namespace ControlDoor.Devices.Workers
         private bool started;
         private bool stopping;
         private bool stopped;
+        private bool disposed;
 
         public DeviceSdkDispatcher(DeviceRuntimeRegistry registry, DeviceSdkDispatcherOptions options = null, ServiceLogger logger = null)
         {
@@ -57,6 +58,11 @@ namespace ControlDoor.Devices.Workers
         {
             lock (gate)
             {
+                if (disposed)
+                {
+                    throw new ObjectDisposedException(nameof(DeviceSdkDispatcher));
+                }
+
                 if (started || stopped)
                 {
                     return;
@@ -80,6 +86,14 @@ namespace ControlDoor.Devices.Workers
 
             lock (gate)
             {
+                if (disposed)
+                {
+                    var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPED", "Dispatcher is disposed.");
+                    task.MarkRejected(rejected);
+                    task.Completion.TrySetResult(rejected);
+                    return DeviceTaskSubmissionResult.Rejected(task, rejected);
+                }
+
                 if (stopping)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPING", "Dispatcher is stopping.");
@@ -117,6 +131,14 @@ namespace ControlDoor.Devices.Workers
             var shouldStart = false;
             lock (gate)
             {
+                if (disposed)
+                {
+                    var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPED", "Dispatcher is disposed.");
+                    task.MarkRejected(rejected);
+                    task.Completion.TrySetResult(rejected);
+                    return DeviceTaskSubmissionResult.Rejected(task, rejected);
+                }
+
                 if (stopping)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPING", "Dispatcher is stopping.");
@@ -218,7 +240,7 @@ namespace ControlDoor.Devices.Workers
         {
             lock (gate)
             {
-                if (!started || stopping)
+                if (disposed || !started || stopping)
                 {
                     return;
                 }
@@ -232,12 +254,39 @@ namespace ControlDoor.Devices.Workers
             {
                 started = false;
                 stopped = true;
+                stopping = false;
             }
         }
 
         public IReadOnlyList<DeviceWorkerRuntimeSnapshot> GetWorkerSnapshots()
         {
             return workers.Select(worker => worker.GetSnapshot()).ToList();
+        }
+
+        public void Dispose()
+        {
+            lock (gate)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                disposed = true;
+                stopping = true;
+            }
+
+            foreach (var worker in workers)
+            {
+                worker.Dispose();
+            }
+
+            lock (gate)
+            {
+                started = false;
+                stopped = true;
+                stopping = false;
+            }
         }
     }
 }

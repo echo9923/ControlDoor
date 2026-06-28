@@ -36,13 +36,22 @@ namespace ControlDoor.Devices.Management
 
         public async Task StopAsync(BackgroundTaskContext context)
         {
-            stopSource?.Cancel();
-            var task = loopTask;
+            CancellationTokenSource source;
+            Task task;
+            source = stopSource;
+            CancelStopSource(source);
+            task = loopTask;
             if (task != null)
             {
                 await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
             }
 
+            if (object.ReferenceEquals(stopSource, source))
+            {
+                stopSource = null;
+            }
+
+            DisposeStopSource(source);
             status.MarkStopped();
         }
 
@@ -77,6 +86,38 @@ namespace ControlDoor.Devices.Management
                 {
                     return;
                 }
+            }
+        }
+
+        private static void CancelStopSource(CancellationTokenSource source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            try
+            {
+                source.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        private static void DisposeStopSource(CancellationTokenSource source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            try
+            {
+                source.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
             }
         }
     }

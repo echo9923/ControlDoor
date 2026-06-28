@@ -1,9 +1,15 @@
 using System;
+using System.Reflection;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using ControlDoor.Devices.Management;
+using ControlDoor.Devices.Runtime;
+using ControlDoor.Devices.Workers;
 using ControlDoor.Configuration;
 using ControlDoor.Database;
+using ControlDoor.Hikvision;
+using ControlDoor.Runtime;
 using ControlDoor.Runtime.Health;
 using ControlDoor.Runtime.Health.Checks;
 
@@ -98,11 +104,48 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(HealthCheckStatus.Failed, result.Status);
         }
 
+        [TestCase]
+        public static void DeviceHealthCheckBackgroundTask_StopAsync_DisposesStopSource()
+        {
+            var registry = new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = 1 });
+            var dispatcher = new DeviceSdkDispatcher(registry, workerCount: 1, queueCapacityPerWorker: 10, defaultTaskTimeoutMilliseconds: 1000);
+            var scheduler = new DelayedDeviceTaskScheduler(dispatcher, new DelayedDeviceTaskSchedulerOptions { WakeupMaxSleepMilliseconds = 10 });
+            var lifecycle = new DeviceLifecycleService(
+                registry,
+                dispatcher,
+                scheduler,
+                new InMemoryDeviceRepository(),
+                new MockHikvisionGateway(),
+                new DeviceLifecycleOptions { HealthCheckIntervalMs = 1000 });
+            var task = new DeviceHealthCheckBackgroundTask(lifecycle, new DeviceLifecycleOptions { HealthCheckIntervalMs = 1000 });
+            var context = new BackgroundTaskContext("health-check-test", CancellationToken.None, null);
+
+            try
+            {
+                task.StartAsync(context).GetAwaiter().GetResult();
+                Assert.NotNull(GetStopSource(task), "Health check task should create a linked stop source when it starts.");
+
+                task.StopAsync(context).GetAwaiter().GetResult();
+
+                Assert.Equal<CancellationTokenSource>(null, GetStopSource(task));
+            }
+            finally
+            {
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+        }
+
         private static HealthCheckContext NewContext(string runDirectory)
         {
             var settings = new AppSettings();
             settings.Database.ConnectionString = "Server=.;Database=test;";
             return new HealthCheckContext(runDirectory, settings, null, CancellationToken.None);
+        }
+
+        private static CancellationTokenSource GetStopSource(DeviceHealthCheckBackgroundTask task)
+        {
+            var field = typeof(DeviceHealthCheckBackgroundTask).GetField("stopSource", BindingFlags.Instance | BindingFlags.NonPublic);
+            return (CancellationTokenSource)field.GetValue(task);
         }
     }
 }

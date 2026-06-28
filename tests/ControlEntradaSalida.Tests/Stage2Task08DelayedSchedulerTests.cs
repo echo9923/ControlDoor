@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Devices.Runtime;
@@ -306,6 +307,27 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DelayedDeviceTaskScheduler_StopAsync_DisposesStopSource()
+        {
+            var dispatcher = NewDispatcher(queueCapacity: 10);
+            var scheduler = NewScheduler(dispatcher);
+
+            try
+            {
+                scheduler.Start();
+                Assert.NotNull(GetStopSource(scheduler), "Scheduler should create a stop source when it starts.");
+
+                scheduler.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+
+                Assert.Equal<CancellationTokenSource>(null, GetStopSource(scheduler));
+            }
+            finally
+            {
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+        }
+
+        [TestCase]
         public static void DelayedDeviceTaskScheduler_BatchSize_LimitsDueDispatch()
         {
             var dispatcher = NewDispatcher(queueCapacity: 10);
@@ -499,6 +521,12 @@ namespace ControlEntradaSalida.Tests
         private static TaskCompletionSource<bool> NewSignal()
         {
             return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        private static CancellationTokenSource GetStopSource(DelayedDeviceTaskScheduler scheduler)
+        {
+            var field = typeof(DelayedDeviceTaskScheduler).GetField("stopSource", BindingFlags.Instance | BindingFlags.NonPublic);
+            return (CancellationTokenSource)field.GetValue(scheduler);
         }
     }
 }

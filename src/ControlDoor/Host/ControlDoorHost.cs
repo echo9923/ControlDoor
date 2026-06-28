@@ -248,6 +248,7 @@ namespace ControlDoor.Host
                 logger.Error("Host", "阶段 4 设备加载失败。", ex);
                 backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
                 deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+                deviceDispatcher?.Dispose();
                 lock (gate)
                 {
                     state = ServiceLifecycleState.Failed;
@@ -293,6 +294,7 @@ namespace ControlDoor.Host
             deviceLifecycle?.StopAllDevicesBestEffort();
             backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
             deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+            deviceDispatcher?.Dispose();
             acsAlarmEventRouter?.Dispose();
             cameraDoorInterlockService?.Dispose();
             faceEventIngestionService?.Dispose();
@@ -348,7 +350,7 @@ namespace ControlDoor.Host
             cameraDoorInterlockService?.Dispose();
             faceEventIngestionService?.Dispose();
             backgroundTaskHost?.Dispose();
-            deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(100)).GetAwaiter().GetResult();
+            deviceDispatcher?.Dispose();
             database?.Dispose();
             logger?.Dispose();
         }

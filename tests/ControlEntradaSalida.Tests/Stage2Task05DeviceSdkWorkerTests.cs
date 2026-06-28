@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Tasks;
@@ -279,6 +281,54 @@ namespace ControlEntradaSalida.Tests
             Assert.False(registry.TryGetByDeviceId(1).Snapshot.Capabilities.SupportsAcs);
         }
 
+        [TestCase]
+        public static void DeviceSdkWorker_StopAsync_DisposesStopSource()
+        {
+            var registry = NewRegistry(workerCount: 1);
+            Register(registry, 1);
+            var dispatcher = NewDispatcher(registry, workerCount: 1, queueCapacity: 10);
+            var task = NewAsyncTask(1, DeviceTaskType.HealthCheck, context => Task.FromResult(Success(context.Task)));
+
+            dispatcher.Submit(task);
+            WaitForCompletion(task);
+            Assert.NotNull(GetWorkerStopSource(dispatcher, 0), "Worker should create a stop source when it starts.");
+
+            dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+
+            Assert.Equal<CancellationTokenSource>(null, GetWorkerStopSource(dispatcher, 0));
+        }
+
+        [TestCase]
+        public static void DeviceSdkDispatcher_Dispose_IsIdempotentAndDisposesWorkers()
+        {
+            var registry = NewRegistry(workerCount: 1);
+            Register(registry, 1);
+            var dispatcher = NewDispatcher(registry, workerCount: 1, queueCapacity: 10);
+            var task = NewAsyncTask(1, DeviceTaskType.HealthCheck, context => Task.FromResult(Success(context.Task)));
+
+            dispatcher.Submit(task);
+            WaitForCompletion(task);
+            Assert.NotNull(GetWorkerStopSource(dispatcher, 0), "Worker should create a stop source when it starts.");
+            Assert.True(dispatcher is IDisposable, "Dispatcher should expose IDisposable for lifecycle cleanup.");
+
+            ((IDisposable)dispatcher).Dispose();
+            ((IDisposable)dispatcher).Dispose();
+
+            Assert.Equal<CancellationTokenSource>(null, GetWorkerStopSource(dispatcher, 0));
+        }
+
+        [TestCase]
+        public static void DeviceSdkDispatcher_DisposeWithoutStart_IsSafe()
+        {
+            var registry = NewRegistry(workerCount: 1);
+            var dispatcher = NewDispatcher(registry, workerCount: 1, queueCapacity: 10);
+
+            Assert.True(dispatcher is IDisposable, "Dispatcher should expose IDisposable for lifecycle cleanup.");
+
+            ((IDisposable)dispatcher).Dispose();
+            ((IDisposable)dispatcher).Dispose();
+        }
+
         private static DeviceRuntimeRegistry NewRegistry(int workerCount)
         {
             return new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = workerCount });
@@ -346,6 +396,14 @@ namespace ControlEntradaSalida.Tests
         private static TaskCompletionSource<bool> NewSignal()
         {
             return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        private static CancellationTokenSource GetWorkerStopSource(DeviceSdkDispatcher dispatcher, int workerIndex)
+        {
+            var workersField = typeof(DeviceSdkDispatcher).GetField("workers", BindingFlags.Instance | BindingFlags.NonPublic);
+            var workers = (DeviceSdkWorker[])workersField.GetValue(dispatcher);
+            var stopSourceField = typeof(DeviceSdkWorker).GetField("stopSource", BindingFlags.Instance | BindingFlags.NonPublic);
+            return (CancellationTokenSource)stopSourceField.GetValue(workers[workerIndex]);
         }
     }
 }

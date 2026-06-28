@@ -7,7 +7,7 @@ using ControlDoor.Observability;
 
 namespace ControlDoor.Devices.Workers
 {
-    public sealed class DeviceSdkWorker
+    public sealed class DeviceSdkWorker : IDisposable
     {
         private readonly object gate = new object();
         private readonly DeviceTaskQueue queue;
@@ -29,6 +29,7 @@ namespace ControlDoor.Devices.Workers
         private DateTime? lastTaskCompletedAt;
         private string lastError;
         private bool acceptingTasks = true;
+        private bool disposed;
 
         public DeviceSdkWorker(
             int workerIndex,
@@ -90,13 +91,20 @@ namespace ControlDoor.Devices.Workers
 
         public void Start()
         {
+            CancellationTokenSource previousStopSource = null;
             lock (gate)
             {
-                if (status == DeviceWorkerStatus.Running || status == DeviceWorkerStatus.Starting)
+                if (disposed)
                 {
                     return;
                 }
 
+                if (status == DeviceWorkerStatus.Running || status == DeviceWorkerStatus.Starting || status == DeviceWorkerStatus.Stopping)
+                {
+                    return;
+                }
+
+                previousStopSource = stopSource;
                 status = DeviceWorkerStatus.Starting;
                 startedAt = DateTime.Now;
                 stoppedAt = null;
@@ -106,6 +114,8 @@ namespace ControlDoor.Devices.Workers
                 status = DeviceWorkerStatus.Running;
                 Monitor.PulseAll(gate);
             }
+
+            DisposeStopSource(previousStopSource);
         }
 
         public DeviceTaskSubmissionResult Enqueue(DeviceSdkTask task)
@@ -158,19 +168,30 @@ namespace ControlDoor.Devices.Workers
         public async Task StopAsync(TimeSpan waitTimeout)
         {
             Task runningLoop;
+            CancellationTokenSource source;
             lock (gate)
             {
+                if (disposed)
+                {
+                    return;
+                }
+
                 if (status == DeviceWorkerStatus.Stopped || status == DeviceWorkerStatus.Created)
                 {
                     status = DeviceWorkerStatus.Stopped;
                     stoppedAt = DateTime.Now;
+                    source = stopSource;
+                    stopSource = null;
+                    Monitor.PulseAll(gate);
+                    DisposeStopSource(source);
                     return;
                 }
 
                 acceptingTasks = false;
                 status = DeviceWorkerStatus.Stopping;
                 CancelQueuedTasksLocked();
-                stopSource?.Cancel();
+                source = stopSource;
+                CancelStopSource(source);
                 Monitor.PulseAll(gate);
                 runningLoop = loopTask;
             }
@@ -195,8 +216,61 @@ namespace ControlDoor.Devices.Workers
                 currentDeviceId = null;
                 currentTaskType = null;
                 currentTaskStartedAt = null;
+                if (object.ReferenceEquals(stopSource, source))
+                {
+                    stopSource = null;
+                }
+
                 Monitor.PulseAll(gate);
             }
+
+            DisposeStopSource(source);
+        }
+
+        public void Dispose()
+        {
+            Task runningLoop;
+            CancellationTokenSource source;
+            lock (gate)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                disposed = true;
+                acceptingTasks = false;
+                if (status != DeviceWorkerStatus.Stopped && status != DeviceWorkerStatus.Created)
+                {
+                    status = DeviceWorkerStatus.Stopping;
+                    CancelQueuedTasksLocked();
+                }
+
+                source = stopSource;
+                CancelStopSource(source);
+                runningLoop = loopTask;
+                Monitor.PulseAll(gate);
+            }
+
+            WaitForLoopBestEffort(runningLoop);
+
+            lock (gate)
+            {
+                status = DeviceWorkerStatus.Stopped;
+                stoppedAt = DateTime.Now;
+                currentTaskId = null;
+                currentDeviceId = null;
+                currentTaskType = null;
+                currentTaskStartedAt = null;
+                if (object.ReferenceEquals(stopSource, source))
+                {
+                    stopSource = null;
+                }
+
+                Monitor.PulseAll(gate);
+            }
+
+            DisposeStopSource(source);
         }
 
         public DeviceWorkerRuntimeSnapshot GetSnapshot()
@@ -424,6 +498,57 @@ namespace ControlDoor.Devices.Workers
                 OldestQueuedTaskAgeMilliseconds = oldest.HasValue ? (long?)Math.Max(0, (DateTime.Now - oldest.Value).TotalMilliseconds) : null,
                 PriorityQueue = queue.GetPrioritySnapshot()
             };
+        }
+
+        private static void CancelStopSource(CancellationTokenSource source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            try
+            {
+                source.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        private static void DisposeStopSource(CancellationTokenSource source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            try
+            {
+                source.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        private static void WaitForLoopBestEffort(Task runningLoop)
+        {
+            if (runningLoop == null)
+            {
+                return;
+            }
+
+            try
+            {
+                runningLoop.Wait(TimeSpan.FromMilliseconds(100));
+            }
+            catch (AggregateException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
     }
 }
