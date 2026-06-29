@@ -145,7 +145,7 @@ namespace ControlDoor.Configuration
 
         public bool RetryImmediatelyOnNewIntent { get; set; } = true;
 
-        public int TerminalRetentionDays { get; set; } = 30;
+        public int TerminalRetentionDays { get; set; } = 7;
     }
 
     public sealed class FaceEventLoggingOptions
@@ -164,7 +164,7 @@ namespace ControlDoor.Configuration
 
         public int QueueCapacity { get; set; } = 2000;
 
-        public bool EnableHistoryCompensation { get; set; } = true;
+        public bool EnableHistoryCompensation { get; set; } = false;
 
         public int BatchSize { get; set; } = 50;
 
