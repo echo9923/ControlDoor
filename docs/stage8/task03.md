@@ -92,13 +92,12 @@
 | --- | --- |
 | `Service` | 端口、管理 API Key。 |
 | `Database` | SQL Server 连接字符串和命令超时。 |
-| `Logging` | 日志目录、保留天数、payload 日志开关。 |
+| `Logging` | 日志目录、保留天数、最小级别、慢操作阈值。 |
 | `DeviceRuntime` | worker 数、队列容量、状态检测。 |
 | `HikvisionSdk` | 平台、DLL 路径、SDK 日志。 |
 | `DeviceLifecycle` | 登录、重连、状态检测配置。 |
 | `DeviceOperationRetry` | 补偿扫描和退避配置。 |
 | `FaceEventLogging` | 事件入库、抓拍目录、离线事件上传补偿。 |
-| `FaceEnrollment` | 人脸大小和采集任务保留。 |
 | `CameraAlarmDoorInterlock` | 后续阶段兼容配置，可默认关闭。 |
 
 ## 发布包检查清单

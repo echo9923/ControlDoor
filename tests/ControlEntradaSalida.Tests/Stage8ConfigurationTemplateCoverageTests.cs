@@ -23,11 +23,9 @@ namespace ControlEntradaSalida.Tests
             Assert.NotNull(result.Settings.HikvisionSdk);
             Assert.NotNull(result.Settings.DeviceOperationRetry);
             Assert.NotNull(result.Settings.FaceEventLogging);
-            Assert.NotNull(result.Settings.FaceEnrollment);
             Assert.NotNull(result.Settings.CameraAlarmDoorInterlock);
             Assert.Equal(5001, result.Settings.Service.GrpcListenPort);
             Assert.Equal("logs", result.Settings.Logging.LogDirectory);
-            Assert.Equal("Summary", result.Settings.Logging.GrpcPayloadLogMode);
             Assert.Equal("sdk\\Hikvision", result.Settings.HikvisionSdk.DllDirectory);
             Assert.Equal("snapshots", result.Settings.FaceEventLogging.SnapshotRootDirectory);
             Assert.False(result.Settings.CameraAlarmDoorInterlock.Enabled);
@@ -65,7 +63,6 @@ namespace ControlEntradaSalida.Tests
   ""DeviceLifecycle"": { ""StatusCheckIntervalMs"": 30000, ""LoginTimeoutMs"": 15000 },
   ""DeviceOperationRetry"": { ""ScanIntervalSeconds"": 30, ""MaxRetryAttempts"": 10 },
   ""FaceEventLogging"": { ""SnapshotRootDirectory"": ""snapshots"" },
-  ""FaceEnrollment"": { ""MaxFaceImageBytes"": 204800 },
   ""CameraAlarmDoorInterlock"": { ""Enabled"": false, ""Mappings"": [] },
   ""Devices"": { ""FilePath"": ""Configuration\\devices.json"", ""Items"": [] }
 }");

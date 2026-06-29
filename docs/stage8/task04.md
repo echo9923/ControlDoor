@@ -10,8 +10,8 @@
 | --- | --- |
 | 唯一路径 | 只读取运行目录 `Configuration/appsettings.json`。 |
 | 占位值 | 仓库和发布模板不写真实密钥。 |
-| 本地自用 | 是否记录完整字段由配置控制，不强制脱敏。 |
-| 默认保守 | 默认不记录完整 gRPC payload 和人脸 Base64，避免日志膨胀。 |
+| 本地自用 | 模板只保留当前运行路径真实消费或预检使用的配置。 |
+| 默认保守 | 默认不暴露未接入运行时的调试开关，避免现场误调。 |
 | 兼容保留 | 后续阶段配置可默认关闭，但保留结构。 |
 
 ## 必要配置分组
@@ -20,13 +20,12 @@
 | --- | --- |
 | `Service` | 端口范围、API Key 策略。 |
 | `Database` | 连接字符串、命令超时。 |
-| `Logging` | 日志目录、保留天数、payload 日志开关。 |
+| `Logging` | 日志目录、保留天数、最小级别、慢操作阈值。 |
 | `DeviceRuntime` | worker 数、队列容量。 |
 | `HikvisionSdk` | DLL 路径、平台、SDK 日志目录。 |
 | `DeviceLifecycle` | 登录超时、状态检测、重连策略。 |
 | `DeviceOperationRetry` | 扫描间隔、最大次数、保留天数。 |
 | `FaceEventLogging` | 抓拍目录、事件开关、离线事件上传补偿。 |
-| `FaceEnrollment` | 图片大小限制和任务保留。 |
 | `CameraAlarmDoorInterlock` | 后续联动配置，默认关闭。 |
 
 ## `--validate-config` 行为
@@ -78,17 +77,16 @@
 | 占用 | 启动失败并记录明确错误。 |
 | 监听地址 | 默认 `0.0.0.0`。 |
 
-## 日志字段配置
+## 日志配置
 
 | 配置 | 行为 |
 | --- | --- |
-| `EnableGrpcPayloadLogging` | 是否记录 gRPC payload。 |
-| `GrpcPayloadLogMode` | `Summary` 或 `Full`。 |
-| `IncludeCredentialFields` | 是否允许记录密码、API Key 等字段。 |
-| `IncludeFaceImageBase64` | 是否允许记录人脸 Base64。 |
-| `EnableSdkTrace` | 是否记录 SDK 调用链路。 |
+| `LogDirectory` | 日志输出目录。 |
+| `RetentionDays` | 日志文件保留天数。 |
+| `MinimumLevel` | 最小记录级别。 |
+| `SlowOperationThresholdMs` | 慢操作告警阈值。 |
 
-这些开关只控制日志记录范围，不改变业务处理。现场自用可以按需要开启完整记录。
+模板不再暴露当前未接入业务路径的 gRPC payload 与 SDK trace 开关，避免现场误以为修改后会改变日志行为。
 
 ## 检查输出
 
@@ -106,7 +104,7 @@
 | 抓拍 | 抓拍目录状态。 |
 | 结论 | Passed / Warning / Failed。 |
 
-当前实现的 `ControlDoor.exe --validate-config` 使用阶段 8 严格检查：只加载运行目录 `Configuration/appsettings.json`，输出运行目录、配置路径、gRPC 端口、日志策略、SDK DLL 目录、SDK 平台、抓拍目录和数据库超时；随后检查配置文件、日志目录、SDK 日志目录、抓拍目录、端口、数据库核心表、`HCNetSDK.dll` 和 `SqlServerTypes`。验证模式只做运行前检查，不启动 gRPC 服务、设备 worker 或设备下发操作。
+当前实现的 `ControlDoor.exe --validate-config` 使用阶段 8 严格检查：只加载运行目录 `Configuration/appsettings.json`，输出运行目录、配置路径、gRPC 端口、日志目录、SDK DLL 目录、SDK 平台、抓拍目录和数据库超时；随后检查配置文件、日志目录、SDK 日志目录、抓拍目录、端口、数据库核心表、`HCNetSDK.dll` 和 `SqlServerTypes`。验证模式只做运行前检查，不启动 gRPC 服务、设备 worker 或设备下发操作。
 
 ## 测试
 
@@ -118,4 +116,4 @@
 | 数据库不可连 | validate 失败。 |
 | SDK DLL 缺失 | validate 失败。 |
 | 抓拍目录不可写 | 阶段 7 启用时失败。 |
-| 日志开关 | 输出摘要符合配置。 |
+| 日志配置 | 输出摘要符合配置。 |
