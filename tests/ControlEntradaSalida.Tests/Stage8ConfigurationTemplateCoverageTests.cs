@@ -34,6 +34,7 @@ namespace ControlEntradaSalida.Tests
             Assert.True(result.Settings.CameraAlarmDoorInterlock.Enabled);
             Assert.Equal(28, result.Settings.Devices.DefaultFaceCaptureDeviceId);
             Assert.Equal("Configuration\\devices.json", result.Settings.Devices.FilePath);
+            AssertRetryDefaults(result.Settings.DeviceOperationRetry);
         }
 
         [TestCase]
@@ -83,6 +84,7 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(10, result.Settings.CameraAlarmDoorInterlock.Mappings.Count);
             Assert.Equal(28, result.Settings.Devices.DefaultFaceCaptureDeviceId);
             Assert.Equal("Configuration\\devices.json", result.Settings.Devices.FilePath);
+            AssertRetryDefaults(result.Settings.DeviceOperationRetry);
         }
 
         [TestCase]
@@ -180,6 +182,18 @@ namespace ControlEntradaSalida.Tests
             var json = File.ReadAllText(RepositoryDevicesPath(), Encoding.UTF8);
             var document = new JavaScriptSerializer().Deserialize<DeviceDocumentFixture>(json);
             return document.devices ?? new List<DeviceFixture>();
+        }
+
+        private static void AssertRetryDefaults(DeviceOperationRetryOptions options)
+        {
+            Assert.NotNull(options);
+            Assert.Equal(30, options.ScanIntervalSeconds);
+            Assert.Equal(30, options.InitialRetryDelaySeconds);
+            Assert.Equal(300, options.MaxRetryDelaySeconds);
+            Assert.Equal(4200, options.MaxRetryAttempts);
+            Assert.Equal(14, options.FailureRetentionDays);
+            Assert.Equal(100, options.BatchSize);
+            Assert.Equal(14, options.TerminalRetentionDays);
         }
 
         private static void AssertMapping(
