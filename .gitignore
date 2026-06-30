@@ -2,6 +2,7 @@ bin/
 obj/
 artifacts/
 TestResults/
+门禁publish/
 *.user
 *.suo
 *.cache
