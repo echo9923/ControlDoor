@@ -67,9 +67,11 @@ namespace ControlEntradaSalida.Tests
             var section = result.Settings.CameraAlarmDoorInterlock;
             Assert.True(section.Enabled);
             Assert.Equal(10, section.Mappings.Count);
-            AssertMapping(section.Mappings, devices, cameraId: 25, doorIds: new[] { 19, 20, 21, 22 }, area: "检修路");
-            AssertMapping(section.Mappings, devices, cameraId: 26, doorIds: new[] { 15, 16, 17, 18 }, area: "平安路");
-            AssertMapping(section.Mappings, devices, cameraId: 27, doorIds: new[] { 13, 14 }, area: "物资超市");
+            AssertMapping(section.Mappings, devices, cameraId: 25, doorIds: new[] { 19, 20, 21, 22 }, area: "检修路", enabled: false);
+            AssertMapping(section.Mappings, devices, cameraId: 26, doorIds: new[] { 15, 16, 17, 18 }, area: "平安路", enabled: false);
+            AssertMapping(section.Mappings, devices, cameraId: 27, doorIds: new[] { 13 }, area: "物资超市", enabled: false);
+            AssertMapping(section.Mappings, devices, cameraId: 27, doorIds: new[] { 14 }, area: "物资超市", enabled: true);
+            Assert.Equal(1, section.Mappings.Count(mapping => mapping.Enabled));
         }
 
         [TestCase]
@@ -201,7 +203,8 @@ namespace ControlEntradaSalida.Tests
             IList<DeviceFixture> devices,
             int cameraId,
             int[] doorIds,
-            string area)
+            string area,
+            bool enabled)
         {
             var camera = devices.Single(item => item.deviceId == cameraId);
             Assert.True(camera.types.Contains("Camera"));
@@ -210,7 +213,7 @@ namespace ControlEntradaSalida.Tests
                 var door = devices.Single(item => item.deviceId == doorId);
                 Assert.True(door.types.Contains("Acs"));
                 Assert.True(mappings.Any(mapping =>
-                    mapping.Enabled &&
+                    mapping.Enabled == enabled &&
                     mapping.Camera.Id == cameraId &&
                     string.Equals(mapping.Camera.Ip, camera.ipAddress, StringComparison.OrdinalIgnoreCase) &&
                     mapping.DoorDevice.Id == doorId &&
