@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Web.Script.Serialization;
 using ControlDoor.Configuration;
 
 namespace ControlEntradaSalida.Tests
@@ -28,7 +31,57 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal("logs", result.Settings.Logging.LogDirectory);
             Assert.Equal("sdk\\Hikvision", result.Settings.HikvisionSdk.DllDirectory);
             Assert.Equal("snapshots", result.Settings.FaceEventLogging.SnapshotRootDirectory);
-            Assert.False(result.Settings.CameraAlarmDoorInterlock.Enabled);
+            Assert.True(result.Settings.CameraAlarmDoorInterlock.Enabled);
+            Assert.Equal(28, result.Settings.Devices.DefaultFaceCaptureDeviceId);
+            Assert.Equal("Configuration\\devices.json", result.Settings.Devices.FilePath);
+        }
+
+        [TestCase]
+        public static void Stage8ConfigurationTemplate_FieldInventory_ContainsConfiguredDevicesAndInterlockMappings()
+        {
+            var runDirectory = CopyRepositoryTemplateToRunDirectory();
+            var result = new ConfigurationLoader().Load(runDirectory);
+            var devices = LoadRepositoryDevices();
+
+            Assert.True(result.Success, string.Join("; ", result.Errors));
+            Assert.Equal(28, devices.Count);
+            Assert.True(devices.Select(item => item.deviceId).OrderBy(item => item).SequenceEqual(Enumerable.Range(1, 28)));
+            Assert.Equal(28, devices.Select(item => item.ipAddress).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Equal(24, devices.Count(item => item.types.Contains("Acs")));
+            Assert.Equal(3, devices.Count(item => item.types.Contains("Camera")));
+            Assert.Equal(1, devices.Count(item => item.types.Contains("FaceCapture")));
+            foreach (var enabled in devices.Where(item => item.enabled))
+            {
+                Assert.False(string.IsNullOrWhiteSpace(enabled.name));
+                Assert.False(string.IsNullOrWhiteSpace(enabled.ipAddress));
+                Assert.False(string.IsNullOrWhiteSpace(enabled.password));
+                Assert.True(enabled.types != null && enabled.types.Count > 0);
+            }
+
+            var defaultCapture = devices.Single(item => item.deviceId == 28);
+            Assert.Equal("西门门卫采集仪", defaultCapture.name);
+            Assert.True(defaultCapture.types.Contains("FaceCapture"));
+            Assert.Equal(defaultCapture.deviceId, result.Settings.Devices.DefaultFaceCaptureDeviceId);
+
+            var section = result.Settings.CameraAlarmDoorInterlock;
+            Assert.True(section.Enabled);
+            Assert.Equal(10, section.Mappings.Count);
+            AssertMapping(section.Mappings, devices, cameraId: 25, doorIds: new[] { 19, 20, 21, 22 }, area: "检修路");
+            AssertMapping(section.Mappings, devices, cameraId: 26, doorIds: new[] { 15, 16, 17, 18 }, area: "平安路");
+            AssertMapping(section.Mappings, devices, cameraId: 27, doorIds: new[] { 13, 14 }, area: "物资超市");
+        }
+
+        [TestCase]
+        public static void Stage8ConfigurationTemplate_DeployTemplate_UsesSameFieldInventoryDefaults()
+        {
+            var runDirectory = CopyTemplateToRunDirectory(RepositoryDeployTemplatePath());
+
+            var result = new ConfigurationLoader().Load(runDirectory);
+
+            Assert.True(result.Success, string.Join("; ", result.Errors));
+            Assert.True(result.Settings.CameraAlarmDoorInterlock.Enabled);
+            Assert.Equal(10, result.Settings.CameraAlarmDoorInterlock.Mappings.Count);
+            Assert.Equal(28, result.Settings.Devices.DefaultFaceCaptureDeviceId);
             Assert.Equal("Configuration\\devices.json", result.Settings.Devices.FilePath);
         }
 
@@ -89,10 +142,16 @@ namespace ControlEntradaSalida.Tests
 
         private static string CopyRepositoryTemplateToRunDirectory()
         {
+            return CopyTemplateToRunDirectory(RepositoryTemplatePath());
+        }
+
+        private static string CopyTemplateToRunDirectory(string templatePath)
+        {
             var runDirectory = TestWorkspace.Create();
             var configurationDirectory = Path.Combine(runDirectory, "Configuration");
             Directory.CreateDirectory(configurationDirectory);
-            File.Copy(RepositoryTemplatePath(), Path.Combine(configurationDirectory, "appsettings.json"));
+            File.Copy(templatePath, Path.Combine(configurationDirectory, "appsettings.json"));
+            File.Copy(RepositoryDevicesPath(), Path.Combine(configurationDirectory, "devices.json"));
             return runDirectory;
         }
 
@@ -104,6 +163,68 @@ namespace ControlEntradaSalida.Tests
         private static string RepositoryTemplatePath()
         {
             return Path.Combine("src", "ControlDoor", "Configuration", "appsettings.json");
+        }
+
+        private static string RepositoryDeployTemplatePath()
+        {
+            return Path.Combine("src", "ControlDoor", "Configuration", "appsettings.deploy.json");
+        }
+
+        private static string RepositoryDevicesPath()
+        {
+            return Path.Combine("src", "ControlDoor", "Configuration", "devices.json");
+        }
+
+        private static List<DeviceFixture> LoadRepositoryDevices()
+        {
+            var json = File.ReadAllText(RepositoryDevicesPath(), Encoding.UTF8);
+            var document = new JavaScriptSerializer().Deserialize<DeviceDocumentFixture>(json);
+            return document.devices ?? new List<DeviceFixture>();
+        }
+
+        private static void AssertMapping(
+            IList<CameraAlarmDoorInterlockMapping> mappings,
+            IList<DeviceFixture> devices,
+            int cameraId,
+            int[] doorIds,
+            string area)
+        {
+            var camera = devices.Single(item => item.deviceId == cameraId);
+            Assert.True(camera.types.Contains("Camera"));
+            foreach (var doorId in doorIds)
+            {
+                var door = devices.Single(item => item.deviceId == doorId);
+                Assert.True(door.types.Contains("Acs"));
+                Assert.True(mappings.Any(mapping =>
+                    mapping.Enabled &&
+                    mapping.Camera.Id == cameraId &&
+                    string.Equals(mapping.Camera.Ip, camera.ipAddress, StringComparison.OrdinalIgnoreCase) &&
+                    mapping.DoorDevice.Id == doorId &&
+                    string.Equals(mapping.DoorDevice.Ip, door.ipAddress, StringComparison.OrdinalIgnoreCase) &&
+                    mapping.DoorNos.Count == 1 &&
+                    mapping.DoorNos[0] == 1 &&
+                    mapping.Remark.Contains(area)));
+            }
+        }
+
+        private sealed class DeviceDocumentFixture
+        {
+            public List<DeviceFixture> devices { get; set; }
+        }
+
+        private sealed class DeviceFixture
+        {
+            public int deviceId { get; set; }
+
+            public string name { get; set; }
+
+            public List<string> types { get; set; }
+
+            public string ipAddress { get; set; }
+
+            public string password { get; set; }
+
+            public bool enabled { get; set; }
         }
     }
 }

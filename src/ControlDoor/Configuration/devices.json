@@ -1,3 +1,368 @@
 {
-  "devices": []
+  "devices": [
+    {
+      "deviceId": 1,
+      "name": "一发南门 1 出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.96.11.111",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE3470421"
+    },
+    {
+      "deviceId": 2,
+      "name": "一发南门 1 进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.96.11.112",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE3470506"
+    },
+    {
+      "deviceId": 3,
+      "name": "一发南门 2 进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.96.11.113",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE3470535"
+    },
+    {
+      "deviceId": 4,
+      "name": "一发南门 2 出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.96.11.114",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE3470420"
+    },
+    {
+      "deviceId": 5,
+      "name": "一发南门 3 进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.25.159",
+      "port": 8000,
+      "username": "admin",
+      "password": "Xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670MW20250812V0439200CHGG1965654"
+    },
+    {
+      "deviceId": 6,
+      "name": "一发南门 3（出）",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.25.158",
+      "port": 8000,
+      "username": "admin",
+      "password": "Xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670MW20250812V0439200CHGG1965629"
+    },
+    {
+      "deviceId": 7,
+      "name": "小北门出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.24.111",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE7259236"
+    },
+    {
+      "deviceId": 8,
+      "name": "小北门进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.24.112",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE7259099"
+    },
+    {
+      "deviceId": 9,
+      "name": "有限西门 1 出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.35",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE7259105"
+    },
+    {
+      "deviceId": 10,
+      "name": "有限西门 1 进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.32",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE7259238"
+    },
+    {
+      "deviceId": 11,
+      "name": "煤炭路门禁出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.53",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE3470505"
+    },
+    {
+      "deviceId": 12,
+      "name": "煤炭路门禁进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.52",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670M20250703V0439160CHGE3470458"
+    },
+    {
+      "deviceId": 13,
+      "name": "物资仓库西门门禁出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.51",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 物资超市; 序列号: DS-K1T670M20250703V0439160CHGE3470486"
+    },
+    {
+      "deviceId": 14,
+      "name": "物资仓库西门门禁进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.50",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 物资超市; 序列号: DS-K1T670M20250703V0439160CHGE3470422"
+    },
+    {
+      "deviceId": 15,
+      "name": "生产区西门门禁右进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.72",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 平安路; 序列号: DS-K1T670M20250703V0439160CHGE3470430"
+    },
+    {
+      "deviceId": 16,
+      "name": "生产区西门门禁右出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.69",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 平安路; 序列号: DS-K1T670M20250703V0439160CHGE7259233"
+    },
+    {
+      "deviceId": 17,
+      "name": "生产区西门门禁左出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.71",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 平安路; 序列号: DS-K1T670M20250703V0439160CHGE7259138"
+    },
+    {
+      "deviceId": 18,
+      "name": "生产区西门门禁左进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.70",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 平安路; 序列号: DS-K1T670M20250703V0439160CHGE3470603"
+    },
+    {
+      "deviceId": 19,
+      "name": "生产区门禁右出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.57",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 检修路; 序列号: DS-K1T670M20250703V0439160CHGE3470509"
+    },
+    {
+      "deviceId": 20,
+      "name": "生产区门禁右进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.56",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 检修路; 序列号: DS-K1T670M20250703V0439160CHGE3470374"
+    },
+    {
+      "deviceId": 21,
+      "name": "生产区门禁左出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.55",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 检修路; 序列号: DS-K1T670M20250703V0439160CHGE3470445"
+    },
+    {
+      "deviceId": 22,
+      "name": "生产区门禁左进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.54",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "区域: 检修路; 序列号: DS-K1T670M20250703V0439160CHGE3470550"
+    },
+    {
+      "deviceId": 23,
+      "name": "西门门禁右出",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.34",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670MW20250812V0439200CHGG1965652"
+    },
+    {
+      "deviceId": 24,
+      "name": "西门门禁左进",
+      "types": [
+        "Acs"
+      ],
+      "ipAddress": "10.98.26.33",
+      "port": 8000,
+      "username": "admin",
+      "password": "xxzx@135",
+      "enabled": true,
+      "remark": "序列号: DS-K1T670MW20250812V0439200CHGG1965643"
+    },
+    {
+      "deviceId": 25,
+      "name": "摄像头 1",
+      "types": [
+        "Camera"
+      ],
+      "ipAddress": "10.98.26.73",
+      "port": 8000,
+      "username": "admin",
+      "password": "hy3013389",
+      "enabled": true,
+      "remark": "区域: 检修路; 序列号: DS-2XA8D45F/GF-IZS20250702AACHGC4189119"
+    },
+    {
+      "deviceId": 26,
+      "name": "摄像头 2",
+      "types": [
+        "Camera"
+      ],
+      "ipAddress": "10.98.26.74",
+      "port": 8000,
+      "username": "admin",
+      "password": "hy3013389",
+      "enabled": true,
+      "remark": "区域: 平安路; 序列号: DS-2XA8D45F/GF-IZS20250702AACHGC4189117"
+    },
+    {
+      "deviceId": 27,
+      "name": "摄像头 3",
+      "types": [
+        "Camera"
+      ],
+      "ipAddress": "10.98.26.75",
+      "port": 8000,
+      "username": "admin",
+      "password": "hy3013389",
+      "enabled": true,
+      "remark": "区域: 物资超市; 序列号: DS-2XA8D45F/GF-IZS20250702AACHGC4189115"
+    },
+    {
+      "deviceId": 28,
+      "name": "西门门卫采集仪",
+      "types": [
+        "FaceCapture"
+      ],
+      "ipAddress": "10.98.26.100",
+      "port": 8000,
+      "username": "admin",
+      "password": "SXSSF1314te",
+      "enabled": true,
+      "remark": ""
+    }
+  ]
 }

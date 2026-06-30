@@ -1,4 +1,6 @@
+using System.IO;
 using System.Linq;
+using System.Text;
 using ControlDoor.Configuration;
 
 namespace ControlEntradaSalida.Tests
@@ -27,6 +29,30 @@ namespace ControlEntradaSalida.Tests
             var result = new ConfigurationValidator().Validate(settings);
 
             Assert.False(result.Errors.Any(item => item.Contains("DefaultFaceCaptureDeviceId")));
+        }
+
+        [TestCase]
+        public static void ConfigurationLoader_DefaultFaceCaptureDeviceId_ReferencesDevicesJsonWhenItemsEmpty()
+        {
+            var runDirectory = TestWorkspace.Create();
+            TestWorkspace.WriteConfig(runDirectory, @"{
+  ""Database"": { ""ConnectionString"": ""Server=.;Database=test;"" },
+  ""CameraAlarmDoorInterlock"": { ""Enabled"": false, ""Mappings"": [] },
+  ""Devices"": {
+    ""FilePath"": ""Configuration\\devices.json"",
+    ""DefaultFaceCaptureDeviceId"": 28,
+    ""Items"": []
+  }
+}");
+            File.WriteAllText(
+                Path.Combine(runDirectory, "Configuration", "devices.json"),
+                @"{""devices"":[{""deviceId"":28,""name"":""西门门卫采集仪"",""types"":[""FaceCapture""],""ipAddress"":""10.98.26.100"",""port"":8000,""username"":""admin"",""password"":""pw"",""enabled"":true}]}",
+                Encoding.UTF8);
+
+            var result = new ConfigurationLoader().Load(runDirectory);
+
+            Assert.True(result.Success, string.Join("; ", result.Errors));
+            Assert.Equal(28, result.Settings.Devices.DefaultFaceCaptureDeviceId);
         }
 
         [TestCase]

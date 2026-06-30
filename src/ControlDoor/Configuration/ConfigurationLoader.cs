@@ -62,7 +62,7 @@ namespace ControlDoor.Configuration
                     new[] { "配置 JSON 解析失败: " + ex.Message });
             }
 
-            var validation = validator.Validate(settings);
+            var validation = validator.Validate(settings, runDirectory);
             if (!validation.Success)
             {
                 return new ConfigurationLoadResult(false, validation.Settings, configPath, validation.Errors, validation.Warnings);

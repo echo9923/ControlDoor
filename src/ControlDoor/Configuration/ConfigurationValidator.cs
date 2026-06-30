@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Web.Script.Serialization;
 using ControlDoor.Observability;
 
 namespace ControlDoor.Configuration
@@ -8,6 +11,11 @@ namespace ControlDoor.Configuration
     public sealed class ConfigurationValidator
     {
         public ConfigurationValidationResult Validate(AppSettings settings)
+        {
+            return Validate(settings, null);
+        }
+
+        public ConfigurationValidationResult Validate(AppSettings settings, string runDirectory)
         {
             var errors = new List<string>();
             var warnings = new List<string>();
@@ -270,7 +278,7 @@ namespace ControlDoor.Configuration
 
             ValidateCameraAlarmDoorInterlock(settings, warnings);
 
-            ValidateDeviceStore(settings, errors, warnings);
+            ValidateDeviceStore(settings, runDirectory, errors, warnings);
 
             return new ConfigurationValidationResult(settings, errors, warnings);
         }
@@ -412,9 +420,10 @@ namespace ControlDoor.Configuration
         }
 
         // 校验设备清单：文件路径、内联字段格式、deviceId/IP 唯一性、types 合法性。
-        // 此处只做静态结构校验，不解析 FilePath 文件内容（文件读取由 JsonDeviceRepository 负责），
+        // 此处只做静态结构校验；文件清单内容由 JsonDeviceRepository 负责完整校验。
+        // 当 DefaultFaceCaptureDeviceId 已配置且 Items 为空时，会读取 FilePath 以校验引用目标。
         // 文件不存在不算配置错误，避免空目录首次启动被拦截。
-        private static void ValidateDeviceStore(AppSettings settings, ICollection<string> errors, ICollection<string> warnings)
+        private static void ValidateDeviceStore(AppSettings settings, string runDirectory, ICollection<string> errors, ICollection<string> warnings)
         {
             var section = settings.Devices ?? new DeviceStoreOptions();
             settings.Devices = section;
@@ -506,6 +515,14 @@ namespace ControlDoor.Configuration
                 }
             }
 
+            var defaultDeviceCandidates = section.Items;
+            if ((defaultDeviceCandidates == null || defaultDeviceCandidates.Count == 0) &&
+                section.DefaultFaceCaptureDeviceId.HasValue &&
+                !string.IsNullOrWhiteSpace(runDirectory))
+            {
+                defaultDeviceCandidates = LoadDeviceStoreItems(runDirectory, section.FilePath, warnings);
+            }
+
             // 校验可选的默认人脸采集设备引用：必须存在、且声明了 FaceCapture 类型。
             if (section.DefaultFaceCaptureDeviceId.HasValue)
             {
@@ -516,16 +533,41 @@ namespace ControlDoor.Configuration
                 }
                 else
                 {
-                    var target = section.Items.FirstOrDefault(item => item != null && item.DeviceId == defaultId);
+                    var target = defaultDeviceCandidates.FirstOrDefault(item => item != null && item.DeviceId == defaultId);
                     if (target == null)
                     {
                         errors.Add("Devices.DefaultFaceCaptureDeviceId=" + defaultId + " 引用的设备不存在。");
                     }
-                    else if (!target.Types.Any(t => string.Equals(t, "FaceCapture", StringComparison.OrdinalIgnoreCase)))
+                    else if (target.Types == null || !target.Types.Any(t => string.Equals(t, "FaceCapture", StringComparison.OrdinalIgnoreCase)))
                     {
                         errors.Add("Devices.DefaultFaceCaptureDeviceId=" + defaultId + " 指向的设备未声明 FaceCapture 类型，无法用于人脸采集。");
                     }
                 }
+            }
+        }
+
+        private static List<DeviceStoreItem> LoadDeviceStoreItems(string runDirectory, string configuredFilePath, ICollection<string> warnings)
+        {
+            try
+            {
+                var filePath = Path.IsPathRooted(configuredFilePath)
+                    ? configuredFilePath
+                    : Path.Combine(runDirectory, configuredFilePath ?? string.Empty);
+                if (!File.Exists(filePath))
+                {
+                    return new List<DeviceStoreItem>();
+                }
+
+                var json = File.ReadAllText(filePath, Encoding.UTF8);
+                var document = new JavaScriptSerializer().Deserialize<DeviceStoreDocument>(json);
+                return document == null || document.devices == null
+                    ? new List<DeviceStoreItem>()
+                    : document.devices;
+            }
+            catch (Exception ex)
+            {
+                warnings.Add("Devices.FilePath 设备清单读取失败，无法校验 DefaultFaceCaptureDeviceId: " + ex.Message);
+                return new List<DeviceStoreItem>();
             }
         }
 
@@ -553,6 +595,11 @@ namespace ControlDoor.Configuration
             }
 
             return null;
+        }
+
+        private sealed class DeviceStoreDocument
+        {
+            public List<DeviceStoreItem> devices { get; set; }
         }
     }
 }

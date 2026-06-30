@@ -161,7 +161,7 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(60, result.Settings.DeviceOperationRetry.InitialRetryDelaySeconds);
             Assert.Equal(3600, result.Settings.DeviceOperationRetry.MaxRetryDelaySeconds);
             Assert.Equal(10, result.Settings.DeviceOperationRetry.MaxRetryAttempts);
-            Assert.Equal(30, result.Settings.DeviceOperationRetry.FailureRetentionDays);
+            Assert.Equal(7, result.Settings.DeviceOperationRetry.FailureRetentionDays);
             Assert.Equal(100, result.Settings.DeviceOperationRetry.BatchSize);
         }
 
