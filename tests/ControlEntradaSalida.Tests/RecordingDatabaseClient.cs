@@ -20,6 +20,8 @@ namespace ControlEntradaSalida.Tests
 
         public int? RowsAffected { get; set; }
 
+        public bool ThrowOnFailure { get; set; }
+
         public DatabaseCommandRecord ExecuteScalar(string operationName, string commandText)
         {
             return Record(operationName, commandText);
@@ -68,6 +70,11 @@ namespace ControlEntradaSalida.Tests
             }
 
             Commands.Add(record);
+            if (record.Error != null && ThrowOnFailure)
+            {
+                throw new System.InvalidOperationException(record.Error.Message);
+            }
+
             return record;
         }
 

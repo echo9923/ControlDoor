@@ -476,7 +476,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void DeviceLifecycle_HealthCheckAlarmProbeDisarmed_ClearsHandleAndSchedulesReArmAfterThreshold()
+        public static void DeviceLifecycle_HealthCheckAlarmProbeDisarmed_KeepsHandleAndDoesNotScheduleReArm()
         {
             using (var fixture = new Stage4Fixture())
             {
@@ -493,6 +493,7 @@ namespace ControlEntradaSalida.Tests
                     RawSetupAlarmStatus = 0,
                     RawSummary = "not deployed"
                 };
+                var before = fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm");
 
                 fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "probe-1");
                 Assert.True(fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue);
@@ -501,9 +502,9 @@ namespace ControlEntradaSalida.Tests
                 fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "probe-2");
                 var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
 
-                Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.True(snapshot.AlarmHandle.HasValue);
                 Assert.Equal(DeviceConnectionStatus.Degraded, snapshot.Status);
-                Assert.True(fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm") >= 1);
+                Assert.Equal(before, fixture.DelayedScheduler.GetSnapshot().GetSourceCount("Stage4ReArm"));
             }
         }
 

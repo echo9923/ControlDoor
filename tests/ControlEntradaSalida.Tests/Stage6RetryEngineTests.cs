@@ -313,6 +313,35 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceOperationRetryStore_LoadDueStates_QueryPassesReadOnlyGuard()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database, new DeviceOperationRetryOptions { BatchSize = 25 });
+
+            store.LoadDueStates(new DateTime(2026, 1, 1));
+
+            var sql = database.Commands.Single().CommandText.Split(new[] { " -- params:" }, StringSplitOptions.None)[0];
+            SqlServerDatabase.EnsureReadOnly(sql);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_RunLoop_ContinuesAfterScanFailure()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.Options.ScanIntervalSeconds = 1;
+                fixture.Database.FailOperationName = "DeviceOperationRetryStore.LoadDueStates";
+                fixture.Database.ThrowOnFailure = true;
+
+                fixture.Manager.StartAsync(new ControlDoor.Runtime.BackgroundTaskContext("stage6-loop", System.Threading.CancellationToken.None, null)).GetAwaiter().GetResult();
+                WaitUntil(() => fixture.Database.Commands.Count(command => command.OperationName == "DeviceOperationRetryStore.LoadDueStates") >= 2, "retry manager did not run a second scan after the first scan failed.");
+                var status = fixture.Manager.GetStatus();
+
+                Assert.True(status.IsRunning);
+            }
+        }
+
+        [TestCase]
         public static void DeviceOperationRetryStore_TryClaimDueState_UsesGuardedUpdateToLeaseExistingRow()
         {
             var database = new RecordingDatabaseClient { RowsAffected = 1 };
@@ -610,6 +639,22 @@ namespace ControlEntradaSalida.Tests
                 ["created_at"] = new DateTime(2026, 1, 1),
                 ["updated_at"] = new DateTime(2026, 1, 1)
             };
+        }
+
+        private static void WaitUntil(System.Func<bool> condition, string message)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(4);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (condition())
+                {
+                    return;
+                }
+
+                System.Threading.Thread.Sleep(50);
+            }
+
+            Assert.True(condition(), message);
         }
     }
 

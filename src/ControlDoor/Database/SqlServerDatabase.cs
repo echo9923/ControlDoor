@@ -192,16 +192,17 @@ namespace ControlDoor.Database
                 throw new InvalidOperationException("SQL 不能为空。");
             }
 
-            var trimmed = commandText.TrimStart();
+            var trimmed = commandText.Trim();
             if (!trimmed.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException("阶段 1 数据库健康检查只允许 SELECT 只读语句。");
             }
 
-            if (trimmed.IndexOf(';') >= 0 ||
-                trimmed.IndexOf("--", StringComparison.Ordinal) >= 0 ||
-                trimmed.IndexOf("/*", StringComparison.Ordinal) >= 0 ||
-                trimmed.IndexOf("*/", StringComparison.Ordinal) >= 0)
+            var sqlToCheck = TrimTrailingStatementTerminator(trimmed);
+            if (sqlToCheck.IndexOf(';') >= 0 ||
+                sqlToCheck.IndexOf("--", StringComparison.Ordinal) >= 0 ||
+                sqlToCheck.IndexOf("/*", StringComparison.Ordinal) >= 0 ||
+                sqlToCheck.IndexOf("*/", StringComparison.Ordinal) >= 0)
             {
                 throw new InvalidOperationException("Read-only SQL must be a single uncommented SELECT statement.");
             }
@@ -209,11 +210,22 @@ namespace ControlDoor.Database
             var forbidden = new[] { "INSERT", "UPDATE", "DELETE", "MERGE", "ALTER", "CREATE", "DROP", "TRUNCATE", "EXEC", "EXECUTE" };
             foreach (var keyword in forbidden)
             {
-                if (ContainsSqlKeyword(trimmed, keyword))
+                if (ContainsSqlKeyword(sqlToCheck, keyword))
                 {
                     throw new InvalidOperationException("阶段 1 禁止执行结构或数据变更 SQL: " + keyword);
                 }
             }
+        }
+
+        private static string TrimTrailingStatementTerminator(string commandText)
+        {
+            var trimmed = commandText.TrimEnd();
+            if (!trimmed.EndsWith(";", StringComparison.Ordinal))
+            {
+                return trimmed;
+            }
+
+            return trimmed.Substring(0, trimmed.Length - 1).TrimEnd();
         }
 
         private static bool ContainsSqlKeyword(string commandText, string keyword)

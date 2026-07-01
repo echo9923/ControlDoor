@@ -52,6 +52,30 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SqlServerDatabase_EnsureReadOnly_AllowsSingleSelectWithTrailingSemicolon()
+        {
+            SqlServerDatabase.EnsureReadOnly("SELECT TOP 1 * FROM dbo.system_users;");
+        }
+
+        [TestCase]
+        public static void SqlServerDatabase_EnsureReadOnly_AllowsStage6LoadDueSelectWithLockHints()
+        {
+            SqlServerDatabase.EnsureReadOnly(@"
+SELECT TOP (@batchSize) *
+FROM dbo.device_operation_retry_states WITH (UPDLOCK, READPAST, ROWLOCK)
+WHERE exhausted_at IS NULL
+  AND (next_retry_at IS NULL OR next_retry_at <= @now)
+  AND (
+      permission_pending = 1
+      OR person_pending = 1
+      OR face_pending = 1
+      OR delete_person_pending = 1
+      OR delete_face_pending = 1
+  )
+ORDER BY next_retry_at ASC, updated_at ASC, id ASC;");
+        }
+
+        [TestCase]
         public static void SqlServerDatabase_EnsureReadOnly_RejectsDangerousCommands()
         {
             AssertReadOnlyRejected("SELECT * FROM dbo.system_users WHERE id IN (SELECT id FROM dbo.system_users); INSERT INTO dbo.system_users(username) VALUES('x')");

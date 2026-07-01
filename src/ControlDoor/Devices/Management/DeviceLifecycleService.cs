@@ -651,18 +651,11 @@ namespace ControlDoor.Devices.Management
                     DateTime.Now,
                     retryable: true);
                 context.Registry.RecordError(deviceId, notDeployedError, DateTime.Now, DeviceConnectionStatus.Degraded);
-                LogAlarmProbe(context, "Device-side alarm deployment status is disarmed.", status, started, fields =>
+                LogAlarmProbe(context, "Alarm input deployment status is disarmed; keeping current AlarmHandle.", status, started, fields =>
                 {
                     fields.Extra["probeFailureCount"] = count.ToString();
                     fields.Extra["probeFailureThreshold"] = threshold.ToString();
                 });
-
-                if (count >= threshold)
-                {
-                    context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
-                    ScheduleReArm(deviceId, notDeployedError.Message);
-                    ClearAlarmProbeFailures(deviceId);
-                }
             }
             catch (Exception ex)
             {

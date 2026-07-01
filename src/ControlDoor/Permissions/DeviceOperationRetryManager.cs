@@ -130,7 +130,19 @@ namespace ControlDoor.Permissions
                 await Task.Delay(TimeSpan.FromSeconds(Math.Min(5, Math.Max(1, options.ScanIntervalSeconds))), cancellationToken).ConfigureAwait(false);
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    await RunOnceAsync(RequestContext.Background("ScanRetryStates").RequestId, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        await RunOnceAsync(RequestContext.Background("ScanRetryStates").RequestId, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.Error("DeviceOperationRetry", "补偿后台单轮扫描失败，将等待下一轮恢复。", ex);
+                    }
+
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                 }
             }
