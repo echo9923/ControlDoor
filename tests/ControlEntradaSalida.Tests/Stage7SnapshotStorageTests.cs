@@ -20,7 +20,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SnapshotStorage_SaveJpeg_WritesFileAndReturnsRelativePath()
+        public static void SnapshotStorage_SaveJpeg_WritesFileAndReturnsAbsolutePath()
         {
             var workspace = TestWorkspace.Create();
             var storage = new SnapshotStorage(workspace, new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
@@ -29,7 +29,8 @@ namespace ControlEntradaSalida.Tests
             var result = storage.Save(faceEvent);
 
             Assert.True(result.Saved);
-            Assert.True(File.Exists(Path.Combine(storage.RootDirectory, result.SnapshotPath.Replace('/', Path.DirectorySeparatorChar))));
+            Assert.True(Path.IsPathRooted(result.SnapshotPath), "snapshot path must be absolute");
+            Assert.True(File.Exists(result.SnapshotPath));
             Assert.Contains("snapshotSaved", faceEvent.RawPayload);
             Assert.Contains("10001", result.SnapshotPath);
         }
@@ -58,9 +59,10 @@ namespace ControlEntradaSalida.Tests
             var result = storage.Save(faceEvent);
 
             Assert.True(result.Saved);
-            Assert.False(result.SnapshotPath.Contains(":"));
-            Assert.False(result.SnapshotPath.Contains("*"));
-            Assert.False(result.SnapshotPath.Contains("?"));
+            var fileName = Path.GetFileName(result.SnapshotPath);
+            Assert.False(fileName.Contains(":"));
+            Assert.False(fileName.Contains("*"));
+            Assert.False(fileName.Contains("?"));
         }
 
         [TestCase]
@@ -73,6 +75,7 @@ namespace ControlEntradaSalida.Tests
             var result = storage.Save(faceEvent);
 
             Assert.True(result.Saved);
+            Assert.True(Path.IsPathRooted(result.SnapshotPath), "snapshot path must be absolute");
             Assert.True(result.SnapshotPath.Length <= 255);
         }
 

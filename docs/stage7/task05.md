@@ -18,7 +18,7 @@
 | `device_name` | `AcsFaceEvent.DeviceName`。 |
 | `device_sn` | `AcsFaceEvent.DeviceSn`。 |
 | `card_no` | `AcsFaceEvent.CardNo`。 |
-| `snapshot_path` | `SnapshotStorage` 返回路径。 |
+| `snapshot_path` | `SnapshotStorage` 返回的抓拍图片绝对路径。 |
 | `raw_payload` | 标准 raw payload JSON。 |
 | `event_type` | `AcsFaceEvent.EventType`。 |
 | `process_status` | 默认 0。 |

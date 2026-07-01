@@ -38,7 +38,7 @@
 | `FaceEventIngestionService` | 阶段 7 总入口，管理实时/离线上传事件队列和生命周期。 |
 | `AcsAlarmEventRouter` | 从 SDK 原始回调识别 ACS 事件、反查设备、投递队列。 |
 | `AcsEventParser` | 解析员工编号、事件时间、流水、方向、设备、认证结果和图片。 |
-| `SnapshotStorage` | 保存抓拍图片，生成相对或绝对路径。 |
+| `SnapshotStorage` | 保存抓拍图片，生成入库用绝对路径。 |
 | `FaceEventRepository` | 写入 `attendance_gate_v2`、查询防重、补全昵称。 |
 | `OfflineAcsEventPolicy` | 识别 `byCurrentEvent == 2` 离线事件，并按配置决定接收或忽略。 |
 

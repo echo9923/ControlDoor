@@ -21,8 +21,8 @@ namespace ControlEntradaSalida.Tests
             Assert.True(second.Saved);
             Assert.True(first.SnapshotPath != second.SnapshotPath, "collision must produce a distinct path");
             Assert.Contains("_1", second.SnapshotPath);
-            Assert.True(File.Exists(ToAbsolute(storage.RootDirectory, first.SnapshotPath)));
-            Assert.True(File.Exists(ToAbsolute(storage.RootDirectory, second.SnapshotPath)));
+            Assert.True(File.Exists(first.SnapshotPath));
+            Assert.True(File.Exists(second.SnapshotPath));
         }
 
         [TestCase]
@@ -78,7 +78,7 @@ namespace ControlEntradaSalida.Tests
             var result = storage.Save(faceEvent);
 
             Assert.True(result.Saved);
-            Assert.True(File.Exists(ToAbsolute(storage.RootDirectory, result.SnapshotPath)));
+            Assert.True(File.Exists(result.SnapshotPath));
         }
 
         [TestCase]
@@ -95,7 +95,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SnapshotStorage_ReturnedPath_UsesForwardSlashes()
+        public static void SnapshotStorage_ReturnedPath_IsAbsoluteFilePath()
         {
             var workspace = TestWorkspace.Create();
             var storage = new SnapshotStorage(workspace);
@@ -104,13 +104,9 @@ namespace ControlEntradaSalida.Tests
             var result = storage.Save(faceEvent);
 
             Assert.True(result.Saved);
-            Assert.True(result.SnapshotPath.Contains("/"));
-            Assert.False(result.SnapshotPath.Contains("\\"));
-        }
-
-        private static string ToAbsolute(string root, string relativePath)
-        {
-            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Assert.True(Path.IsPathRooted(result.SnapshotPath), "snapshot path must be absolute");
+            Assert.True(result.SnapshotPath.StartsWith(storage.RootDirectory, StringComparison.OrdinalIgnoreCase));
+            Assert.True(File.Exists(result.SnapshotPath));
         }
 
         private static AcsFaceEvent NewEvent(string employeeId, byte[] pictureBytes)

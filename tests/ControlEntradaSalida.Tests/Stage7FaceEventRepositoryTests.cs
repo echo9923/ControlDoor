@@ -22,11 +22,13 @@ namespace ControlEntradaSalida.Tests
             var result = repository.InsertEvent(faceEvent);
 
             Assert.Equal(FaceEventInsertStatus.Inserted, result.Status);
-            Assert.True(File.Exists(Path.Combine(storage.RootDirectory, result.SnapshotPath.Replace('/', Path.DirectorySeparatorChar))));
+            Assert.True(Path.IsPathRooted(result.SnapshotPath), "snapshot path must be absolute");
+            Assert.True(File.Exists(result.SnapshotPath));
             var insert = database.Commands.Single(item => item.OperationName == "InsertFaceEvent");
             Assert.Contains("INSERT INTO dbo.attendance_gate_v2", insert.CommandText);
             Assert.Contains("username=10001", insert.CommandText);
             Assert.Contains("nickname=张三", insert.CommandText);
+            Assert.Contains("snapshot_path=" + result.SnapshotPath, insert.CommandText);
             Assert.Contains("creator=ControlDoor", insert.CommandText);
             Assert.Contains("tenant_id=1", insert.CommandText);
         }

@@ -52,26 +52,15 @@ namespace ControlDoor.FaceEvents
                 Directory.CreateDirectory(absoluteDirectory);
 
                 var fileName = BuildFileName(faceEvent, compact: false);
-                var relativePath = CombineRelative(relativeDirectory, fileName);
-                if (relativePath.Length > MaxSnapshotPathLength)
+                if (!TryResolveSnapshotPath(absoluteDirectory, fileName, out var targetPath, out var snapshotPath))
                 {
                     fileName = BuildFileName(faceEvent, compact: true);
-                    relativePath = CombineRelative(relativeDirectory, fileName);
+                    TryResolveSnapshotPath(absoluteDirectory, fileName, out targetPath, out snapshotPath);
                 }
 
-                if (relativePath.Length > MaxSnapshotPathLength)
+                if (string.IsNullOrEmpty(snapshotPath) || snapshotPath.Length > MaxSnapshotPathLength)
                 {
                     var result = SnapshotSaveResult.Failed("PATH_TOO_LONG", "snapshot path exceeds " + MaxSnapshotPathLength + " characters");
-                    ApplySnapshotPayload(faceEvent, result);
-                    return result;
-                }
-
-                var targetPath = Path.Combine(rootDirectory, relativePath);
-                targetPath = ResolveCollision(targetPath);
-                relativePath = GetRelativePath(rootDirectory, targetPath);
-                if (relativePath.Length > MaxSnapshotPathLength)
-                {
-                    var result = SnapshotSaveResult.Failed("PATH_TOO_LONG", "snapshot path exceeds " + MaxSnapshotPathLength + " characters after collision handling");
                     ApplySnapshotPayload(faceEvent, result);
                     return result;
                 }
@@ -80,7 +69,7 @@ namespace ControlDoor.FaceEvents
                 File.WriteAllBytes(tempPath, faceEvent.PictureBytes);
                 File.Move(tempPath, targetPath);
 
-                var saved = SnapshotSaveResult.SavedResult(NormalizePath(relativePath));
+                var saved = SnapshotSaveResult.SavedResult(snapshotPath);
                 ApplySnapshotPayload(faceEvent, saved);
                 return saved;
             }
@@ -150,9 +139,29 @@ namespace ControlDoor.FaceEvents
                 ".jpg";
         }
 
-        private static string CombineRelative(string directory, string fileName)
+        private static bool TryResolveSnapshotPath(string directory, string fileName, out string targetPath, out string snapshotPath)
         {
-            return NormalizePath(Path.Combine(directory, fileName));
+            targetPath = null;
+            snapshotPath = null;
+            try
+            {
+                var candidatePath = Path.Combine(directory, fileName);
+                var candidateSnapshotPath = NormalizeSnapshotPath(Path.GetFullPath(candidatePath));
+                if (candidateSnapshotPath.Length > MaxSnapshotPathLength)
+                {
+                    targetPath = candidatePath;
+                    snapshotPath = candidateSnapshotPath;
+                    return false;
+                }
+
+                targetPath = ResolveCollision(candidatePath);
+                snapshotPath = NormalizeSnapshotPath(Path.GetFullPath(targetPath));
+                return snapshotPath.Length <= MaxSnapshotPathLength;
+            }
+            catch (PathTooLongException)
+            {
+                return false;
+            }
         }
 
         private static string ResolveCollision(string targetPath)
@@ -177,27 +186,23 @@ namespace ControlDoor.FaceEvents
             return Path.Combine(directory, name + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + extension);
         }
 
-        private static string GetRelativePath(string root, string target)
+        private static string NormalizeSnapshotPath(string path)
         {
-            var rootUri = new Uri(AppendDirectorySeparator(root));
-            var targetUri = new Uri(target);
-            return Uri.UnescapeDataString(rootUri.MakeRelativeUri(targetUri).ToString()).Replace('/', Path.DirectorySeparatorChar);
-        }
-
-        private static string AppendDirectorySeparator(string path)
-        {
-            if (path.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal) ||
-                path.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+            const string extendedPathPrefix = @"\\?\";
+            const string extendedUncPrefix = @"\\?\UNC\";
+            if (string.IsNullOrEmpty(path))
             {
-                return path;
+                return string.Empty;
             }
 
-            return path + Path.DirectorySeparatorChar;
-        }
+            if (path.StartsWith(extendedUncPrefix, StringComparison.Ordinal))
+            {
+                return @"\\" + path.Substring(extendedUncPrefix.Length);
+            }
 
-        private static string NormalizePath(string path)
-        {
-            return (path ?? string.Empty).Replace('\\', '/');
+            return path.StartsWith(extendedPathPrefix, StringComparison.Ordinal)
+                ? path.Substring(extendedPathPrefix.Length)
+                : path;
         }
     }
 }
