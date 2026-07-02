@@ -214,7 +214,7 @@ namespace ControlDoor.Hikvision
                 throw new ArgumentException("EmployeeId or CardNumber is required.");
             }
 
-            return SendIsapiJsonAsync("DeletePerson", "/ISAPI/AccessControl/UserManagement/UserInfo/Delete", IsapiMethod.Put, request.UserId, request, cancellationToken);
+            return SendIsapiJsonAsync("DeletePerson", "/ISAPI/AccessControl/UserInfo/Delete?format=json", IsapiMethod.Put, request.UserId, BuildPersonDeletePayload(request), cancellationToken);
         }
 
         public Task ModifyPersonAsync(ModifyPersonRequest request, CancellationToken cancellationToken = default)
@@ -856,6 +856,21 @@ namespace ControlDoor.Hikvision
                 FPID = new[]
                 {
                     new { value }
+                }
+            };
+        }
+
+        private static object BuildPersonDeletePayload(DeletePersonRequest request)
+        {
+            var employeeNo = FirstNonEmpty(request.EmployeeId, request.CardNumber);
+            return new
+            {
+                UserInfoDelCond = new
+                {
+                    EmployeeNoList = new[]
+                    {
+                        new { employeeNo }
+                    }
                 }
             };
         }

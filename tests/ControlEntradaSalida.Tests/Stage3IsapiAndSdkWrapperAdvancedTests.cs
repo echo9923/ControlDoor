@@ -374,6 +374,23 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_DeletePerson_UsesCompatibleUserInfoDeletePayload()
+        {
+            var native = new Stage3FakeNativeClient { StdXmlOutput = @"{""statusCode"":1}" };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            gateway.DeletePersonAsync(new DeletePersonRequest { UserId = login.UserId, EmployeeId = "10001" }).GetAwaiter().GetResult();
+
+            Assert.Contains("PUT", native.LastStdXmlUrl);
+            Assert.Contains("/ISAPI/AccessControl/UserInfo/Delete?format=json", native.LastStdXmlUrl);
+            Assert.Contains(@"""UserInfoDelCond"":{""EmployeeNoList"":[{""employeeNo"":""10001""}]}", native.LastStdXmlInput);
+            Assert.False(native.LastStdXmlUrl.Contains("UserManagement"));
+            Assert.False(native.LastStdXmlInput.Contains(@"""UserId"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""EmployeeId"""));
+        }
+
+        [TestCase]
         public static void SdkWrapper_QueryFace_UsesFdSearchAndParsesFaceRecords()
         {
             var native = new Stage3FakeNativeClient
