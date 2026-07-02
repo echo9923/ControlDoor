@@ -50,6 +50,28 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void CaptureFace_DefaultDeviceIgnoresRuntimeFaceCaptureCapability()
+        {
+            using (var fixture = new Stage5Fixture(defaultFaceCaptureDeviceId: 2))
+            {
+                fixture.AddOnlineDevice(deviceId: 2, types: new[] { DeviceType.FaceCapture });
+                fixture.Registry.UpdateCapabilities(2, new ControlDoor.Devices.Runtime.DeviceCapabilities
+                {
+                    Known = true,
+                    SupportsFaceCapture = false,
+                    SupportsAlarm = true
+                }, DateTime.Now);
+                var expectedUserId = fixture.Registry.GetAllSnapshots().First(item => item.DeviceId == 2).SdkUserId;
+
+                var frame = fixture.Response(fixture.Service.CaptureFaceStream(RequestJson(), fixture.Context("capture-default-capability")).First());
+
+                Assert.Equal("OK", frame["code"]);
+                var captureCall = fixture.Gateway.Calls.Last(item => item.MethodName == "CaptureFaceAsync");
+                Assert.Equal(expectedUserId.Value, ((CaptureRequest)captureCall.Request).UserId);
+            }
+        }
+
+        [TestCase]
         public static void CaptureFace_DefaultDeviceNotConfigured_FallsBackToLegacy()
         {
             using (var fixture = new Stage5Fixture())
@@ -60,6 +82,29 @@ namespace ControlEntradaSalida.Tests
                 var expectedUserId = fixture.Registry.GetAllSnapshots().First(item => item.DeviceId == 1).SdkUserId;
 
                 var frame = fixture.Response(fixture.Service.CaptureFaceStream(RequestJson(), fixture.Context("capture-legacy")).First());
+
+                Assert.Equal("OK", frame["code"]);
+                var captureCall = fixture.Gateway.Calls.Last(item => item.MethodName == "CaptureFaceAsync");
+                Assert.Equal(expectedUserId.Value, ((CaptureRequest)captureCall.Request).UserId);
+            }
+        }
+
+        [TestCase]
+        public static void CaptureFace_DefaultDeviceNotConfigured_DoesNotSkipUnsupportedRuntimeCapability()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(deviceId: 1, types: new[] { DeviceType.FaceCapture });
+                fixture.Registry.UpdateCapabilities(1, new ControlDoor.Devices.Runtime.DeviceCapabilities
+                {
+                    Known = true,
+                    SupportsFaceCapture = false,
+                    SupportsAlarm = true
+                }, DateTime.Now);
+                fixture.AddOnlineDevice(deviceId: 2, types: new[] { DeviceType.FaceCapture });
+                var expectedUserId = fixture.Registry.GetAllSnapshots().First(item => item.DeviceId == 1).SdkUserId;
+
+                var frame = fixture.Response(fixture.Service.CaptureFaceStream(RequestJson(), fixture.Context("capture-legacy-capability")).First());
 
                 Assert.Equal("OK", frame["code"]);
                 var captureCall = fixture.Gateway.Calls.Last(item => item.MethodName == "CaptureFaceAsync");

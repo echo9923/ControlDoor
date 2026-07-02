@@ -409,8 +409,7 @@ namespace ControlDoor.GrpcApi
                 }
                 else if (!configured.Enabled ||
                     !configured.IsConnected ||
-                    !configured.SdkUserId.HasValue ||
-                    (configured.Capabilities.Known && !configured.Capabilities.SupportsFaceCapture))
+                    !configured.SdkUserId.HasValue)
                 {
                     failMessage = "默认人脸采集设备(deviceId=" + configured.DeviceId + ")当前不可用。";
                 }
@@ -425,8 +424,7 @@ namespace ControlDoor.GrpcApi
                 device = candidates.FirstOrDefault(item =>
                     item.Enabled &&
                     item.IsConnected &&
-                    item.SdkUserId.HasValue &&
-                    (!item.Capabilities.Known || item.Capabilities.SupportsFaceCapture));
+                    item.SdkUserId.HasValue);
             }
 
             if (device == null)
