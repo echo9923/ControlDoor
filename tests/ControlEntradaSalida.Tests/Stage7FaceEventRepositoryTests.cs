@@ -94,6 +94,21 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void FaceEventRepository_EmployeeIdWithLeadingZero_IsPreserved()
+        {
+            var database = new RecordingDatabaseClient();
+            var repository = NewRepository(database, out var _);
+            var faceEvent = NewEvent();
+            faceEvent.EmployeeId = "0976";
+
+            var result = repository.InsertEvent(faceEvent);
+
+            Assert.Equal(FaceEventInsertStatus.Inserted, result.Status);
+            var insert = database.Commands.Single(item => item.OperationName == "InsertFaceEvent");
+            Assert.Contains("username=0976", insert.CommandText);
+        }
+
+        [TestCase]
         public static void FaceEventRepository_FieldTooLong_IsTruncated()
         {
             var database = new RecordingDatabaseClient();

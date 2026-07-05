@@ -749,11 +749,7 @@ namespace ControlDoor.Hikvision
                 "; minor=" + minor +
                 "; pic=" + (data.PictureBytes == null ? 0 : data.PictureBytes.Length);
             data.CardNumber = GetAnsiString(eventInfo.byCardNo);
-            if (eventInfo.dwEmployeeNo > 0)
-            {
-                data.EmployeeId = eventInfo.dwEmployeeNo.ToString();
-            }
-
+            data.EmployeeId = eventInfo.dwEmployeeNo.ToString();
             data.DoorIndex = eventInfo.dwDoorNo;
             data.Success = IsSuccessMinor(minor);
             data.Values["dwMajor"] = major.ToString();
@@ -788,6 +784,12 @@ namespace ControlDoor.Hikvision
                     typeof(NET_DVR_ACS_EVENT_INFO_EXTEND));
                 data.CurrentEventFlag = extend.byCurrentEvent;
                 data.Values["byCurrentEvent"] = extend.byCurrentEvent.ToString();
+                var employeeNo = GetAnsiString(extend.byEmployeeNo);
+                if (!string.IsNullOrWhiteSpace(employeeNo))
+                {
+                    data.EmployeeId = employeeNo;
+                    data.Values["byEmployeeNo"] = employeeNo;
+                }
                 data.RawPayloadSummary = data.RawPayloadSummary + "; byCurrentEvent=" + extend.byCurrentEvent;
             }
             catch

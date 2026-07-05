@@ -27,8 +27,9 @@ namespace ControlDoor.FaceEvents
 
             var employeeId = FirstNonEmpty(
                 GetValue(rawEvent, "employeeId"),
-                PositiveNumberValue(rawEvent, "dwEmployeeNo"),
-                GetValue(rawEvent, "EmployeeId"));
+                GetValue(rawEvent, "byEmployeeNo"),
+                GetValue(rawEvent, "EmployeeId"),
+                GetValue(rawEvent, "dwEmployeeNo"));
             var cardNo = FirstNonEmpty(
                 GetValue(rawEvent, "cardNo"),
                 GetValue(rawEvent, "CardNumber"),
@@ -123,12 +124,6 @@ namespace ControlDoor.FaceEvents
             }
 
             faceEvent.RawPayload = new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(faceEvent.RawPayloadFields);
-        }
-
-        private static string PositiveNumberValue(RawAcsAlarmEvent rawEvent, string key)
-        {
-            long value;
-            return long.TryParse(GetValue(rawEvent, key), out value) && value > 0 ? value.ToString() : null;
         }
 
         private static string GetValue(RawAcsAlarmEvent rawEvent, string key)

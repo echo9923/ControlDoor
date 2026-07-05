@@ -87,7 +87,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void AcsEventParser_DwEmployeeNoZero_SkippedAndReturnsMissingPersonKey()
+        public static void AcsEventParser_DwEmployeeNoZero_IsPreservedAsEmployeeId()
         {
             var parser = new AcsEventParser();
             var raw = NewRawEvent();
@@ -95,8 +95,61 @@ namespace ControlEntradaSalida.Tests
 
             var result = parser.Parse(raw);
 
-            Assert.False(result.Success);
-            Assert.Equal("MISSING_PERSON_KEY", result.Code);
+            Assert.True(result.Success);
+            Assert.Equal("0", result.Event.EmployeeId);
+        }
+
+        [TestCase]
+        public static void AcsEventParser_ByEmployeeNoWithLeadingZero_IsPreserved()
+        {
+            var parser = new AcsEventParser();
+            var raw = NewRawEvent();
+            raw.Values["byEmployeeNo"] = "0976";
+
+            var result = parser.Parse(raw);
+
+            Assert.True(result.Success);
+            Assert.Equal("0976", result.Event.EmployeeId);
+        }
+
+        [TestCase]
+        public static void AcsEventParser_DwEmployeeNoWithLeadingZero_IsPreserved()
+        {
+            var parser = new AcsEventParser();
+            var raw = NewRawEvent();
+            raw.Values["dwEmployeeNo"] = "0976";
+
+            var result = parser.Parse(raw);
+
+            Assert.True(result.Success);
+            Assert.Equal("0976", result.Event.EmployeeId);
+        }
+
+        [TestCase]
+        public static void AcsEventParser_EmployeeIdWithLeadingZeros_IsPreserved()
+        {
+            var parser = new AcsEventParser();
+            var raw = NewRawEvent();
+            raw.Values["employeeId"] = "000976";
+
+            var result = parser.Parse(raw);
+
+            Assert.True(result.Success);
+            Assert.Equal("000976", result.Event.EmployeeId);
+        }
+
+        [TestCase]
+        public static void AcsEventParser_EmployeeIdTakesPrecedenceOverByEmployeeNo()
+        {
+            var parser = new AcsEventParser();
+            var raw = NewRawEvent();
+            raw.Values["employeeId"] = "000976";
+            raw.Values["byEmployeeNo"] = "0976";
+
+            var result = parser.Parse(raw);
+
+            Assert.True(result.Success);
+            Assert.Equal("000976", result.Event.EmployeeId);
         }
 
         [TestCase]

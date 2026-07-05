@@ -789,6 +789,24 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_NativeAcsAlarm_ByEmployeeNoOverridesNumericEmployeeNo()
+        {
+            var native = new FakeNativeClient();
+            var gateway = new HikvisionSdkWrapper(native);
+            AlarmEventData eventData = null;
+            gateway.OnAlarmEvent += (sender, data) => eventData = data;
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+            gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+
+            native.EmitAcsAlarmWithEmployeeNo("0976", 976);
+
+            Assert.NotNull(eventData);
+            Assert.Equal("0976", eventData.EmployeeId);
+            Assert.Equal("0976", eventData.Values["byEmployeeNo"]);
+            Assert.Equal("976", eventData.Values["dwEmployeeNo"]);
+        }
+
+        [TestCase]
         public static void SdkWrapper_NativeAcsAlarm_DocumentedBaseStructParsesWithoutCurrentEventFlag()
         {
             var native = new FakeNativeClient();
@@ -1472,6 +1490,61 @@ namespace ControlEntradaSalida.Tests
                 }
             }
 
+            public void EmitAcsAlarmWithEmployeeNo(string employeeNo, int numericEmployeeNo)
+            {
+                var extend = new TestAcsEventInfoExtend
+                {
+                    dwFrontSerialNo = 1234,
+                    byCurrentEvent = 1,
+                    byEmployeeNo = FixedBytes(employeeNo, 32)
+                };
+                var extendSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestAcsEventInfoExtend));
+                var extendPtr = System.Runtime.InteropServices.Marshal.AllocHGlobal(extendSize);
+                try
+                {
+                    System.Runtime.InteropServices.Marshal.StructureToPtr(extend, extendPtr, false);
+                    var alarm = new TestAcsAlarmInfo
+                    {
+                        dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestAcsAlarmInfo)),
+                        dwMajor = 5,
+                        dwMinor = 75,
+                        struTime = new TestSdkTime
+                        {
+                            dwYear = 2026,
+                            dwMonth = 6,
+                            dwDay = 19,
+                            dwHour = 10,
+                            dwMinute = 30,
+                            dwSecond = 0
+                        },
+                        sNetUser = new byte[16],
+                        struRemoteHostAddr = new TestSdkIpAddress
+                        {
+                            sIpV4 = new byte[16],
+                            sIpV6 = new byte[128]
+                        },
+                        struAcsEventInfo = new TestAcsEventInfo
+                        {
+                            dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestAcsEventInfo)),
+                            byCardNo = new byte[32],
+                            dwDoorNo = 1,
+                            dwEmployeeNo = numericEmployeeNo,
+                            dwSerialNo = 5678,
+                            byMACAddr = new byte[6],
+                            byRes = new byte[4]
+                        },
+                        pAcsEventInfoExtend = extendPtr,
+                        byAcsEventInfoExtend = 1,
+                        byRes = new byte[4]
+                    };
+                    EmitStructAlarm(0x5002, alarm);
+                }
+                finally
+                {
+                    System.Runtime.InteropServices.Marshal.FreeHGlobal(extendPtr);
+                }
+            }
+
             public void EmitDocumentedAcsAlarm()
             {
                 var alarm = new TestDocumentedAcsAlarmInfo
@@ -1522,6 +1595,19 @@ namespace ControlEntradaSalida.Tests
                 {
                     System.Runtime.InteropServices.Marshal.FreeHGlobal(ptr);
                 }
+            }
+
+            private static byte[] FixedBytes(string value, int length)
+            {
+                var result = new byte[length];
+                if (string.IsNullOrEmpty(value))
+                {
+                    return result;
+                }
+
+                var bytes = System.Text.Encoding.Default.GetBytes(value);
+                Buffer.BlockCopy(bytes, 0, result, 0, Math.Min(bytes.Length, result.Length));
+                return result;
             }
 
             [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
