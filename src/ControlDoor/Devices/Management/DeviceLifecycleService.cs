@@ -286,11 +286,14 @@ namespace ControlDoor.Devices.Management
                 };
             }
 
+            LogManualOperationRequested(deviceId, requestId, "ManualDisconnect");
             CancelDelayedReconnect(deviceId);
             CancelDelayedReArm(deviceId);
             var task = CreateDisconnectTask(deviceId, "ManualDisconnect", DeviceConnectionStatus.Disconnected, requestId);
             var result = dispatcher.SubmitAndWaitAsync(task).GetAwaiter().GetResult();
-            return FromTaskResult(result);
+            var operation = FromTaskResult(result);
+            LogDeviceOperationResult("Manual disconnect completed.", requestId, "ManualDisconnect", operation);
+            return operation;
         }
 
         public DeviceOperationResult ReconnectDevice(int deviceId, bool force, string requestId)
@@ -307,6 +310,7 @@ namespace ControlDoor.Devices.Management
                 };
             }
 
+            LogManualOperationRequested(deviceId, requestId, "ManualReconnect");
             if (!force && lookup.Snapshot.IsConnected)
             {
                 return DeviceOperationResult.FromSnapshot(true, "OK", "设备已在线。", lookup.Snapshot);
@@ -325,7 +329,9 @@ namespace ControlDoor.Devices.Management
                 return FromTaskResult(cleanupResult);
             }
 
-            return SubmitLogin(deviceId, wait: true, requestId: requestId);
+            var login = SubmitLogin(deviceId, wait: true, requestId: requestId);
+            LogDeviceOperationResult("Manual reconnect completed.", requestId, "ManualReconnect", login);
+            return login;
         }
 
         public DeviceOperationResult DisarmDeviceAlarm(int deviceId, string requestId)
@@ -342,6 +348,7 @@ namespace ControlDoor.Devices.Management
                 };
             }
 
+            LogManualOperationRequested(deviceId, requestId, "ManualDisarmAlarm");
             CancelDelayedReArm(deviceId);
             if (!lookup.Snapshot.AlarmHandle.HasValue)
             {
@@ -350,7 +357,9 @@ namespace ControlDoor.Devices.Management
             }
 
             var result = dispatcher.SubmitAndWaitAsync(CreateDisarmAlarmTask(deviceId, requestId, manuallyDisarmed: true)).GetAwaiter().GetResult();
-            return FromTaskResult(result);
+            var operation = FromTaskResult(result);
+            LogDeviceOperationResult("Manual disarm completed.", requestId, "ManualDisarmAlarm", operation);
+            return operation;
         }
 
         public DeviceOperationResult RearmDeviceAlarm(int deviceId, bool force, string requestId)
@@ -367,6 +376,7 @@ namespace ControlDoor.Devices.Management
                 };
             }
 
+            LogManualOperationRequested(deviceId, requestId, "ManualRearmAlarm");
             if (!lookup.Snapshot.IsConnected || !lookup.Snapshot.SdkUserId.HasValue)
             {
                 return DeviceOperationResult.FromSnapshot(false, "DEVICE_ERROR", "设备未在线，不能重新布防。", lookup.Snapshot);
@@ -388,7 +398,9 @@ namespace ControlDoor.Devices.Management
                 }
             }
 
-            return SubmitArmAlarm(deviceId, wait: true, requestId: requestId);
+            var arm = SubmitArmAlarm(deviceId, wait: true, requestId: requestId);
+            LogDeviceOperationResult("Manual rearm completed.", requestId, "ManualRearmAlarm", arm);
+            return arm;
         }
 
         public DeviceOperationResult DeleteDevice(int deviceId, bool disconnectFirst, string requestId)
@@ -506,6 +518,12 @@ namespace ControlDoor.Devices.Management
                         return DeviceTaskResult.FromTask(context.Task, false, register.Code, register.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
                     }
 
+                    var staleCleanup = await CloseStaleAlarmBeforeRearmAsync(context, register.Snapshot, started).ConfigureAwait(false);
+                    if (staleCleanup != null)
+                    {
+                        return staleCleanup;
+                    }
+
                     ClearHealthFailures(deviceId);
                     LogLifecycleSuccess(context, "设备登录成功。", started, fields =>
                     {
@@ -528,6 +546,7 @@ namespace ControlDoor.Devices.Management
                     var error = ToRuntimeError("DeviceLogin", ex, DateTime.Now, retryable: true);
                     context.Registry.MarkLoginFailed(deviceId, error, DateTime.Now);
                     ScheduleReconnect(deviceId, error.Message);
+                    LogLifecycleFailure(context, "Device login failed and reconnect was scheduled.", started, error);
                     var result = DeviceTaskResult.FromTask(context.Task, false, error.Code, error.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
                     result.SdkErrorCode = error.SdkErrorCode;
                     result.Retryable = true;
@@ -538,6 +557,55 @@ namespace ControlDoor.Devices.Management
             task.TimeoutMilliseconds = options.LoginTimeoutMs;
             task.RequestId = requestId ?? string.Empty;
             return task;
+        }
+
+        private async System.Threading.Tasks.Task<DeviceTaskResult> CloseStaleAlarmBeforeRearmAsync(DeviceTaskContext context, DeviceRuntimeSnapshot snapshot, DateTime started)
+        {
+            if (context == null || context.Task == null || snapshot == null || !snapshot.StaleAlarmHandle.HasValue)
+            {
+                return null;
+            }
+
+            var deviceId = context.Task.DeviceId;
+            var staleAlarmHandle = snapshot.StaleAlarmHandle.Value;
+            try
+            {
+                await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = staleAlarmHandle }, context.CancellationToken).ConfigureAwait(false);
+                context.Registry.ClearStaleAlarmHandle(deviceId, DateTime.Now);
+                LogLifecycleSuccess(context, "Stale alarm handle closed before rearm.", started, fields =>
+                {
+                    fields.Extra["staleAlarmHandle"] = staleAlarmHandle.ToString();
+                });
+                return null;
+            }
+            catch (Exception ex)
+            {
+                var error = ToRuntimeError("DeviceCloseStaleAlarm", ex, DateTime.Now, retryable: true);
+                if (error.SdkErrorCode == 17)
+                {
+                    context.Registry.ClearStaleAlarmHandle(deviceId, DateTime.Now);
+                    logger?.Warn("DeviceLifecycle", "Stale alarm handle was already unavailable; continuing rearm.", new LogFields
+                    {
+                        DeviceId = deviceId,
+                        OperationName = context.Task.OperationName,
+                        RequestId = string.IsNullOrWhiteSpace(context.Task.RequestId) ? context.RequestContext?.RequestId : context.Task.RequestId,
+                        TraceId = context.RequestContext?.TraceId,
+                        ErrorCode = error.Code
+                    });
+                    return null;
+                }
+
+                context.Registry.MarkDisconnected(deviceId, error, DateTime.Now, DeviceConnectionStatus.Offline);
+                ScheduleReconnect(deviceId, error.Message);
+                LogLifecycleFailure(context, "Stale alarm handle close failed before rearm.", started, error, fields =>
+                {
+                    fields.Extra["staleAlarmHandle"] = staleAlarmHandle.ToString();
+                });
+                var result = DeviceTaskResult.FromTask(context.Task, false, error.Code, error.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
+                result.SdkErrorCode = error.SdkErrorCode;
+                result.Retryable = true;
+                return result;
+            }
         }
 
         private DeviceSdkTask CreateHealthCheckTask(int deviceId, string requestId)
@@ -579,6 +647,12 @@ namespace ControlDoor.Devices.Management
                         context.Registry.RecordError(deviceId, error, DateTime.Now, DeviceConnectionStatus.Degraded);
                     }
 
+                    LogLifecycleFailure(context, "Device health check failed.", started, error, fields =>
+                    {
+                        fields.Extra["failureCount"] = count.ToString();
+                        fields.Extra["failureThreshold"] = options.FailureThreshold.ToString();
+                        fields.Extra["markedOffline"] = (count >= options.FailureThreshold).ToString();
+                    });
                     var result = DeviceTaskResult.FromTask(context.Task, false, error.Code, error.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
                     result.SdkErrorCode = error.SdkErrorCode;
                     result.Retryable = true;
@@ -755,6 +829,7 @@ namespace ControlDoor.Devices.Management
                     {
                         ScheduleReArm(deviceId, error.Message);
                     }
+                    LogLifecycleFailure(context, "Device alarm deployment failed.", started, error);
                     var result = DeviceTaskResult.FromTask(context.Task, false, error.Code, error.Message, DeviceConnectionStatus.Degraded, started, DateTime.Now);
                     result.SdkErrorCode = error.SdkErrorCode;
                     result.Retryable = true;
@@ -809,6 +884,7 @@ namespace ControlDoor.Devices.Management
                 {
                     lastError = ToRuntimeError("DeviceCloseAlarm", ex, DateTime.Now, retryable: false);
                     context.Registry.RecordError(deviceId, lastError, DateTime.Now, snapshot.Status);
+                    LogLifecycleFailure(context, "Device alarm close failed.", started, lastError);
                 }
 
                 var success = lastError == null;
@@ -854,6 +930,7 @@ namespace ControlDoor.Devices.Management
                     catch (Exception ex)
                     {
                         lastError = ToRuntimeError("DeviceCloseAlarm", ex, DateTime.Now, retryable: false);
+                        LogLifecycleFailure(context, "Device alarm close failed during disconnect.", started, lastError);
                     }
 
                     if (alarmClosed)
@@ -881,6 +958,7 @@ namespace ControlDoor.Devices.Management
                     catch (Exception ex)
                     {
                         lastError = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
+                        LogLifecycleFailure(context, "Device logout failed.", started, lastError);
                     }
                 }
 
@@ -943,11 +1021,17 @@ namespace ControlDoor.Devices.Management
                 "Stage4Reconnect",
                 () => CreateLoginTask(deviceId, string.Empty),
                 DateTime.Now));
+            LogDelayedDeviceTaskScheduled("Device reconnect scheduled.", deviceId, "Stage4Reconnect", snapshot.Status, snapshot.Reconnect.AttemptCount, delay, dueAt, reason);
         }
 
         private void CancelDelayedReconnect(int deviceId)
         {
             delayedScheduler?.CancelByTaskKey("stage4:reconnect:" + deviceId, "manual operation");
+            logger?.Info("DeviceLifecycle", "Delayed reconnect cancelled.", new LogFields
+            {
+                DeviceId = deviceId,
+                OperationName = "CancelReconnect"
+            });
         }
 
         // 布防失败后无限重试，直到成功或设备被手动断开/删除/服务停止。门控与重连一致。
@@ -978,12 +1062,117 @@ namespace ControlDoor.Devices.Management
                 "Stage4ReArm",
                 () => CreateArmAlarmTask(deviceId, string.Empty),
                 DateTime.Now));
+            LogDelayedDeviceTaskScheduled("Device alarm redeploy scheduled.", deviceId, "Stage4ReArm", snapshot.Status, attempt, delay, dueAt, reason);
         }
 
         private void CancelDelayedReArm(int deviceId)
         {
             ClearReArmFailures(deviceId);
             delayedScheduler?.CancelByTaskKey("stage4:rearm:" + deviceId, "manual operation");
+            logger?.Info("DeviceLifecycle", "Delayed alarm redeploy cancelled.", new LogFields
+            {
+                DeviceId = deviceId,
+                OperationName = "CancelReArm"
+            });
+        }
+
+        private void LogManualOperationRequested(int deviceId, string requestId, string operationName)
+        {
+            logger?.Info("DeviceLifecycle", "Manual device operation requested.", new LogFields
+            {
+                RequestId = requestId,
+                DeviceId = deviceId,
+                OperationName = operationName
+            });
+        }
+
+        private void LogDeviceOperationResult(string message, string requestId, string operationName, DeviceOperationResult result)
+        {
+            if (logger == null || result == null)
+            {
+                return;
+            }
+
+            var fields = new LogFields
+            {
+                RequestId = requestId,
+                DeviceId = result.DeviceId,
+                OperationName = operationName,
+                ErrorCode = result.Code
+            };
+            fields.Extra["success"] = result.Success.ToString();
+            fields.Extra["status"] = result.Snapshot == null ? string.Empty : result.Snapshot.Status.ToString();
+            fields.Extra["message"] = result.Message ?? string.Empty;
+            if (result.Success)
+            {
+                logger.Info("DeviceLifecycle", message, fields);
+            }
+            else
+            {
+                logger.Warn("DeviceLifecycle", message, fields);
+            }
+        }
+
+        private void LogLifecycleFailure(DeviceTaskContext context, string message, DateTime startedAt, DeviceRuntimeError error, Action<LogFields> configure = null)
+        {
+            if (logger == null || context == null || context.Task == null || error == null)
+            {
+                return;
+            }
+
+            var fields = new LogFields
+            {
+                DeviceId = context.Task.DeviceId,
+                OperationName = context.Task.OperationName,
+                RequestId = string.IsNullOrWhiteSpace(context.Task.RequestId) ? context.RequestContext?.RequestId : context.Task.RequestId,
+                TraceId = context.RequestContext?.TraceId,
+                ElapsedMs = Math.Max(0, (long)(DateTime.Now - startedAt).TotalMilliseconds),
+                ErrorCode = error.Code
+            };
+            fields.Extra["errorMessage"] = error.Message ?? string.Empty;
+            fields.Extra["sdkErrorCode"] = error.SdkErrorCode.HasValue ? error.SdkErrorCode.Value.ToString() : string.Empty;
+            fields.Extra["retryable"] = error.Retryable.ToString();
+            configure?.Invoke(fields);
+            logger.Warn("DeviceLifecycle", message, fields);
+        }
+
+        private void LogLifecycleSkip(DeviceTaskContext context, string message, DateTime startedAt, string status)
+        {
+            if (logger == null || context == null || context.Task == null)
+            {
+                return;
+            }
+
+            var fields = new LogFields
+            {
+                DeviceId = context.Task.DeviceId,
+                OperationName = context.Task.OperationName,
+                RequestId = string.IsNullOrWhiteSpace(context.Task.RequestId) ? context.RequestContext?.RequestId : context.Task.RequestId,
+                TraceId = context.RequestContext?.TraceId,
+                ElapsedMs = Math.Max(0, (long)(DateTime.Now - startedAt).TotalMilliseconds)
+            };
+            fields.Extra["status"] = status ?? string.Empty;
+            logger.Info("DeviceLifecycle", message, fields);
+        }
+
+        private void LogDelayedDeviceTaskScheduled(string message, int deviceId, string operationName, DeviceConnectionStatus status, int attemptCount, TimeSpan delay, DateTime dueAt, string reason)
+        {
+            if (logger == null)
+            {
+                return;
+            }
+
+            var fields = new LogFields
+            {
+                DeviceId = deviceId,
+                OperationName = operationName
+            };
+            fields.Extra["status"] = status.ToString();
+            fields.Extra["attemptCount"] = attemptCount.ToString();
+            fields.Extra["delayMs"] = ((long)delay.TotalMilliseconds).ToString();
+            fields.Extra["dueAt"] = dueAt.ToString("yyyy-MM-dd HH:mm:ss");
+            fields.Extra["reason"] = reason ?? string.Empty;
+            logger.Warn("DeviceLifecycle", message, fields);
         }
 
         private void LogLifecycleSuccess(DeviceTaskContext context, string message, DateTime startedAt, Action<LogFields> configure = null)

@@ -19,6 +19,7 @@ namespace ControlDoor.Devices.Runtime
         private DeviceConnectionStatus status;
         private int? sdkUserId;
         private int? alarmHandle;
+        private int? staleAlarmHandle;
         private bool alarmManuallyDisarmed;
         private string serialNumber;
         private DeviceCapabilities capabilities;
@@ -184,6 +185,17 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public int? StaleAlarmHandle
+        {
+            get
+            {
+                lock (gate)
+                {
+                    return staleAlarmHandle;
+                }
+            }
+        }
+
         public bool IsDeleting
         {
             get
@@ -209,6 +221,7 @@ namespace ControlDoor.Devices.Runtime
                     isDeleting,
                     sdkUserId,
                     alarmHandle,
+                    staleAlarmHandle,
                     alarmManuallyDisarmed,
                     serialNumber,
                     capabilities,
@@ -279,6 +292,11 @@ namespace ControlDoor.Devices.Runtime
         {
             lock (gate)
             {
+                if (alarmHandle.HasValue)
+                {
+                    staleAlarmHandle = alarmHandle;
+                }
+
                 sdkUserId = null;
                 alarmHandle = null;
                 status = faulted ? DeviceConnectionStatus.Faulted : DeviceConnectionStatus.Offline;
@@ -296,6 +314,7 @@ namespace ControlDoor.Devices.Runtime
                 enabled = false;
                 sdkUserId = null;
                 alarmHandle = null;
+                staleAlarmHandle = null;
                 status = DeviceConnectionStatus.InvalidConfig;
                 lastError = error == null ? null : error.Clone();
                 reconnect.InCooldown = true;
@@ -339,6 +358,7 @@ namespace ControlDoor.Devices.Runtime
             lock (gate)
             {
                 alarmHandle = newAlarmHandle;
+                staleAlarmHandle = null;
                 alarmManuallyDisarmed = false;
                 if (status == DeviceConnectionStatus.Online || status == DeviceConnectionStatus.Degraded)
                 {
@@ -356,11 +376,21 @@ namespace ControlDoor.Devices.Runtime
             lock (gate)
             {
                 alarmHandle = null;
+                staleAlarmHandle = null;
                 if (manuallyDisarmed)
                 {
                     alarmManuallyDisarmed = true;
                 }
 
+                Touch(now);
+            }
+        }
+
+        public void ClearStaleAlarmHandle(DateTime now)
+        {
+            lock (gate)
+            {
+                staleAlarmHandle = null;
                 Touch(now);
             }
         }
@@ -380,6 +410,7 @@ namespace ControlDoor.Devices.Runtime
             {
                 sdkUserId = null;
                 alarmHandle = null;
+                staleAlarmHandle = null;
                 status = DeviceConnectionStatus.Offline;
                 lastLogoutAt = now;
                 Touch(now);
@@ -392,6 +423,7 @@ namespace ControlDoor.Devices.Runtime
             {
                 sdkUserId = null;
                 alarmHandle = null;
+                staleAlarmHandle = null;
                 alarmManuallyDisarmed = false;
                 status = DeviceConnectionStatus.Disconnected;
                 reconnect.ManualDisconnected = true;
@@ -417,6 +449,11 @@ namespace ControlDoor.Devices.Runtime
 
             lock (gate)
             {
+                if (alarmHandle.HasValue)
+                {
+                    staleAlarmHandle = alarmHandle;
+                }
+
                 sdkUserId = null;
                 alarmHandle = null;
                 status = newStatus;
@@ -508,6 +545,7 @@ namespace ControlDoor.Devices.Runtime
                 enabled = false;
                 sdkUserId = null;
                 alarmHandle = null;
+                staleAlarmHandle = null;
                 status = DeviceConnectionStatus.Deleted;
                 Touch(now);
             }

@@ -10,16 +10,49 @@
     <AssemblyTitle>ControlDoor</AssemblyTitle>
     <Product>ControlDoor</Product>
     <Description>门禁设备控制服务</Description>
+    <LocalDependencyDir Condition="'$(LocalDependencyDir)' == ''">$(MSBuildProjectDirectory)\bin\Debug\net48</LocalDependencyDir>
+    <SkipResolvePackageAssets Condition="'$(UseLocalDllReferences)' == 'true'">true</SkipResolvePackageAssets>
+    <RestoreProjectStyle Condition="'$(UseLocalDllReferences)' == 'true'">None</RestoreProjectStyle>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="obj-*\**\*.cs" />
+  </ItemGroup>
   <ItemGroup>
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Configuration.Install" />
     <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Web.Extensions" />
   </ItemGroup>
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseLocalDllReferences)' != 'true'">
     <PackageReference Include="Grpc.Core" Version="2.46.6" />
     <PackageReference Include="Grpc.Core.Api" Version="2.46.6" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalDllReferences)' == 'true'">
+    <Reference Include="Grpc.Core">
+      <HintPath>$(LocalDependencyDir)\Grpc.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Grpc.Core.Api">
+      <HintPath>$(LocalDependencyDir)\Grpc.Core.Api.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Buffers">
+      <HintPath>$(LocalDependencyDir)\System.Buffers.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Memory">
+      <HintPath>$(LocalDependencyDir)\System.Memory.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Numerics.Vectors">
+      <HintPath>$(LocalDependencyDir)\System.Numerics.Vectors.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe">
+      <HintPath>$(LocalDependencyDir)\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Content Include="Configuration\appsettings.json">

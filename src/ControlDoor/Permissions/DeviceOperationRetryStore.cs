@@ -167,10 +167,14 @@ WHERE employee_id = @employeeId
                 return;
             }
 
-            database.ExecuteNonQuery(
+            var record = database.ExecuteNonQuery(
                 "DeviceOperationRetryStore.DeleteIfCompleted",
                 DeleteIfCompletedSql,
                 new DatabaseParameter("@id", state.Id));
+            LogStateChange("Retry state deleted if completed.", state, "COMPLETED_DELETE", fields =>
+            {
+                fields.Extra["rowsAffected"] = record.RowsAffected.HasValue ? record.RowsAffected.Value.ToString() : string.Empty;
+            });
         }
 
         public void ApplyExecutionResult(RetryExecutionResult result, DateTime now)
@@ -214,7 +218,7 @@ WHERE employee_id = @employeeId
 
             var nextAttempt = Math.Max(0, state.AttemptCount) + 1;
             var nextRetryAt = backoff.CalculateNextRetryAt(now, nextAttempt);
-            database.ExecuteNonQuery(
+            var record = database.ExecuteNonQuery(
                 "DeviceOperationRetryStore.ScheduleRetry",
                 @"UPDATE dbo.device_operation_retry_states
 SET attempt_count = @attemptCount,
@@ -229,6 +233,13 @@ WHERE id = @id
                 new DatabaseParameter("@now", now),
                 new DatabaseParameter("@nextRetryAt", nextRetryAt),
                 new DatabaseParameter("@lastError", Trim(FormatError(code, message), MaxErrorLength)));
+            LogStateChange("Retry state scheduled for retry.", state, code, fields =>
+            {
+                fields.Extra["attemptCount"] = nextAttempt.ToString();
+                fields.Extra["nextRetryAt"] = nextRetryAt.ToString("yyyy-MM-dd HH:mm:ss");
+                fields.Extra["lastError"] = FormatError(code, message);
+                fields.Extra["rowsAffected"] = record.RowsAffected.HasValue ? record.RowsAffected.Value.ToString() : string.Empty;
+            });
         }
 
         public void DeferOffline(DeviceOperationRetryState state, string code, string message, DateTime now)
@@ -239,7 +250,7 @@ WHERE id = @id
             }
 
             var nextRetryAt = now.AddSeconds(Math.Max(1, options.InitialRetryDelaySeconds));
-            database.ExecuteNonQuery(
+            var record = database.ExecuteNonQuery(
                 "DeviceOperationRetryStore.DeferOffline",
                 @"UPDATE dbo.device_operation_retry_states
 SET next_retry_at = @nextRetryAt,
@@ -251,6 +262,12 @@ WHERE id = @id
                 new DatabaseParameter("@now", now),
                 new DatabaseParameter("@nextRetryAt", nextRetryAt),
                 new DatabaseParameter("@lastError", Trim(FormatError(code, message), MaxErrorLength)));
+            LogStateChange("Retry state deferred while device is offline.", state, code, fields =>
+            {
+                fields.Extra["nextRetryAt"] = nextRetryAt.ToString("yyyy-MM-dd HH:mm:ss");
+                fields.Extra["lastError"] = FormatError(code, message);
+                fields.Extra["rowsAffected"] = record.RowsAffected.HasValue ? record.RowsAffected.Value.ToString() : string.Empty;
+            });
         }
 
         public void MarkTerminalFailure(DeviceOperationRetryState state, string code, string message, DateTime now)
@@ -260,7 +277,7 @@ WHERE id = @id
                 return;
             }
 
-            database.ExecuteNonQuery(
+            var record = database.ExecuteNonQuery(
                 "DeviceOperationRetryStore.MarkTerminalFailure",
                 @"UPDATE dbo.device_operation_retry_states
 SET attempt_count = CASE WHEN attempt_count < @attemptCount THEN @attemptCount ELSE attempt_count END,
@@ -274,6 +291,13 @@ WHERE id = @id;",
                 new DatabaseParameter("@attemptCount", Math.Max(1, state.AttemptCount + 1)),
                 new DatabaseParameter("@now", now),
                 new DatabaseParameter("@lastError", Trim(FormatError(code, message), MaxErrorLength)));
+            LogStateChange("Retry state marked terminal failure.", state, code, fields =>
+            {
+                fields.Extra["attemptCount"] = Math.Max(1, state.AttemptCount + 1).ToString();
+                fields.Extra["exhaustedAt"] = now.ToString("yyyy-MM-dd HH:mm:ss");
+                fields.Extra["lastError"] = FormatError(code, message);
+                fields.Extra["rowsAffected"] = record.RowsAffected.HasValue ? record.RowsAffected.Value.ToString() : string.Empty;
+            });
         }
 
         public int CleanupExpiredFailures(DateTime now, int? batchSize = null)
@@ -293,7 +317,45 @@ WHERE id IN (
 );",
                 new DatabaseParameter("@batchSize", size),
                 new DatabaseParameter("@cutoff", cutoff));
-            return record.RowsAffected ?? 0;
+            var deleted = record.RowsAffected ?? 0;
+            if (deleted > 0)
+            {
+                var fields = new LogFields
+                {
+                    OperationName = "CleanupExpiredFailures"
+                };
+                fields.Extra["deletedCount"] = deleted.ToString();
+                fields.Extra["retentionDays"] = Math.Max(1, retentionDays).ToString();
+                fields.Extra["cutoff"] = cutoff.ToString("yyyy-MM-dd HH:mm:ss");
+                fields.Extra["batchSize"] = size.ToString();
+                logger?.Info("DeviceOperationRetry", "Expired terminal retry states cleaned.", fields);
+            }
+
+            return deleted;
+        }
+
+        private void LogStateChange(string message, DeviceOperationRetryState state, string code, Action<LogFields> configure = null)
+        {
+            if (logger == null || state == null)
+            {
+                return;
+            }
+
+            var fields = new LogFields
+            {
+                DeviceId = state.DeviceId,
+                EmployeeId = state.EmployeeId,
+                OperationName = "DeviceOperationRetryStore",
+                ErrorCode = code
+            };
+            fields.Extra["stateId"] = state.Id.ToString();
+            fields.Extra["permissionPending"] = state.PermissionPending.ToString();
+            fields.Extra["personPending"] = state.PersonPending.ToString();
+            fields.Extra["facePending"] = state.FacePending.ToString();
+            fields.Extra["deletePersonPending"] = state.DeletePersonPending.ToString();
+            fields.Extra["deleteFacePending"] = state.DeleteFacePending.ToString();
+            configure?.Invoke(fields);
+            logger.Info("DeviceOperationRetry", message, fields);
         }
 
         private DatabaseCommandRecord ExecuteTransactionalUpsert(DeviceOperationRetryIntent intent, RetryOperation operation)

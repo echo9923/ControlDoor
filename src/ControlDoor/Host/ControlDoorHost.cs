@@ -99,7 +99,8 @@ namespace ControlDoor.Host
             }
 
             settings = configurationResult.Settings;
-            logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, settings.Logging, mirrorToConsole: false));
+            var logOptions = LogOptions.FromSettings(runDirectory, settings.Logging, mirrorToConsole: false);
+            logger = new ServiceLogger(logOptions);
             logger.Info("Host", "ControlDoor Host 正在启动。", new LogFields
             {
                 Extra =
@@ -170,7 +171,7 @@ namespace ControlDoor.Host
             }
 
             deviceLifecycle = new DeviceLifecycleService(deviceRegistry, deviceDispatcher, delayedScheduler, deviceRepository, hikvisionGateway, deviceOptions, logger);
-            accessControlGrpcService = new AccessControlGrpcService(deviceLifecycle, deviceRepository, settings.Service.GrpcManagementApiKey);
+            accessControlGrpcService = new AccessControlGrpcService(deviceLifecycle, deviceRepository, settings.Service.GrpcManagementApiKey, logger, logOptions);
             retryStore = new DeviceOperationRetryStore(database, settings.DeviceOperationRetry, logger);
             retryManager = new DeviceOperationRetryManager(
                 retryStore,
@@ -186,7 +187,8 @@ namespace ControlDoor.Host
                 new SystemUserSyncStatusWriter(database),
                 new EnrollmentTaskStore(),
                 logger,
-                settings.Devices.DefaultFaceCaptureDeviceId);
+                settings.Devices.DefaultFaceCaptureDeviceId,
+                logOptions);
             if (settings.FaceEventLogging.Enabled)
             {
                 var snapshotStorage = new SnapshotStorage(runDirectory, settings.FaceEventLogging, logger);

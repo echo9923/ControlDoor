@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
+using ControlDoor.Observability;
 
 namespace ControlDoor.GrpcApi
 {
@@ -21,12 +22,14 @@ namespace ControlDoor.GrpcApi
         private readonly DeviceLifecycleService lifecycle;
         private readonly IDeviceRepository repository;
         private readonly string apiKey;
+        private readonly GrpcCallLogger grpcLogger;
 
-        public AccessControlGrpcService(DeviceLifecycleService lifecycle, IDeviceRepository repository, string apiKey = null)
+        public AccessControlGrpcService(DeviceLifecycleService lifecycle, IDeviceRepository repository, string apiKey = null, ServiceLogger logger = null, LogOptions logOptions = null)
         {
             this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
             this.repository = repository ?? throw new ArgumentNullException(nameof(repository));
             this.apiKey = apiKey ?? string.Empty;
+            grpcLogger = logger == null ? null : new GrpcCallLogger(logger, logOptions);
         }
 
         public IReadOnlyList<string> MethodFullNames { get; } = new[]
@@ -42,6 +45,11 @@ namespace ControlDoor.GrpcApi
         };
 
         public string GetDeviceStatus(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteUnary("GetDeviceStatus", requestJson, context, GetDeviceStatusCore);
+        }
+
+        private string GetDeviceStatusCore(string requestJson, GrpcRequestContext context)
         {
             context = EnsureContext(context);
             var auth = Authorize(context);
@@ -85,6 +93,11 @@ namespace ControlDoor.GrpcApi
         }
 
         public string AddDevice(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteUnary("AddDevice", requestJson, context, AddDeviceCore);
+        }
+
+        private string AddDeviceCore(string requestJson, GrpcRequestContext context)
         {
             context = EnsureContext(context);
             var auth = Authorize(context);
@@ -196,6 +209,11 @@ namespace ControlDoor.GrpcApi
 
         public string DeleteDevice(string requestJson, GrpcRequestContext context = null)
         {
+            return ExecuteUnary("DeleteDevice", requestJson, context, DeleteDeviceCore);
+        }
+
+        private string DeleteDeviceCore(string requestJson, GrpcRequestContext context)
+        {
             context = EnsureContext(context);
             var auth = Authorize(context);
             if (!auth.Success)
@@ -224,6 +242,11 @@ namespace ControlDoor.GrpcApi
         }
 
         public string DisconnectDevice(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteUnary("DisconnectDevice", requestJson, context, DisconnectDeviceCore);
+        }
+
+        private string DisconnectDeviceCore(string requestJson, GrpcRequestContext context)
         {
             context = EnsureContext(context);
             var auth = Authorize(context);
@@ -256,6 +279,11 @@ namespace ControlDoor.GrpcApi
 
         public string ReconnectDevice(string requestJson, GrpcRequestContext context = null)
         {
+            return ExecuteUnary("ReconnectDevice", requestJson, context, ReconnectDeviceCore);
+        }
+
+        private string ReconnectDeviceCore(string requestJson, GrpcRequestContext context)
+        {
             context = EnsureContext(context);
             var auth = Authorize(context);
             if (!auth.Success)
@@ -287,6 +315,11 @@ namespace ControlDoor.GrpcApi
 
         public string RearmDeviceAlarm(string requestJson, GrpcRequestContext context = null)
         {
+            return ExecuteUnary("RearmDeviceAlarm", requestJson, context, RearmDeviceAlarmCore);
+        }
+
+        private string RearmDeviceAlarmCore(string requestJson, GrpcRequestContext context)
+        {
             context = EnsureContext(context);
             var auth = Authorize(context);
             if (!auth.Success)
@@ -312,6 +345,11 @@ namespace ControlDoor.GrpcApi
 
         public string DisarmDeviceAlarm(string requestJson, GrpcRequestContext context = null)
         {
+            return ExecuteUnary("DisarmDeviceAlarm", requestJson, context, DisarmDeviceAlarmCore);
+        }
+
+        private string DisarmDeviceAlarmCore(string requestJson, GrpcRequestContext context)
+        {
             context = EnsureContext(context);
             var auth = Authorize(context);
             if (!auth.Success)
@@ -336,6 +374,11 @@ namespace ControlDoor.GrpcApi
 
         public string GetDeviceAlarmStatus(string requestJson, GrpcRequestContext context = null)
         {
+            return ExecuteUnary("GetDeviceAlarmStatus", requestJson, context, GetDeviceAlarmStatusCore);
+        }
+
+        private string GetDeviceAlarmStatusCore(string requestJson, GrpcRequestContext context)
+        {
             context = EnsureContext(context);
             var auth = Authorize(context);
             if (!auth.Success)
@@ -356,6 +399,14 @@ namespace ControlDoor.GrpcApi
             }
 
             return JsonResponse.Create(context.RequestId, true, "OK", "查询布防状态成功。", ToDeviceAlarmStatusResponse(snapshot, "查询布防状态成功。"));
+        }
+
+        private string ExecuteUnary(string methodName, string requestJson, GrpcRequestContext context, Func<string, GrpcRequestContext, string> handler)
+        {
+            context = EnsureContext(context);
+            return grpcLogger == null
+                ? handler(requestJson, context)
+                : grpcLogger.ExecuteUnary(ServiceName, methodName, requestJson, context, handler);
         }
 
         private SelectionResult SelectDevices(JsonObject request, bool includeDisabled)
@@ -590,6 +641,7 @@ namespace ControlDoor.GrpcApi
                 record.Enabled,
                 status,
                 false,
+                null,
                 null,
                 null,
                 false,

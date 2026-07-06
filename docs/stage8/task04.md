@@ -86,7 +86,7 @@
 | `MinimumLevel` | 最小记录级别。 |
 | `SlowOperationThresholdMs` | 慢操作告警阈值。 |
 
-模板不再暴露当前未接入业务路径的 gRPC payload 与 SDK trace 开关，避免现场误以为修改后会改变日志行为。
+模板已暴露并默认开启 gRPC payload 日志开关；SDK trace 仍按 `EnableSdkTrace` 配置控制。
 
 ## 检查输出
 
@@ -117,3 +117,9 @@
 | SDK DLL 缺失 | validate 失败。 |
 | 抓拍目录不可写 | 阶段 7 启用时失败。 |
 | 日志配置 | 输出摘要符合配置。 |
+
+## gRPC payload 日志补充
+
+当前 `Configuration/appsettings.json` 和 `Configuration/appsettings.deploy.json` 模板默认开启完整 gRPC 请求/响应日志：`EnableGrpcPayloadLogging=true`、`GrpcPayloadLogMode=Full`、`IncludeCredentialFields=true`、`IncludeFaceImageBase64=true`。该模式便于现场按 `requestId` 排查接口调用、离线补偿和设备任务，但日志可能包含密码、API Key 和人脸 Base64 原文。
+
+如现场需要降低日志量或减少敏感内容落盘，可将 `GrpcPayloadLogMode` 改为 `Summary`，或关闭 `IncludeCredentialFields` / `IncludeFaceImageBase64`。

@@ -178,6 +178,7 @@ namespace ControlDoor.Permissions
                     if (!TryEnterInFlight(key))
                     {
                         result.InFlightSkipped++;
+                        LogRetryState(result.RequestId, state, "Retry state skipped because it is already in flight.", "IN_FLIGHT");
                         continue;
                     }
 
@@ -186,9 +187,11 @@ namespace ControlDoor.Permissions
                         if (!store.TryClaimDueState(state, now))
                         {
                             result.ClaimSkipped++;
+                            LogRetryState(result.RequestId, state, "Retry state claim skipped.", "CLAIM_SKIPPED");
                             continue;
                         }
 
+                        LogRetryState(result.RequestId, state, "Retry state claimed.", "CLAIMED");
                         await ProcessStateAsync(state, result, now, cancellationToken).ConfigureAwait(false);
                     }
                     finally
@@ -261,6 +264,7 @@ namespace ControlDoor.Permissions
             {
                 store.DeleteEmptyState(state);
                 scan.EmptyDeleted++;
+                LogRetryState(scan.RequestId, state, "Empty retry state deleted.", "EMPTY_DELETED");
                 return;
             }
 
@@ -299,24 +303,60 @@ namespace ControlDoor.Permissions
             {
                 store.DeleteEmptyState(state);
                 scan.EmptyDeleted++;
+                LogRetryState(scan.RequestId, state, "Retry state produced no executable steps and was deleted.", "NO_STEPS");
                 return;
             }
 
             scan.Submitted++;
+            LogRetryState(scan.RequestId, state, "Retry state submitted for execution.", "SUBMITTED", fields =>
+            {
+                fields.Extra["stepCount"] = plan.Steps.Count.ToString();
+            });
             var execution = await coordinator.ExecuteAsync(plan, scan.RequestId, cancellationToken).ConfigureAwait(false);
             store.ApplyExecutionResult(execution, DateTime.Now);
             if (execution.AllSucceeded)
             {
                 scan.Succeeded++;
+                LogRetryState(scan.RequestId, state, "Retry state execution succeeded.", execution.Code ?? "OK");
             }
             else if (WillMarkTerminal(execution))
             {
                 scan.Terminal++;
+                LogRetryState(scan.RequestId, state, "Retry state execution reached terminal failure.", execution.Code);
             }
             else
             {
                 scan.Failed++;
+                LogRetryState(scan.RequestId, state, "Retry state execution failed and will retry.", execution.Code);
             }
+        }
+
+        private void LogRetryState(string requestId, DeviceOperationRetryState state, string message, string code, Action<LogFields> configure = null)
+        {
+            if (logger == null || state == null)
+            {
+                return;
+            }
+
+            var fields = new LogFields
+            {
+                RequestId = requestId,
+                DeviceId = state.DeviceId,
+                EmployeeId = state.EmployeeId,
+                OperationName = "ScanRetryStates",
+                ErrorCode = code
+            };
+            fields.Extra["stateId"] = state.Id.ToString();
+            fields.Extra["attemptCount"] = state.AttemptCount.ToString();
+            fields.Extra["nextRetryAt"] = state.NextRetryAt.HasValue ? state.NextRetryAt.Value.ToString("yyyy-MM-dd HH:mm:ss") : string.Empty;
+            fields.Extra["lastError"] = state.LastError ?? string.Empty;
+            fields.Extra["permissionPending"] = state.PermissionPending.ToString();
+            fields.Extra["personPending"] = state.PersonPending.ToString();
+            fields.Extra["facePending"] = state.FacePending.ToString();
+            fields.Extra["deletePersonPending"] = state.DeletePersonPending.ToString();
+            fields.Extra["deleteFacePending"] = state.DeleteFacePending.ToString();
+            configure?.Invoke(fields);
+            logger.Info("DeviceOperationRetry", message, fields);
         }
 
         private bool WillMarkTerminal(RetryExecutionResult execution)

@@ -33,6 +33,7 @@ namespace ControlDoor.GrpcApi
         private readonly IUserSyncStatusWriter userSyncWriter;
         private readonly EnrollmentTaskStore enrollmentStore;
         private readonly ServiceLogger logger;
+        private readonly GrpcCallLogger grpcLogger;
         private readonly int? defaultFaceCaptureDeviceId;
 
         public PermissionSyncGrpcService(
@@ -43,7 +44,8 @@ namespace ControlDoor.GrpcApi
             IUserSyncStatusWriter userSyncWriter = null,
             EnrollmentTaskStore enrollmentStore = null,
             ServiceLogger logger = null,
-            int? defaultFaceCaptureDeviceId = null)
+            int? defaultFaceCaptureDeviceId = null,
+            LogOptions logOptions = null)
         {
             this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
             this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -52,6 +54,7 @@ namespace ControlDoor.GrpcApi
             this.userSyncWriter = userSyncWriter ?? new NullUserSyncStatusWriter();
             this.enrollmentStore = enrollmentStore ?? new EnrollmentTaskStore();
             this.logger = logger;
+            grpcLogger = logger == null ? null : new GrpcCallLogger(logger, logOptions);
             this.defaultFaceCaptureDeviceId = defaultFaceCaptureDeviceId;
         }
 
@@ -67,6 +70,11 @@ namespace ControlDoor.GrpcApi
         };
 
         public string SyncPermissions(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteUnary("SyncPermissions", requestJson, context, SyncPermissionsCore);
+        }
+
+        private string SyncPermissionsCore(string requestJson, GrpcRequestContext context)
         {
             context = EnsureContext(context);
             ParseResult<PermissionCommand> parsed;
@@ -117,14 +125,14 @@ namespace ControlDoor.GrpcApi
 
                     if (!result.Success && result.Retryable)
                     {
-                        var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message);
+                        var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context);
                         queuedDetails.Add(queued);
                     }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, "设备离线，已生成补偿意图。");
+                    var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, "设备离线，已生成补偿意图。", context);
                     queuedDetails.Add(queued);
                     employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPermission"));
                 }
@@ -161,6 +169,11 @@ namespace ControlDoor.GrpcApi
         }
 
         public string SyncPersons(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteUnary("SyncPersons", requestJson, context, SyncPersonsCore);
+        }
+
+        private string SyncPersonsCore(string requestJson, GrpcRequestContext context)
         {
             context = EnsureContext(context);
             ParseResult<PersonSyncCommand> parsed;
@@ -208,7 +221,7 @@ namespace ControlDoor.GrpcApi
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, personResult));
                         if (personResult.Retryable)
                         {
-                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message));
+                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context));
                         }
 
                         continue;
@@ -233,7 +246,7 @@ namespace ControlDoor.GrpcApi
                             deviceErrors.Add(ToDeviceError(device, command.EmployeeId, faceResult));
                             if (faceResult.Retryable)
                             {
-                                queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message));
+                                queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context));
                             }
                         }
                     }
@@ -241,11 +254,11 @@ namespace ControlDoor.GrpcApi
 
                 foreach (var device in offlineDevices)
                 {
-                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, "设备离线，已生成补偿意图。"));
+                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, "设备离线，已生成补偿意图。", context));
                     employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPerson"));
                     if (command.HasFace)
                     {
-                        queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, "设备离线，已生成补偿意图。"));
+                        queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, "设备离线，已生成补偿意图。", context));
                         employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace"));
                     }
                 }
@@ -284,6 +297,11 @@ namespace ControlDoor.GrpcApi
 
         public string DeleteFaces(string requestJson, GrpcRequestContext context = null)
         {
+            return ExecuteUnary("DeleteFaces", requestJson, context, DeleteFacesCore);
+        }
+
+        private string DeleteFacesCore(string requestJson, GrpcRequestContext context)
+        {
             return DeleteEmployees(requestJson, context, "DeleteFace");
         }
 
@@ -295,6 +313,11 @@ namespace ControlDoor.GrpcApi
 
         public string DeletePersons(string requestJson, GrpcRequestContext context = null)
         {
+            return ExecuteUnary("DeletePersons", requestJson, context, DeletePersonsCore);
+        }
+
+        private string DeletePersonsCore(string requestJson, GrpcRequestContext context)
+        {
             return DeleteEmployees(requestJson, context, "DeletePerson");
         }
 
@@ -305,6 +328,11 @@ namespace ControlDoor.GrpcApi
         }
 
         public string GetFaces(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteUnary("GetFaces", requestJson, context, GetFacesCore);
+        }
+
+        private string GetFacesCore(string requestJson, GrpcRequestContext context)
         {
             context = EnsureContext(context);
             ParseResult<EmployeeCommand> parsed;
@@ -374,6 +402,11 @@ namespace ControlDoor.GrpcApi
         }
 
         public IEnumerable<string> CaptureFaceStream(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteStreaming("CaptureFaceStream", requestJson, context, CaptureFaceStreamCore);
+        }
+
+        private IReadOnlyList<string> CaptureFaceStreamCore(string requestJson, GrpcRequestContext context)
         {
             context = EnsureContext(context);
             var frames = new List<string>();
@@ -500,6 +533,11 @@ namespace ControlDoor.GrpcApi
 
         public string GetEnrollmentStatus(string requestJson, GrpcRequestContext context = null)
         {
+            return ExecuteUnary("GetEnrollmentStatus", requestJson, context, GetEnrollmentStatusCore);
+        }
+
+        private string GetEnrollmentStatusCore(string requestJson, GrpcRequestContext context)
+        {
             context = EnsureContext(context);
             try
             {
@@ -527,6 +565,22 @@ namespace ControlDoor.GrpcApi
         {
             context = EnsureContext(context);
             return System.Threading.Tasks.Task.Run(() => GetEnrollmentStatus(requestJson, context), context.CancellationToken);
+        }
+
+        private string ExecuteUnary(string methodName, string requestJson, GrpcRequestContext context, Func<string, GrpcRequestContext, string> handler)
+        {
+            context = EnsureContext(context);
+            return grpcLogger == null
+                ? handler(requestJson, context)
+                : grpcLogger.ExecuteUnary(ServiceName, methodName, requestJson, context, handler);
+        }
+
+        private IReadOnlyList<string> ExecuteStreaming(string methodName, string requestJson, GrpcRequestContext context, Func<string, GrpcRequestContext, IReadOnlyList<string>> handler)
+        {
+            context = EnsureContext(context);
+            return grpcLogger == null
+                ? handler(requestJson, context)
+                : grpcLogger.ExecuteStreaming(ServiceName, methodName, requestJson, context, handler);
         }
 
         private string DeleteEmployees(string requestJson, GrpcRequestContext context, string operation)
@@ -578,14 +632,14 @@ namespace ControlDoor.GrpcApi
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
                         if (result.Retryable)
                         {
-                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message));
+                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context));
                         }
                     }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, "设备离线，已生成补偿意图。"));
+                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, "设备离线，已生成补偿意图。", context));
                     employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, operation));
                 }
 
@@ -841,7 +895,7 @@ namespace ControlDoor.GrpcApi
             return DeviceTaskResult.FromTask(task, false, "DEVICE_ERROR", ex == null ? "设备操作失败。" : ex.Message, status, started, DateTime.Now);
         }
 
-        private object QueueRetry(DeviceRuntimeSnapshot device, string employeeId, string operation, IDictionary<string, object> payload, int? permissionLevel, string message)
+        private object QueueRetry(DeviceRuntimeSnapshot device, string employeeId, string operation, IDictionary<string, object> payload, int? permissionLevel, string message, GrpcRequestContext context = null)
         {
             var payloadJson = payload == null ? null : JsonRequestReader.Serialize(payload);
             var intent = new DeviceOperationRetryIntent
@@ -854,11 +908,25 @@ namespace ControlDoor.GrpcApi
                     ? payloadJson
                     : null,
                 PayloadJson = payloadJson,
+                RequestId = context == null ? null : context.RequestId,
                 LastError = message,
                 CreatedAt = DateTime.Now,
                 NextRetryAt = DateTime.Now
             };
             var written = retryWriter.UpsertIntent(intent);
+            var fields = new LogFields
+            {
+                RequestId = intent.RequestId,
+                DeviceId = intent.DeviceId,
+                EmployeeId = intent.EmployeeId,
+                OperationName = operation,
+                ErrorCode = written.Code
+            };
+            fields.Extra["success"] = written.Success.ToString();
+            fields.Extra["permissionLevel"] = permissionLevel.HasValue ? permissionLevel.Value.ToString() : string.Empty;
+            fields.Extra["message"] = message ?? string.Empty;
+            fields.Extra["writeMessage"] = written.Message ?? string.Empty;
+            logger?.Info("DeviceOperationRetry", "Retry intent queued from gRPC.", fields);
             return intent.ToDetail(written.Code, written.Success ? message : written.Message);
         }
 

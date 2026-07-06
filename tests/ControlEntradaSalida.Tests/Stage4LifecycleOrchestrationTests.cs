@@ -396,6 +396,65 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceLifecycle_ReconnectAfterPassiveOffline_ClosesStaleAlarmBeforeRearm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReconnectBaseDelayMs = 10;
+                fixture.Options.ReconnectMaxDelayMs = 10;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                var setAlarmCount = 0;
+                var staleAlarmClosed = false;
+                fixture.Gateway.ConfigureResult("SetAlarmAsync", request =>
+                {
+                    setAlarmCount++;
+                    if (setAlarmCount == 1)
+                    {
+                        return new AlarmSetupResponse { AlarmHandle = 900 };
+                    }
+
+                    if (!staleAlarmClosed)
+                    {
+                        throw new DeviceGatewayException("SetAlarm", SdkError.FromCode(1924, "Deploy exceed max"));
+                    }
+
+                    return new AlarmSetupResponse { AlarmHandle = 901 };
+                });
+                fixture.Gateway.ConfigureResult("CloseAlarmAsync", request =>
+                {
+                    var close = request as AlarmCloseRequest;
+                    if (close != null && close.AlarmHandle == 900)
+                    {
+                        staleAlarmClosed = true;
+                    }
+
+                    return 0;
+                });
+
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle == 900, "initial alarm was not armed.");
+                fixture.Gateway.ConfigureException("GetDeviceInfoAsync", new DeviceGatewayException("Info", SdkError.FromCode(7)));
+
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h1");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h2");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h3");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.Status == DeviceConnectionStatus.ReconnectPending, "reconnect was not scheduled.");
+                fixture.Gateway.ConfigureResult("GetDeviceInfoAsync", fixture.Gateway.DeviceInfo);
+                WaitUntil(() => fixture.Gateway.Calls.Count(call => call.MethodName == "LoginAsync") >= 2, "reconnect login was not attempted.");
+                WaitUntil(() => fixture.Gateway.Calls.Count(call => call.MethodName == "SetAlarmAsync") >= 2, "rearm was not attempted.");
+
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(staleAlarmClosed);
+                Assert.True(snapshot.AlarmHandle.HasValue);
+                Assert.Equal(901, snapshot.AlarmHandle.Value);
+                Assert.Equal(DeviceConnectionStatus.Online, snapshot.Status);
+            }
+        }
+
+        [TestCase]
         public static void DeviceLifecycle_ReconnectAttemptsExhausted_MarksFailed()
         {
             using (var fixture = new Stage4Fixture())

@@ -305,6 +305,20 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public DeviceRuntimeMutationResult ClearStaleAlarmHandle(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.ClearStaleAlarmHandle(now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "STALE_ALARM_HANDLE_CLEARED", "Stale alarm handle was cleared.");
+            }
+        }
+
         public DeviceRuntimeMutationResult MarkLoggedOut(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
             lock (gate)

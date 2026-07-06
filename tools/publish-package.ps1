@@ -9,16 +9,20 @@
 # 典型调用（仓库根目录）：
 #   powershell -ExecutionPolicy Bypass -File tools\publish-package.ps1
 #   powershell -ExecutionPolicy Bypass -File tools\publish-package.ps1 -SkipBuild
+#   powershell -ExecutionPolicy Bypass -File tools\publish-package.ps1 -UseNuGetReferences
 #
 # 海康 HCNetSDK、SqlServerTypes 不在 .csproj 也不在 git，
 # 本脚本从 bin\Debug\net48 复用（该目录需先手动放置完整 SDK）。
+# 默认也从 bin\Debug\net48 引用 Grpc.Core 等编译依赖，避免重装系统后
+# 本机 NuGet 缓存缺失导致发布脚本无法编译。
 # ============================================================
 
 param(
     [string]$Configuration = "Release",
     [string]$OutputDir = "门禁publish\ServicePackage",
     [switch]$SkipBuild,
-    [switch]$NoClean
+    [switch]$NoClean,
+    [switch]$UseNuGetReferences
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,13 +34,21 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 # ------------------------------------------------------------
 $RepoRoot  = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $Csproj    = Join-Path $RepoRoot "src\ControlDoor\ControlDoor.csproj"
+$ProjectDir = Split-Path -Parent $Csproj
 $SrcConfig = Join-Path $RepoRoot "src\ControlDoor\Configuration"
-$ReleaseOut = Join-Path $RepoRoot "src\ControlDoor\bin\$Configuration\net48"
+$BuildTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "ControlDoorPublishBuild"
+$BuildBaseOut = Join-Path $BuildTempRoot "bin\publish-$Configuration"
+$BuildBaseObj = Join-Path $BuildTempRoot "obj-publish"
+$ReleaseOut = Join-Path $BuildBaseOut "$Configuration\net48"
 $DebugOut  = Join-Path $RepoRoot "src\ControlDoor\bin\Debug\net48"
 $ServiceScripts = Join-Path $RepoRoot "tools\service"
 $PackageDocs = Join-Path $RepoRoot "docs\stage8\package-docs"
 $TestScript = Join-Path $RepoRoot "tools\test-service-package.ps1"
-$PackageRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $OutputDir))
+if ([System.IO.Path]::IsPathRooted($OutputDir)) {
+    $PackageRoot = [System.IO.Path]::GetFullPath($OutputDir)
+} else {
+    $PackageRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $OutputDir))
+}
 
 function Write-Step([string]$msg)
 {
@@ -53,6 +65,7 @@ Write-Host "门禁服务打包脚本" -ForegroundColor White
 Write-Host "仓库根目录 : $RepoRoot"
 Write-Host "输出目录   : $PackageRoot"
 Write-Host "编译配置   : $Configuration"
+Write-Host "编译依赖   : $(if ($UseNuGetReferences) { 'NuGet' } else { 'bin\Debug\net48 本地 DLL' })"
 
 # ------------------------------------------------------------
 # 前置检查：海康 SDK 必须先在 bin\Debug\net48 放好
@@ -70,6 +83,26 @@ if (-not (Test-Path -LiteralPath $hikSdkSource -PathType Leaf)) {
 }
 Write-Ok "海康 SDK 来源: $DebugOut"
 
+if (-not $UseNuGetReferences) {
+    $localReferenceFiles = @(
+        "Grpc.Core.dll",
+        "Grpc.Core.Api.dll",
+        "System.Buffers.dll",
+        "System.Memory.dll",
+        "System.Numerics.Vectors.dll",
+        "System.Runtime.CompilerServices.Unsafe.dll"
+    )
+    foreach ($file in $localReferenceFiles) {
+        $path = Join-Path $DebugOut $file
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Write-Err "本地编译依赖缺失: $path"
+            Write-Err "默认构建会直接引用 bin\Debug\net48\ 下的 DLL；如需改用 NuGet，请加 -UseNuGetReferences。"
+            exit 1
+        }
+    }
+    Write-Ok "本地编译依赖齐全: Grpc.Core / System.Memory 等 DLL"
+}
+
 # ------------------------------------------------------------
 # 2. Release 编译
 # ------------------------------------------------------------
@@ -82,10 +115,45 @@ if ($SkipBuild) {
     Write-Warn2 "复用现有 Release 产物: $ReleaseOut"
 } else {
     Write-Step "2/7 编译 $Configuration"
+
+    # 工程文件已显式排除 obj* 中间源码；这里仅尽量清理旧输出，清理失败不阻断新打包。
+    $defaultObj = Join-Path $ProjectDir "obj"
+    if (Test-Path -LiteralPath $defaultObj -PathType Container) {
+        foreach ($stale in @("Debug", "Release")) {
+            $stalePath = Join-Path $defaultObj $stale
+            if (Test-Path -LiteralPath $stalePath -PathType Container) {
+                Write-Host "清理旧中间输出: $stalePath"
+                try {
+                    Remove-Item -LiteralPath $stalePath -Recurse -Force
+                }
+                catch {
+                    Write-Warn2 "旧中间输出清理失败，已跳过: $($_.Exception.Message)"
+                }
+            }
+        }
+    }
+
     $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
     if ($dotnet) {
         Write-Host "使用 dotnet 编译..."
-        & dotnet build $Csproj -c $Configuration --verbosity minimal
+        $buildArgs = @(
+            "build",
+            $Csproj,
+            "-c",
+            $Configuration,
+            "--verbosity",
+            "minimal"
+        )
+        $buildArgs += "/p:BaseOutputPath=$BuildBaseOut\"
+        $buildArgs += "/p:BaseIntermediateOutputPath=$BuildBaseObj\"
+        if (-not $UseNuGetReferences) {
+            $buildArgs += "--no-restore"
+            $buildArgs += "--no-incremental"
+            $buildArgs += "/p:UseLocalDllReferences=true"
+            $buildArgs += "/p:LocalDependencyDir=$DebugOut"
+            $buildArgs += "/p:SkipResolvePackageAssets=true"
+        }
+        & dotnet @buildArgs
         if ($LASTEXITCODE -ne 0) {
             Write-Err "dotnet build 失败，退出码 $LASTEXITCODE。"
             exit $LASTEXITCODE
@@ -97,7 +165,21 @@ if ($SkipBuild) {
             exit 1
         }
         Write-Host "dotnet 不可用，回退到 MSBuild..."
-        & $msbuild $Csproj /t:Restore;Build /p:Configuration=$Configuration /verbosity:minimal
+        $msbuildTarget = if ($UseNuGetReferences) { "/t:Restore;Build" } else { "/t:Build" }
+        $msbuildArgs = @(
+            $Csproj,
+            $msbuildTarget,
+            "/p:Configuration=$Configuration",
+            "/verbosity:minimal",
+            "/p:BaseOutputPath=$BuildBaseOut\",
+            "/p:BaseIntermediateOutputPath=$BuildBaseObj\"
+        )
+        if (-not $UseNuGetReferences) {
+            $msbuildArgs += "/p:UseLocalDllReferences=true"
+            $msbuildArgs += "/p:LocalDependencyDir=$DebugOut"
+            $msbuildArgs += "/p:SkipResolvePackageAssets=true"
+        }
+        & $msbuild @msbuildArgs
         if ($LASTEXITCODE -ne 0) {
             Write-Err "MSBuild 失败，退出码 $LASTEXITCODE。"
             exit $LASTEXITCODE
