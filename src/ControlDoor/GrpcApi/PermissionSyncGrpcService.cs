@@ -112,7 +112,8 @@ namespace ControlDoor.GrpcApi
                 {
                     var result = ExecutePermissionTask(device, command, context);
                     var detail = ToDeviceResult(device, result);
-                    if (!result.Success && result.Retryable)
+                    var shouldQueueRetry = ShouldQueueSyncPermissionRetry(result);
+                    if (shouldQueueRetry)
                     {
                         detail.Queued = true;
                     }
@@ -123,7 +124,7 @@ namespace ControlDoor.GrpcApi
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
                     }
 
-                    if (!result.Success && result.Retryable)
+                    if (shouldQueueRetry)
                     {
                         var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context);
                         queuedDetails.Add(queued);
@@ -1312,6 +1313,22 @@ namespace ControlDoor.GrpcApi
                 default:
                     return "处理完成。";
             }
+        }
+
+        private static bool ShouldQueueSyncPermissionRetry(DeviceTaskResult result)
+        {
+            if (result == null || result.Success)
+            {
+                return false;
+            }
+
+            return result.Retryable || IsSyncPermissionWaitFailure(result.Code);
+        }
+
+        private static bool IsSyncPermissionWaitFailure(string code)
+        {
+            return string.Equals(code, "CANCELLED", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(code, "TIMEOUT", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsRetryableSdkError(int code)

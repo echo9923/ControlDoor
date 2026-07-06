@@ -10,10 +10,10 @@ namespace ControlEntradaSalida.Tests
 {
     internal sealed class Stage4Fixture : IDisposable
     {
-        public Stage4Fixture(ServiceLogger logger = null)
+        public Stage4Fixture(ServiceLogger logger = null, int defaultTaskTimeoutMilliseconds = 5000)
         {
             Registry = new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = 2 });
-            Dispatcher = new DeviceSdkDispatcher(Registry, workerCount: 2, queueCapacityPerWorker: 50, defaultTaskTimeoutMilliseconds: 5000);
+            Dispatcher = new DeviceSdkDispatcher(Registry, workerCount: 2, queueCapacityPerWorker: 50, defaultTaskTimeoutMilliseconds: defaultTaskTimeoutMilliseconds);
             DelayedScheduler = new DelayedDeviceTaskScheduler(Dispatcher, new DelayedDeviceTaskSchedulerOptions { WakeupMaxSleepMilliseconds = 10 });
             Gateway = new MockHikvisionGateway();
             Repository = new InMemoryDeviceRepository();

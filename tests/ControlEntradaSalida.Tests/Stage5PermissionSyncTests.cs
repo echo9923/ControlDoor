@@ -571,10 +571,10 @@ namespace ControlEntradaSalida.Tests
         {
         }
 
-        public Stage5Fixture(int? defaultFaceCaptureDeviceId)
+        public Stage5Fixture(int? defaultFaceCaptureDeviceId, int dispatcherTimeoutMilliseconds = 5000)
         {
             logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" }));
-            inner = new Stage4Fixture(logger);
+            inner = new Stage4Fixture(logger, dispatcherTimeoutMilliseconds);
             RetryWriter = new RecordingRetryWriter();
             UserWriter = new RecordingUserSyncStatusWriter();
             EnrollmentStore = new EnrollmentTaskStore();
