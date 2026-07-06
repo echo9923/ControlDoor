@@ -113,7 +113,7 @@ ORDER BY next_retry_at ASC, updated_at ASC, id ASC;");
         public static void BusinessWriteDatabaseClient_StillAllowsFaceEventRepositoryInsert()
         {
             var database = new RecordingDatabaseClient();
-            var repository = new FaceEventRepository(database, new SnapshotStorage(TestWorkspace.Create()));
+            var repository = new FaceEventRepository(database, new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" }));
 
             var result = repository.InsertEvent(NewEvent());
 

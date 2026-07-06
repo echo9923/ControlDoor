@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ControlDoor.Configuration;
 using ControlDoor.FaceEvents;
 
 namespace ControlEntradaSalida.Tests
@@ -127,7 +128,7 @@ namespace ControlEntradaSalida.Tests
         private static FaceEventRepository NewRepository(RecordingDatabaseClient database, out SnapshotStorage storage)
         {
             var workspace = TestWorkspace.Create();
-            storage = new SnapshotStorage(workspace);
+            storage = new SnapshotStorage(workspace, new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             return new FaceEventRepository(database, storage);
         }
 

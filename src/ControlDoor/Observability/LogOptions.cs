@@ -6,7 +6,7 @@ namespace ControlDoor.Observability
 {
     public sealed class LogOptions
     {
-        public string LogDirectory { get; set; } = "logs";
+        public string LogDirectory { get; set; } = @"D:\ControlDoorData\logs";
 
         public int RetentionDays { get; set; } = 30;
 
@@ -32,7 +32,7 @@ namespace ControlDoor.Observability
             var directory = options.LogDirectory;
             if (string.IsNullOrWhiteSpace(directory))
             {
-                directory = "logs";
+                directory = @"D:\ControlDoorData\logs";
             }
 
             if (!Path.IsPathRooted(directory))

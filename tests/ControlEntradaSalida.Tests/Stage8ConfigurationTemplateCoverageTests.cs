@@ -28,9 +28,10 @@ namespace ControlEntradaSalida.Tests
             Assert.NotNull(result.Settings.FaceEventLogging);
             Assert.NotNull(result.Settings.CameraAlarmDoorInterlock);
             Assert.Equal(5001, result.Settings.Service.GrpcListenPort);
-            Assert.Equal("logs", result.Settings.Logging.LogDirectory);
+            Assert.Equal(@"D:\ControlDoorData\logs", result.Settings.Logging.LogDirectory);
             Assert.Equal("sdk\\Hikvision", result.Settings.HikvisionSdk.DllDirectory);
-            Assert.Equal("snapshots", result.Settings.FaceEventLogging.SnapshotRootDirectory);
+            Assert.Equal(@"D:\ControlDoorData\logs\sdk", result.Settings.HikvisionSdk.SdkLogDirectory);
+            Assert.Equal(@"D:\ControlDoorData\snapshots", result.Settings.FaceEventLogging.SnapshotRootDirectory);
             Assert.True(result.Settings.CameraAlarmDoorInterlock.Enabled);
             Assert.Equal(28, result.Settings.Devices.DefaultFaceCaptureDeviceId);
             Assert.Equal("Configuration\\devices.json", result.Settings.Devices.FilePath);
@@ -82,6 +83,9 @@ namespace ControlEntradaSalida.Tests
             var result = new ConfigurationLoader().Load(runDirectory);
 
             Assert.True(result.Success, string.Join("; ", result.Errors));
+            Assert.Equal(@"D:\ControlDoorData\logs", result.Settings.Logging.LogDirectory);
+            Assert.Equal(@"D:\ControlDoorData\logs\sdk", result.Settings.HikvisionSdk.SdkLogDirectory);
+            Assert.Equal(@"D:\ControlDoorData\snapshots", result.Settings.FaceEventLogging.SnapshotRootDirectory);
             Assert.True(result.Settings.CameraAlarmDoorInterlock.Enabled);
             Assert.Equal(10, result.Settings.CameraAlarmDoorInterlock.Mappings.Count);
             Assert.Equal(28, result.Settings.Devices.DefaultFaceCaptureDeviceId);

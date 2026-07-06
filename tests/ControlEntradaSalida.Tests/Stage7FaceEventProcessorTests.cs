@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using ControlDoor.Configuration;
 using ControlDoor.FaceEvents;
 
 namespace ControlEntradaSalida.Tests
@@ -10,7 +11,7 @@ namespace ControlEntradaSalida.Tests
         public static void AcsFaceEventProcessor_RawEvent_ParsesAndInserts()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var processor = new AcsFaceEventProcessor(new AcsEventParser(), new FaceEventRepository(database, storage));
 
             var result = processor.Process(NewRawEvent());
@@ -28,7 +29,7 @@ namespace ControlEntradaSalida.Tests
                 FailOperationName = "InsertFaceEvent",
                 FailSqlErrorNumber = 2627
             };
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var processor = new AcsFaceEventProcessor(new AcsEventParser(), new FaceEventRepository(database, storage));
 
             var result = processor.Process(NewRawEvent());

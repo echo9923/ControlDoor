@@ -58,7 +58,7 @@ namespace ControlDoor.Configuration
 
             settings.Logging.LogDirectory = StringOrDefault(
                 settings.Logging.LogDirectory,
-                "logs",
+                @"D:\ControlDoorData\logs",
                 "Logging.LogDirectory",
                 warnings);
 
@@ -175,7 +175,7 @@ namespace ControlDoor.Configuration
 
             settings.HikvisionSdk.SdkLogDirectory = StringOrDefault(
                 settings.HikvisionSdk.SdkLogDirectory,
-                "logs\\sdk",
+                @"D:\ControlDoorData\logs\sdk",
                 "HikvisionSdk.SdkLogDirectory",
                 warnings);
 
@@ -236,7 +236,7 @@ namespace ControlDoor.Configuration
 
             settings.FaceEventLogging.SnapshotRootDirectory = StringOrDefault(
                 settings.FaceEventLogging.SnapshotRootDirectory,
-                "snapshots",
+                @"D:\ControlDoorData\snapshots",
                 "FaceEventLogging.SnapshotRootDirectory",
                 warnings);
 

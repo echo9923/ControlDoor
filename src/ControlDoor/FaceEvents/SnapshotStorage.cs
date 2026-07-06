@@ -109,7 +109,7 @@ namespace ControlDoor.FaceEvents
 
         private static string ResolveRootDirectory(string runDirectory, string configuredRoot)
         {
-            configuredRoot = string.IsNullOrWhiteSpace(configuredRoot) ? "snapshots" : configuredRoot.Trim();
+            configuredRoot = string.IsNullOrWhiteSpace(configuredRoot) ? @"D:\ControlDoorData\snapshots" : configuredRoot.Trim();
             return Path.IsPathRooted(configuredRoot)
                 ? Path.GetFullPath(configuredRoot)
                 : Path.GetFullPath(Path.Combine(runDirectory, configuredRoot));

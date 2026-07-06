@@ -16,7 +16,7 @@ namespace ControlEntradaSalida.Tests
         public static void FaceEventRepository_InsertEvents_EmptyList_ReturnsEmpty()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var repository = new FaceEventRepository(database, storage);
 
             var results = repository.InsertEvents(new List<AcsFaceEvent>(0));
@@ -28,7 +28,7 @@ namespace ControlEntradaSalida.Tests
         public static void FaceEventRepository_InsertEvents_InvalidEvents_ReturnsInvalidWithoutDb()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var repository = new FaceEventRepository(database, storage);
 
             var results = repository.InsertEvents(new List<AcsFaceEvent>
@@ -49,7 +49,7 @@ namespace ControlEntradaSalida.Tests
         {
             // 未配置连接串（连接工厂为 null）时，批量方法应降级为逐条 InsertEvent。
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var repository = new FaceEventRepository(database, storage);
 
             var events = new List<AcsFaceEvent>
@@ -70,7 +70,7 @@ namespace ControlEntradaSalida.Tests
         public static void FaceEventRepository_InsertEvents_PreQueryFailure_ReturnsRetryableFailures()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var connectionFactoryCalls = 0;
             var repository = new FaceEventRepository(
                 database,
@@ -103,7 +103,7 @@ namespace ControlEntradaSalida.Tests
         public static void AcsFaceEventProcessor_ProcessBatch_RepositoryException_ReturnsStructuredFailures()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var repository = new FaceEventRepository(
                 database,
                 storage,
@@ -127,7 +127,7 @@ namespace ControlEntradaSalida.Tests
         public static void AcsFaceEventProcessor_ProcessBatch_UnexpectedRepositoryException_ReturnsStructuredFailures()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var repository = new FaceEventRepository(database, storage);
             var processor = new AcsFaceEventProcessor(
                 new AcsEventParser(),
@@ -152,7 +152,7 @@ namespace ControlEntradaSalida.Tests
         public static void AcsFaceEventProcessor_ProcessBatch_ParseFailuresSkippedDb()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var processor = new AcsFaceEventProcessor(new AcsEventParser(), new FaceEventRepository(database, storage));
 
             // 第 1 条：有效；第 2 条：缺 employeeId（parse 失败）；第 3 条：有效

@@ -81,12 +81,12 @@
 
 | 配置 | 行为 |
 | --- | --- |
-| `LogDirectory` | 日志输出目录。 |
+| `LogDirectory` | 日志输出目录，默认 `D:\ControlDoorData\logs`。 |
 | `RetentionDays` | 日志文件保留天数。 |
 | `MinimumLevel` | 最小记录级别。 |
 | `SlowOperationThresholdMs` | 慢操作告警阈值。 |
 
-模板已暴露并默认开启 gRPC payload 日志开关；SDK trace 仍按 `EnableSdkTrace` 配置控制。
+模板已暴露并默认开启 gRPC payload 日志开关；SDK trace 仍按 `EnableSdkTrace` 配置控制。SDK 日志目录默认 `D:\ControlDoorData\logs\sdk`，ACS 抓拍目录默认 `D:\ControlDoorData\snapshots`。
 
 ## 检查输出
 

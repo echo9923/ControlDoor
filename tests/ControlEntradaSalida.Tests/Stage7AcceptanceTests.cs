@@ -14,7 +14,7 @@ namespace ControlEntradaSalida.Tests
         public static void FaceEventIngestionService_BackgroundConsumer_InsertsQueuedRealtimeEvent()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var processor = new AcsFaceEventProcessor(new AcsEventParser(), new FaceEventRepository(database, storage));
             var service = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 10 }, processor);
             service.StartAsync(new BackgroundTaskContext("stage7-test", CancellationToken.None, null)).GetAwaiter().GetResult();
@@ -49,7 +49,7 @@ namespace ControlEntradaSalida.Tests
             Assert.True(result.Success);
             Assert.Equal(0, result.Settings.FaceEventLogging.AlarmDeployType);
             Assert.Equal(2000, result.Settings.FaceEventLogging.QueueCapacity);
-            Assert.Equal("snapshots", result.Settings.FaceEventLogging.SnapshotRootDirectory);
+            Assert.Equal(@"D:\ControlDoorData\snapshots", result.Settings.FaceEventLogging.SnapshotRootDirectory);
             Assert.True(result.Warnings.Any(item => item.Contains("FaceEventLogging.AlarmDeployType")));
         }
 
@@ -71,7 +71,7 @@ namespace ControlEntradaSalida.Tests
         public static void AcsFaceEventProcessor_OfflineUpload_InsertsAndMarksRawPayload()
         {
             var database = new RecordingDatabaseClient();
-            var storage = new SnapshotStorage(TestWorkspace.Create());
+            var storage = new SnapshotStorage(TestWorkspace.Create(), new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var processor = new AcsFaceEventProcessor(new AcsEventParser(), new FaceEventRepository(database, storage));
 
             var result = processor.Process(NewRawEvent(AcsAlarmEventSource.OfflineUpload, 2));

@@ -63,7 +63,7 @@ namespace ControlDoor.Configuration
 
     public sealed class LoggingOptions
     {
-        public string LogDirectory { get; set; } = "logs";
+        public string LogDirectory { get; set; } = @"D:\ControlDoorData\logs";
 
         public int RetentionDays { get; set; } = 30;
 
@@ -122,7 +122,7 @@ namespace ControlDoor.Configuration
 
         public bool EnableSdkLog { get; set; } = true;
 
-        public string SdkLogDirectory { get; set; } = "logs\\sdk";
+        public string SdkLogDirectory { get; set; } = @"D:\ControlDoorData\logs\sdk";
 
         public bool RequireSdkLog { get; set; }
 
@@ -152,7 +152,7 @@ namespace ControlDoor.Configuration
     {
         public bool Enabled { get; set; } = true;
 
-        public string SnapshotRootDirectory { get; set; } = "snapshots";
+        public string SnapshotRootDirectory { get; set; } = @"D:\ControlDoorData\snapshots";
 
         public List<int> ExcludedDeviceIds { get; set; } = new List<int>();
 

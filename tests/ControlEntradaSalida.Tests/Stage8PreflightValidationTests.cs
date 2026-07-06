@@ -186,7 +186,7 @@ namespace ControlEntradaSalida.Tests
             Assert.True(result.Success);
             Assert.Equal("x64", result.Settings.HikvisionSdk.Platform);
             Assert.Equal("sdk\\Hikvision", result.Settings.HikvisionSdk.DllDirectory);
-            Assert.Equal("logs\\sdk", result.Settings.HikvisionSdk.SdkLogDirectory);
+            Assert.Equal(@"D:\ControlDoorData\logs\sdk", result.Settings.HikvisionSdk.SdkLogDirectory);
             Assert.True(result.Warnings.Count >= 3);
         }
 

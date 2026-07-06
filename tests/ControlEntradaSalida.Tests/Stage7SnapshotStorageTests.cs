@@ -39,7 +39,7 @@ namespace ControlEntradaSalida.Tests
         public static void SnapshotStorage_NoPicture_ReturnsEmptyPath()
         {
             var workspace = TestWorkspace.Create();
-            var storage = new SnapshotStorage(workspace);
+            var storage = new SnapshotStorage(workspace, new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var faceEvent = NewEvent("10001", new byte[0]);
 
             var result = storage.Save(faceEvent);
@@ -53,7 +53,7 @@ namespace ControlEntradaSalida.Tests
         public static void SnapshotStorage_InvalidFileNameCharacters_AreReplaced()
         {
             var workspace = TestWorkspace.Create();
-            var storage = new SnapshotStorage(workspace);
+            var storage = new SnapshotStorage(workspace, new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var faceEvent = NewEvent("10:00/1*?", JpegBytes());
 
             var result = storage.Save(faceEvent);
@@ -69,7 +69,7 @@ namespace ControlEntradaSalida.Tests
         public static void SnapshotStorage_LongEmployeeId_UsesCompactFileName()
         {
             var workspace = TestWorkspace.Create();
-            var storage = new SnapshotStorage(workspace);
+            var storage = new SnapshotStorage(workspace, new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var faceEvent = NewEvent(new string('a', 300), JpegBytes());
 
             var result = storage.Save(faceEvent);
@@ -83,7 +83,7 @@ namespace ControlEntradaSalida.Tests
         public static void SnapshotStorage_UnsupportedFormat_DoesNotWriteFile()
         {
             var workspace = TestWorkspace.Create();
-            var storage = new SnapshotStorage(workspace);
+            var storage = new SnapshotStorage(workspace, new FaceEventLoggingOptions { SnapshotRootDirectory = "snapshots" });
             var faceEvent = NewEvent("10001", new byte[] { 1, 2, 3, 4 });
 
             var result = storage.Save(faceEvent);

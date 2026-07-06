@@ -19,7 +19,7 @@ namespace ControlEntradaSalida.Tests
             Assert.True(result.Success);
             Assert.Equal(Path.Combine(runDirectory, "Configuration", "appsettings.json"), result.ConfigPath);
             Assert.Equal(5001, result.Settings.Service.GrpcListenPort);
-            Assert.Equal("logs", result.Settings.Logging.LogDirectory);
+            Assert.Equal(@"D:\ControlDoorData\logs", result.Settings.Logging.LogDirectory);
             Assert.Equal(4, result.Settings.DeviceSdkDispatcher.WorkerCount);
         }
 
@@ -68,7 +68,7 @@ namespace ControlEntradaSalida.Tests
             Assert.True(result.Success);
             Assert.Equal(5001, result.Settings.Service.GrpcListenPort);
             Assert.Equal(30, result.Settings.Database.CommandTimeoutSeconds);
-            Assert.Equal("logs", result.Settings.Logging.LogDirectory);
+            Assert.Equal(@"D:\ControlDoorData\logs", result.Settings.Logging.LogDirectory);
             Assert.Equal("Summary", result.Settings.Logging.GrpcPayloadLogMode);
             Assert.Equal(4, result.Settings.DeviceSdkDispatcher.WorkerCount);
             Assert.True(result.Warnings.Count >= 8, "Expected multiple fallback warnings.");

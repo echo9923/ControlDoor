@@ -13,8 +13,8 @@
 | 可执行文件 | `ControlDoor.exe`。 |
 | 工作目录 | exe 所在目录。 |
 | 配置路径 | `{工作目录}\Configuration\appsettings.json`。 |
-| 日志目录 | 默认 `{工作目录}\logs`。 |
-| 抓拍目录 | 默认 `{工作目录}\snapshots`。 |
+| 日志目录 | 默认 `D:\ControlDoorData\logs`。 |
+| 抓拍目录 | 默认 `D:\ControlDoorData\snapshots`。 |
 
 ## 安装前检查
 
@@ -55,7 +55,7 @@ tools\service\stop-service.ps1
 | --- | --- |
 | 1 | 启动 Windows Service。 |
 | 2 | 查看服务状态是否 Running。 |
-| 3 | 查看最新 `logs/ControlDoor-yyyyMMdd.log`。 |
+| 3 | 查看最新 `D:\ControlDoorData\logs\ControlDoor-yyyyMMdd.log`。 |
 | 4 | 确认配置加载成功。 |
 | 5 | 确认数据库连接成功。 |
 | 6 | 确认 SDK 初始化和设备加载日志。 |
