@@ -1,8 +1,52 @@
+﻿# Build outputs
 bin/
 obj/
+obj-local*/
+obj-publish/
+obj-verify/
+obj-test/
 artifacts/
 TestResults/
+
+# Publish packages
 门禁publish/
+ServicePackage.zip
+
+# Local tool / package caches
+.dotnet-home/
+.nuget/
+.appdata/
+.localappdata/
+
+# AI / local agent directories
+.agents/
+.claude/
+.codex/
+
+# IDE user files (keep tracked .vscode/)
+.vs/
 *.user
 *.suo
 *.cache
+*.userosscache
+*.sln.docstates
+
+# Runtime outputs
+logs/
+snapshots/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# SDK documentation caches / temp extracts
+设备网络SDK编程指南（明眸-以人为中心）/.mineru-temp/
+设备网络SDK编程指南（明眸-以人为中心）/cache/
+
+# Misc local leftovers
+*.tmp
+*.temp
+*.swp
+*~
