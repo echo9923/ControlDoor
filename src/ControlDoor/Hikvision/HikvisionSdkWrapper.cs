@@ -749,7 +749,10 @@ namespace ControlDoor.Hikvision
                 "; minor=" + minor +
                 "; pic=" + (data.PictureBytes == null ? 0 : data.PictureBytes.Length);
             data.CardNumber = GetAnsiString(eventInfo.byCardNo);
-            data.EmployeeId = eventInfo.dwEmployeeNo.ToString();
+            if (eventInfo.dwEmployeeNo > 0)
+            {
+                data.EmployeeId = eventInfo.dwEmployeeNo.ToString();
+            }
             data.DoorIndex = eventInfo.dwDoorNo;
             data.Success = IsSuccessMinor(minor);
             data.Values["dwMajor"] = major.ToString();

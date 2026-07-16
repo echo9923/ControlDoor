@@ -807,6 +807,42 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SdkWrapper_NativeAcsAlarm_DefaultNumericEmployeeNoIsNotPromoted()
+        {
+            var native = new FakeNativeClient();
+            var gateway = new HikvisionSdkWrapper(native);
+            AlarmEventData eventData = null;
+            gateway.OnAlarmEvent += (sender, data) => eventData = data;
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+            gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+
+            native.EmitAcsAlarmWithoutEmployeeNo("CARD-10001");
+
+            Assert.NotNull(eventData);
+            Assert.True(string.IsNullOrWhiteSpace(eventData.EmployeeId));
+            Assert.Equal("CARD-10001", eventData.CardNumber);
+            Assert.Equal("0", eventData.Values["dwEmployeeNo"]);
+        }
+
+        [TestCase]
+        public static void SdkWrapper_NativeAcsAlarm_ExplicitStringEmployeeNoZeroIsPreserved()
+        {
+            var native = new FakeNativeClient();
+            var gateway = new HikvisionSdkWrapper(native);
+            AlarmEventData eventData = null;
+            gateway.OnAlarmEvent += (sender, data) => eventData = data;
+            var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
+            gateway.SetAlarmAsync(new AlarmSetupRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+
+            native.EmitAcsAlarmWithEmployeeNo("0", 0);
+
+            Assert.NotNull(eventData);
+            Assert.Equal("0", eventData.EmployeeId);
+            Assert.Equal("0", eventData.Values["byEmployeeNo"]);
+            Assert.Equal("0", eventData.Values["dwEmployeeNo"]);
+        }
+
+        [TestCase]
         public static void SdkWrapper_NativeAcsAlarm_DocumentedBaseStructParsesWithoutCurrentEventFlag()
         {
             var native = new FakeNativeClient();
@@ -1543,6 +1579,43 @@ namespace ControlEntradaSalida.Tests
                 {
                     System.Runtime.InteropServices.Marshal.FreeHGlobal(extendPtr);
                 }
+            }
+
+            public void EmitAcsAlarmWithoutEmployeeNo(string cardNumber)
+            {
+                var alarm = new TestDocumentedAcsAlarmInfo
+                {
+                    dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestDocumentedAcsAlarmInfo)),
+                    dwMajor = 5,
+                    dwMinor = 75,
+                    struTime = new TestSdkTime
+                    {
+                        dwYear = 2026,
+                        dwMonth = 6,
+                        dwDay = 19,
+                        dwHour = 10,
+                        dwMinute = 30,
+                        dwSecond = 0
+                    },
+                    sNetUser = new byte[16],
+                    struRemoteHostAddr = new TestSdkIpAddress
+                    {
+                        sIpV4 = new byte[16],
+                        sIpV6 = new byte[128]
+                    },
+                    struAcsEventInfo = new TestAcsEventInfo
+                    {
+                        dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(TestAcsEventInfo)),
+                        byCardNo = FixedBytes(cardNumber, 32),
+                        dwDoorNo = 1,
+                        dwEmployeeNo = 0,
+                        dwSerialNo = 5678,
+                        byMACAddr = new byte[6],
+                        byRes = new byte[4]
+                    },
+                    byRes = new byte[24]
+                };
+                EmitStructAlarm(0x5002, alarm);
             }
 
             public void EmitDocumentedAcsAlarm()

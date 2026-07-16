@@ -87,11 +87,51 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void AcsEventParser_DwEmployeeNoZero_IsPreservedAsEmployeeId()
+        public static void AcsEventParser_DwEmployeeNoZeroWithoutFallback_ReturnsMissingPersonKey()
         {
             var parser = new AcsEventParser();
             var raw = NewRawEvent();
             raw.Values["dwEmployeeNo"] = "0";
+
+            var result = parser.Parse(raw);
+
+            Assert.False(result.Success);
+            Assert.Equal("MISSING_PERSON_KEY", result.Code);
+        }
+
+        [TestCase]
+        public static void AcsEventParser_DwEmployeeNoNegative_ReturnsMissingPersonKey()
+        {
+            var parser = new AcsEventParser();
+            var raw = NewRawEvent();
+            raw.Values["dwEmployeeNo"] = "-1";
+
+            var result = parser.Parse(raw);
+
+            Assert.False(result.Success);
+            Assert.Equal("MISSING_PERSON_KEY", result.Code);
+        }
+
+        [TestCase]
+        public static void AcsEventParser_DwEmployeeNoZeroWithCardNumber_UsesCardNumber()
+        {
+            var parser = new AcsEventParser();
+            var raw = NewRawEvent();
+            raw.Values["dwEmployeeNo"] = "0";
+            raw.Values["cardNo"] = "CARD-10001";
+
+            var result = parser.Parse(raw);
+
+            Assert.True(result.Success);
+            Assert.Equal("CARD-10001", result.Event.EmployeeId);
+        }
+
+        [TestCase]
+        public static void AcsEventParser_ByEmployeeNoZero_IsPreservedAsEmployeeId()
+        {
+            var parser = new AcsEventParser();
+            var raw = NewRawEvent();
+            raw.Values["byEmployeeNo"] = "0";
 
             var result = parser.Parse(raw);
 
