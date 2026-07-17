@@ -405,6 +405,7 @@ namespace ControlEntradaSalida.Tests
                 fixture.AddRecord();
                 fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
 
+                fixture.DelayedScheduler.Start();
                 var setAlarmCount = 0;
                 var staleAlarmClosed = false;
                 fixture.Gateway.ConfigureResult("SetAlarmAsync", request =>
@@ -735,6 +736,275 @@ namespace ControlEntradaSalida.Tests
                 Assert.Contains("alarmHandle=", text);
                 Assert.False(text.Contains("password"));
                 Assert.False(text.Contains("12345"));
+            }
+        }
+
+        // P1 回归：被动离线后重连登录成功，但关闭旧布防失败时，必须登出新登录会话并保留旧布防句柄。
+        [TestCase]
+        public static void DeviceLifecycle_ReconnectStaleCloseFailure_LogsOutNewSessionAndKeepsStaleHandle()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReconnectBaseDelayMs = 10;
+                fixture.Options.ReconnectMaxDelayMs = 10;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.DelayedScheduler.Start();
+                fixture.Gateway.ConfigureResult("SetAlarmAsync", request => new AlarmSetupResponse { AlarmHandle = 900 });
+                fixture.Gateway.ConfigureResult("CloseAlarmAsync", request =>
+                {
+                    var close = request as AlarmCloseRequest;
+                    if (close != null && close.AlarmHandle == 900)
+                    {
+                        throw new DeviceGatewayException("CloseAlarm", SdkError.FromCode(7));
+                    }
+
+                    return 0;
+                });
+
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle == 900, "initial alarm was not armed.");
+                fixture.Gateway.ConfigureException("GetDeviceInfoAsync", new DeviceGatewayException("Info", SdkError.FromCode(7)));
+
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h1");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h2");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h3");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.Status == DeviceConnectionStatus.ReconnectPending, "reconnect was not scheduled.");
+                WaitUntil(() => fixture.Gateway.Calls.Count(call => call.MethodName == "LoginAsync") >= 2, "reconnect login was not attempted.");
+                WaitUntil(
+                    () => fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" && (call.Request as LogoutRequest) != null && ((LogoutRequest)call.Request).UserId >= 2),
+                    "new login session was not logged out after stale close failure.");
+
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+                Assert.Equal(900, snapshot.StaleAlarmHandle.Value);
+
+                // 恢复旧布防关闭后，下一轮重连应完成布防并清理旧句柄。
+                fixture.Gateway.ConfigureResult("CloseAlarmAsync", request => 0);
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.Status == DeviceConnectionStatus.Online, "device did not recover after stale close succeeded.");
+                var recovered = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+                Assert.False(recovered.StaleAlarmHandle.HasValue);
+                Assert.True(recovered.AlarmHandle.HasValue);
+            }
+        }
+
+        // P1 回归：被动离线后手动断开，旧布防关闭失败时 StaleAlarmHandle 必须保留，人工重连时再次撤防。
+        [TestCase]
+        public static void DeviceLifecycle_ManualDisconnectAfterPassiveOffline_KeepsStaleAlarmHandleWhenCloseFails()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Gateway.ConfigureResult("SetAlarmAsync", request => new AlarmSetupResponse { AlarmHandle = 900 });
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle == 900, "initial alarm was not armed.");
+                fixture.Gateway.ConfigureException("GetDeviceInfoAsync", new DeviceGatewayException("Info", SdkError.FromCode(7)));
+
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h1");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h2");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h3");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.StaleAlarmHandle == 900, "stale alarm handle was not recorded.");
+                fixture.Gateway.ConfigureResult("GetDeviceInfoAsync", fixture.Gateway.DeviceInfo);
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(7)));
+
+                var disconnect = fixture.Lifecycle.DisconnectDevice(1, "req-disconnect");
+                var disconnected = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                // 旧布防关闭失败（非 17）视为断开失败：接口不得谎报成功，但句柄必须保留以备人工重连撤防。
+                Assert.False(disconnect.Success);
+                Assert.Equal(DeviceConnectionStatus.Disconnected, disconnected.Status);
+                Assert.Equal(900, disconnected.StaleAlarmHandle.Value);
+                Assert.Equal("SDK_ERROR", disconnected.LastErrorCode);
+
+                fixture.Gateway.ConfigureResult("CloseAlarmAsync", request => 0);
+                var reconnect = fixture.Lifecycle.ReconnectDevice(1, force: false, requestId: "req-reconnect");
+                var recovered = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(reconnect.Success);
+                Assert.Equal(DeviceConnectionStatus.Online, recovered.Status);
+                Assert.False(recovered.StaleAlarmHandle.HasValue);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "CloseAlarmAsync" && (call.Request as AlarmCloseRequest) != null && ((AlarmCloseRequest)call.Request).AlarmHandle == 900));
+            }
+        }
+
+        // P1 回归：被动离线后删除设备，旧布防关闭失败（非 17）时不得删除运行时记录，保留 StaleAlarmHandle 作为恢复线索。
+        [TestCase]
+        public static void DeviceLifecycle_DeleteDeviceAfterPassiveOffline_CloseStaleFails_PreservesRuntimeRecord()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Gateway.ConfigureResult("SetAlarmAsync", request => new AlarmSetupResponse { AlarmHandle = 900 });
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle == 900, "initial alarm was not armed.");
+                fixture.Gateway.ConfigureException("GetDeviceInfoAsync", new DeviceGatewayException("Info", SdkError.FromCode(7)));
+
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h1");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h2");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h3");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.StaleAlarmHandle == 900, "stale alarm handle was not recorded.");
+
+                // 被动离线：alarmHandle 已转为 staleAlarmHandle（命中断开任务路径 B，而非路径 A）。
+                Assert.False(fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue);
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(7)));
+
+                var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: true, requestId: "req-delete-fail");
+                var lookup = fixture.Registry.TryGetByDeviceId(1);
+
+                Assert.False(deleted.Success);
+                Assert.True(lookup.Found);
+                Assert.Equal(900, lookup.Snapshot.StaleAlarmHandle.Value);
+            }
+        }
+
+        // P1 回归：待清理 SDK 会话的登记/清除/查询，以及去重与无效 UserId（<=0）忽略。
+        [TestCase]
+        public static void DeviceRuntimeRegistry_PendingSdkLogout_TracksAndClears()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                Assert.Equal(0, fixture.Registry.GetPendingSdkLogouts(1).Count);
+                fixture.Registry.RecordPendingSdkLogout(1, 42, System.DateTime.Now);
+                fixture.Registry.RecordPendingSdkLogout(1, 42, System.DateTime.Now); // 去重
+                fixture.Registry.RecordPendingSdkLogout(1, 0, System.DateTime.Now);  // 无效忽略
+                fixture.Registry.RecordPendingSdkLogout(1, -1, System.DateTime.Now); // 无效忽略
+                fixture.Registry.RecordPendingSdkLogout(1, 43, System.DateTime.Now);
+
+                var pending = fixture.Registry.GetPendingSdkLogouts(1);
+                Assert.Equal(2, pending.Count);
+                Assert.True(pending.Contains(42));
+                Assert.True(pending.Contains(43));
+
+                fixture.Registry.ClearPendingSdkLogout(1, 42, System.DateTime.Now);
+                var afterClear = fixture.Registry.GetPendingSdkLogouts(1);
+                Assert.False(afterClear.Contains(42));
+                Assert.True(afterClear.Contains(43));
+                Assert.Equal(1, afterClear.Count);
+            }
+        }
+
+        // P1 回归：登录成功且设备可达后排空待清理会话；登出成功或返回 17（设备端已无此会话）均清除。
+        [TestCase]
+        public static void DeviceLifecycle_DrainsPendingSdkLogoutOnLogin()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                // userId 50 登出成功即清除；userId 51 登出返回 17（会话已不存在）也清除。
+                fixture.Gateway.ConfigureResult("LogoutAsync", request =>
+                {
+                    var logout = request as LogoutRequest;
+                    if (logout != null && logout.UserId == 51)
+                    {
+                        throw new DeviceGatewayException("Logout", SdkError.FromCode(17));
+                    }
+
+                    return 0;
+                });
+
+                fixture.Registry.RecordPendingSdkLogout(1, 50, System.DateTime.Now);
+                fixture.Registry.RecordPendingSdkLogout(1, 51, System.DateTime.Now);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+
+                Assert.Equal(0, fixture.Registry.GetPendingSdkLogouts(1).Count);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" && (call.Request as LogoutRequest) != null && ((LogoutRequest)call.Request).UserId == 50));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" && (call.Request as LogoutRequest) != null && ((LogoutRequest)call.Request).UserId == 51));
+            }
+        }
+
+        // P1 回归：旧布防关闭失败触发补偿登出，补偿登出失败（非 17）须保留待清理会话（不再静默丢弃 UserId）。
+        // 排空逻辑由 DrainsPendingSdkLogoutOnLogin 单独覆盖（同一登录代码路径）。
+        [TestCase]
+        public static void DeviceLifecycle_CompensationLogoutFailure_RetainsPendingSession()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.Options.ReconnectBaseDelayMs = 10;
+                fixture.Options.ReconnectMaxDelayMs = 10;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.DelayedScheduler.Start();
+                fixture.Gateway.ConfigureResult("SetAlarmAsync", request => new AlarmSetupResponse { AlarmHandle = 900 });
+                fixture.Gateway.ConfigureResult("CloseAlarmAsync", request =>
+                {
+                    var close = request as AlarmCloseRequest;
+                    if (close != null && close.AlarmHandle == 900)
+                    {
+                        throw new DeviceGatewayException("CloseAlarm", SdkError.FromCode(7));
+                    }
+
+                    return 0;
+                });
+                // 补偿登出对重连后的新会话（UserId >= 2）失败（非 17）→ 保留为待清理。
+                fixture.Gateway.ConfigureResult("LogoutAsync", request =>
+                {
+                    var logout = request as LogoutRequest;
+                    if (logout != null && logout.UserId >= 2)
+                    {
+                        throw new DeviceGatewayException("Logout", SdkError.FromCode(7));
+                    }
+
+                    return 0;
+                });
+
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle == 900, "initial alarm was not armed.");
+                fixture.Gateway.ConfigureException("GetDeviceInfoAsync", new DeviceGatewayException("Info", SdkError.FromCode(7)));
+
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h1");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h2");
+                fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h3");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.Status == DeviceConnectionStatus.ReconnectPending, "reconnect was not scheduled.");
+
+                // 补偿登出失败后，至少一个新会话 UserId 被保留为待清理（不再静默丢弃）。
+                WaitUntil(() => fixture.Registry.GetPendingSdkLogouts(1).Any(userId => userId >= 2), "pending SDK logout was not retained after compensation failure.");
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" && (call.Request as LogoutRequest) != null && ((LogoutRequest)call.Request).UserId >= 2), "compensation logout was not attempted for the new session.");
+            }
+        }
+
+        // P1 回归：延迟调度器不可用时，重连调度失败必须标记 Faulted，不能永久停在 ReconnectPending。
+        [TestCase]
+        public static void DeviceLifecycle_ReconnectScheduleFailure_MarksFaulted()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.DelayedOptions.Enabled = false;
+                fixture.AddRecord(password: "wrong");
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                var login = fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-fail");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(login.Success);
+                Assert.Equal(DeviceConnectionStatus.Faulted, snapshot.Status);
+                Assert.Equal("RECONNECT_SCHEDULE_FAILED", snapshot.LastErrorCode);
+                Assert.Equal(0, fixture.DelayedScheduler.GetSnapshot().DelayedTaskCount);
+            }
+        }
+
+        // P1 回归：布防重试调度失败时保持当前状态并记录错误，不崩溃、不假装已调度。
+        [TestCase]
+        public static void DeviceLifecycle_ReArmScheduleFailure_KeepsDegradedState()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.DelayedOptions.Enabled = false;
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Gateway.ConfigureException("SetAlarmAsync", new DeviceGatewayException("Arm", SdkError.FromCode(7)));
+
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Gateway.Calls.Any(call => call.MethodName == "SetAlarmAsync"), "alarm was not attempted.");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.Status == DeviceConnectionStatus.Degraded, "device did not enter degraded state.");
+
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+                Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.Equal(0, fixture.DelayedScheduler.GetSnapshot().DelayedTaskCount);
             }
         }
 

@@ -329,6 +329,66 @@ namespace ControlEntradaSalida.Tests
             ((IDisposable)dispatcher).Dispose();
         }
 
+        // P1 回归：设备被手动断开后，未声明 AllowWhenManualDisconnected 的任务不得再调用 SDK。
+        [TestCase]
+        public static void DeviceSdkWorker_ManualDisconnected_RejectsTaskWithoutAllowFlag()
+        {
+            var registry = NewRegistry(workerCount: 1);
+            Register(registry, 1);
+            var dispatcher = NewDispatcher(registry, workerCount: 1, queueCapacity: 10);
+            var marked = registry.MarkManualDisconnected(1, null, DateTime.Now);
+            Assert.True(marked.Success, "manual disconnect marker should be applied.");
+            var executed = false;
+            var task = NewAsyncTask(1, DeviceTaskType.Login, context =>
+            {
+                executed = true;
+                return Task.FromResult(Success(context.Task));
+            });
+
+            DeviceTaskResult result = null;
+            try
+            {
+                result = WaitForTask(dispatcher.SubmitAndWaitAsync(task), "SubmitAndWait did not return final result.");
+            }
+            finally
+            {
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+
+            Assert.False(result.Success);
+            Assert.Equal("DEVICE_MANUAL_DISCONNECTED", result.Code);
+            Assert.False(executed);
+        }
+
+        [TestCase]
+        public static void DeviceSdkWorker_ManualDisconnected_AllowsTaskWithAllowFlag()
+        {
+            var registry = NewRegistry(workerCount: 1);
+            Register(registry, 1);
+            var dispatcher = NewDispatcher(registry, workerCount: 1, queueCapacity: 10);
+            registry.MarkManualDisconnected(1, null, DateTime.Now);
+            var executed = false;
+            var task = NewAsyncTask(1, DeviceTaskType.Logout, context =>
+            {
+                executed = true;
+                return Task.FromResult(Success(context.Task));
+            });
+            task.AllowWhenManualDisconnected = true;
+
+            DeviceTaskResult result = null;
+            try
+            {
+                result = WaitForTask(dispatcher.SubmitAndWaitAsync(task), "SubmitAndWait did not return final result.");
+            }
+            finally
+            {
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+
+            Assert.True(result.Success);
+            Assert.True(executed);
+        }
+
         private static DeviceRuntimeRegistry NewRegistry(int workerCount)
         {
             return new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = workerCount });

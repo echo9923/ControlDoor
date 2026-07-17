@@ -20,6 +20,8 @@ namespace ControlDoor.Devices.Runtime
         private int? sdkUserId;
         private int? alarmHandle;
         private int? staleAlarmHandle;
+        // 补偿登出失败后保留的待清理 SDK 会话：下次成功登录时再次尝试登出，避免设备端会话泄漏且无记录。
+        private readonly List<int> pendingSdkLogoutUserIds = new List<int>();
         private bool alarmManuallyDisarmed;
         private string serialNumber;
         private DeviceCapabilities capabilities;
@@ -395,6 +397,40 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public void RecordPendingSdkLogout(int userId, DateTime now)
+        {
+            lock (gate)
+            {
+                if (userId > 0 && !pendingSdkLogoutUserIds.Contains(userId))
+                {
+                    pendingSdkLogoutUserIds.Add(userId);
+                    Touch(now);
+                }
+            }
+        }
+
+        public bool ClearPendingSdkLogout(int userId, DateTime now)
+        {
+            lock (gate)
+            {
+                if (pendingSdkLogoutUserIds.Remove(userId))
+                {
+                    Touch(now);
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        public IReadOnlyList<int> GetPendingSdkLogouts()
+        {
+            lock (gate)
+            {
+                return pendingSdkLogoutUserIds.ToList();
+            }
+        }
+
         public void ClearManualAlarmDisarm(DateTime now)
         {
             lock (gate)
@@ -423,7 +459,7 @@ namespace ControlDoor.Devices.Runtime
             {
                 sdkUserId = null;
                 alarmHandle = null;
-                staleAlarmHandle = null;
+                // 保留 staleAlarmHandle：断开任务在关闭成功时已显式清理；此处仍有值说明旧布防关闭失败，需留给后续人工重连撤防。
                 alarmManuallyDisarmed = false;
                 status = DeviceConnectionStatus.Disconnected;
                 reconnect.ManualDisconnected = true;

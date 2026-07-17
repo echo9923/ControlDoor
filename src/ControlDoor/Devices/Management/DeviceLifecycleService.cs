@@ -514,9 +514,21 @@ namespace ControlDoor.Devices.Management
                     var register = context.Registry.RegisterSdkUserId(deviceId, login.UserId, serial, DateTime.Now);
                     if (!register.Success)
                     {
-                        await gateway.LogoutAsync(new LogoutRequest { UserId = login.UserId }, CancellationToken.None).ConfigureAwait(false);
+                        // Best-effort：注册失败时登出新会话，避免泄露；登出失败不遮蔽原始错误。
+                        try
+                        {
+                            await gateway.LogoutAsync(new LogoutRequest { UserId = login.UserId }, CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (Exception logoutEx)
+                        {
+                            RecordCompensationLogoutFailure(context, deviceId, login.UserId, logoutEx);
+                        }
+
                         return DeviceTaskResult.FromTask(context.Task, false, register.Code, register.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
                     }
+
+                    // 设备此刻可达，先 best-effort 排空历史遗留的待清理 SDK 会话（补偿登出失败留下的）。
+                    await DrainPendingSdkLogoutsAsync(context, deviceId).ConfigureAwait(false);
 
                     var staleCleanup = await CloseStaleAlarmBeforeRearmAsync(context, register.Snapshot, started).ConfigureAwait(false);
                     if (staleCleanup != null)
@@ -559,6 +571,66 @@ namespace ControlDoor.Devices.Management
             return task;
         }
 
+        // 补偿登出失败：区分 17（设备端已无此会话）与真实失败；真实失败时保留待清理会话，供下次登录重试，避免泄漏设备端 SDK 会话。
+        private void RecordCompensationLogoutFailure(DeviceTaskContext context, int deviceId, int userId, Exception ex)
+        {
+            var error = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
+            if (error.SdkErrorCode == 17)
+            {
+                logger?.Info("DeviceLifecycle", "Compensation logout reported the SDK session was already gone; no pending cleanup recorded.", new LogFields
+                {
+                    DeviceId = deviceId,
+                    OperationName = "DeviceLogout",
+                    ErrorCode = error.Code
+                });
+                return;
+            }
+
+            context.Registry.RecordPendingSdkLogout(deviceId, userId, DateTime.Now);
+            logger?.Warn("DeviceLifecycle", "Compensation logout failed; SDK session " + userId + " retained for retry on next login.", new LogFields
+            {
+                DeviceId = deviceId,
+                OperationName = "DeviceLogout",
+                ErrorCode = error.Code
+            });
+        }
+
+        // 登录成功且设备可达后，best-effort 排空历史遗留的待清理 SDK 会话；成功或 17 即清除，其余保留至下次。
+        private async System.Threading.Tasks.Task DrainPendingSdkLogoutsAsync(DeviceTaskContext context, int deviceId)
+        {
+            var pending = context.Registry.GetPendingSdkLogouts(deviceId);
+            if (pending.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var userId in pending)
+            {
+                try
+                {
+                    await gateway.LogoutAsync(new LogoutRequest { UserId = userId }, context.CancellationToken).ConfigureAwait(false);
+                    context.Registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
+                }
+                catch (Exception ex)
+                {
+                    var error = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
+                    if (error.SdkErrorCode == 17)
+                    {
+                        context.Registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
+                    }
+                    else
+                    {
+                        logger?.Warn("DeviceLifecycle", "Drain of pending SDK logout " + userId + " failed; retained for the next login attempt.", new LogFields
+                        {
+                            DeviceId = deviceId,
+                            OperationName = "DeviceLogout",
+                            ErrorCode = error.Code
+                        });
+                    }
+                }
+            }
+        }
+
         private async System.Threading.Tasks.Task<DeviceTaskResult> CloseStaleAlarmBeforeRearmAsync(DeviceTaskContext context, DeviceRuntimeSnapshot snapshot, DateTime started)
         {
             if (context == null || context.Task == null || snapshot == null || !snapshot.StaleAlarmHandle.HasValue)
@@ -593,6 +665,19 @@ namespace ControlDoor.Devices.Management
                         ErrorCode = error.Code
                     });
                     return null;
+                }
+
+                // Best-effort：旧布防关闭失败导致本次重连回滚前，先登出新登录会话，避免重复重连累积 SDK 会话。
+                if (snapshot.SdkUserId.HasValue)
+                {
+                    try
+                    {
+                        await gateway.LogoutAsync(new LogoutRequest { UserId = snapshot.SdkUserId.Value }, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception logoutEx)
+                    {
+                        RecordCompensationLogoutFailure(context, deviceId, snapshot.SdkUserId.Value, logoutEx);
+                    }
                 }
 
                 context.Registry.MarkDisconnected(deviceId, error, DateTime.Now, DeviceConnectionStatus.Offline);
@@ -661,6 +746,8 @@ namespace ControlDoor.Devices.Management
             });
             task.Priority = DeviceTaskPriority.Low;
             task.TimeoutMilliseconds = options.HealthCheckTimeoutMs;
+            // 健康检查任务在设备未在线时会自行跳过且不调用 SDK，允许在手动断开状态下执行，保持“跳过即成功”语义。
+            task.AllowWhenManualDisconnected = true;
             task.RequestId = requestId ?? string.Empty;
             return task;
         }
@@ -944,6 +1031,43 @@ namespace ControlDoor.Devices.Management
                     }
                 }
 
+                // Best-effort：被动离线遗留的旧布防句柄一并尝试关闭，避免设备端残留布防；失败不中断断开流程。
+                if (snapshot.StaleAlarmHandle.HasValue)
+                {
+                    try
+                    {
+                        await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = snapshot.StaleAlarmHandle.Value }, context.CancellationToken).ConfigureAwait(false);
+                        context.Registry.ClearStaleAlarmHandle(deviceId, DateTime.Now);
+                        LogLifecycleSuccess(context, "旧布防句柄撤防成功。", started, fields =>
+                        {
+                            fields.Extra["staleAlarmHandle"] = snapshot.StaleAlarmHandle.Value.ToString();
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        var staleError = ToRuntimeError("DeviceCloseStaleAlarm", ex, DateTime.Now, retryable: false);
+                        if (staleError.SdkErrorCode == 17)
+                        {
+                            context.Registry.ClearStaleAlarmHandle(deviceId, DateTime.Now);
+                        }
+                        else
+                        {
+                            // 保留 StaleAlarmHandle，后续人工重连登录时会再次尝试撤防。
+                            // 与常规布防关闭（路径 A）一致：失败视为断开失败，避免接口谎报成功，
+                            // 也避免 DeleteDevice 据此删除运行时记录、孤儿化设备端布防。
+                            context.Registry.RecordError(deviceId, staleError, DateTime.Now, snapshot.Status);
+                            lastError = staleError;
+                        }
+
+                        logger?.Warn("DeviceLifecycle", "Stale alarm handle close failed during disconnect.", new LogFields
+                        {
+                            DeviceId = deviceId,
+                            OperationName = context.Task.OperationName,
+                            ErrorCode = staleError.Code
+                        });
+                    }
+                }
+
                 if (snapshot.SdkUserId.HasValue)
                 {
                     try
@@ -1012,7 +1136,7 @@ namespace ControlDoor.Devices.Management
             var delay = policy.CalculateDelay(snapshot.Reconnect.AttemptCount);
             var dueAt = DateTime.Now.Add(delay);
             registry.MarkReconnectPending(deviceId, dueAt, reason, DateTime.Now);
-            delayedScheduler?.Schedule(new DelayedDeviceTask(
+            var scheduled = delayedScheduler?.Schedule(new DelayedDeviceTask(
                 deviceId,
                 DeviceTaskType.Login,
                 DeviceTaskPriority.High,
@@ -1021,6 +1145,23 @@ namespace ControlDoor.Devices.Management
                 "Stage4Reconnect",
                 () => CreateLoginTask(deviceId, string.Empty),
                 DateTime.Now));
+            if (scheduled == null || !scheduled.Accepted)
+            {
+                // 调度失败时设备不能停在 ReconnectPending：没有任何任务会再触发重连，标记 Faulted 让运维可见。
+                logger?.Warn("DeviceLifecycle", "Device reconnect schedule failed; marking device faulted.", new LogFields
+                {
+                    DeviceId = deviceId,
+                    OperationName = "Stage4Reconnect",
+                    ErrorCode = scheduled == null ? "SCHEDULER_UNAVAILABLE" : scheduled.Code
+                });
+                registry.MarkDisconnected(
+                    deviceId,
+                    DeviceRuntimeError.Create("Reconnect", "RECONNECT_SCHEDULE_FAILED", "重连任务调度失败。", DateTime.Now, retryable: false),
+                    DateTime.Now,
+                    DeviceConnectionStatus.Faulted);
+                return;
+            }
+
             LogDelayedDeviceTaskScheduled("Device reconnect scheduled.", deviceId, "Stage4Reconnect", snapshot.Status, snapshot.Reconnect.AttemptCount, delay, dueAt, reason);
         }
 
@@ -1053,7 +1194,7 @@ namespace ControlDoor.Devices.Management
                 TimeSpan.FromMilliseconds(options.ReArmMaxDelayMs));
             var delay = policy.CalculateDelay(attempt);
             var dueAt = DateTime.Now.Add(delay);
-            delayedScheduler?.Schedule(new DelayedDeviceTask(
+            var scheduled = delayedScheduler?.Schedule(new DelayedDeviceTask(
                 deviceId,
                 DeviceTaskType.SetupAlarm,
                 DeviceTaskPriority.Normal,
@@ -1062,6 +1203,18 @@ namespace ControlDoor.Devices.Management
                 "Stage4ReArm",
                 () => CreateArmAlarmTask(deviceId, string.Empty),
                 DateTime.Now));
+            if (scheduled == null || !scheduled.Accepted)
+            {
+                // 布防重试调度失败：保持当前状态，由健康探针或人工重新布防再次发现。
+                logger?.Warn("DeviceLifecycle", "Device alarm redeploy schedule failed.", new LogFields
+                {
+                    DeviceId = deviceId,
+                    OperationName = "Stage4ReArm",
+                    ErrorCode = scheduled == null ? "SCHEDULER_UNAVAILABLE" : scheduled.Code
+                });
+                return;
+            }
+
             LogDelayedDeviceTaskScheduled("Device alarm redeploy scheduled.", deviceId, "Stage4ReArm", snapshot.Status, attempt, delay, dueAt, reason);
         }
 

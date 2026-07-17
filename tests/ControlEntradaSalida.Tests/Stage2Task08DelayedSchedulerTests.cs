@@ -125,6 +125,8 @@ namespace ControlEntradaSalida.Tests
                 scheduler.Schedule(late);
                 scheduler.Schedule(early);
                 WaitUntil(() => earlyInvoked, "earlier delayed task was not dispatched after wakeup.");
+                // 任务工厂回调先于派发结果记账，等待记账完成再断言，避免读快照竞争。
+                WaitUntil(() => scheduler.GetSnapshot().DispatchSuccessCount >= 1, "dispatch success was not recorded.");
 
                 var snapshot = scheduler.GetSnapshot();
                 Assert.Equal(1L, snapshot.DispatchSuccessCount);
@@ -433,6 +435,146 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(TimeSpan.FromSeconds(10), exponential.CalculateDelay(2));
             Assert.Equal(TimeSpan.FromSeconds(20), exponential.CalculateDelay(3));
             Assert.Equal(TimeSpan.FromSeconds(30), exponential.CalculateDelay(4));
+        }
+
+        // P1 回归：worker 队列满导致派发失败时，到期任务必须重新入队而不是被永久丢弃。
+        [TestCase]
+        public static void DelayedDeviceTaskScheduler_QueueFull_RequeuesTaskInsteadOfDropping()
+        {
+            var dispatcher = NewDispatcher(queueCapacity: 1);
+            var scheduler = NewScheduler(dispatcher);
+            var release = NewSignal();
+            var started = NewSignal();
+            var running = NewAsyncTask(DeviceTaskType.HealthCheck, async context =>
+            {
+                started.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return Success(context.Task);
+            });
+            var filler = NewAsyncTask(DeviceTaskType.SyncPerson, context => Task.FromResult(Success(context.Task)));
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            DeviceSdkTask createdTask = null;
+            var delayed = NewDelayedTask(now, "face:queue-full-requeue", DeviceTaskType.UploadFace, DeviceTaskPriority.Normal, task =>
+            {
+                createdTask = task;
+            });
+
+            try
+            {
+                dispatcher.Submit(running);
+                WaitForSignal(started, "running task did not start.");
+                dispatcher.Submit(filler);
+                scheduler.Schedule(delayed);
+                var first = scheduler.DispatchDueTasks(now);
+                var afterRequeue = scheduler.GetSnapshot(now);
+
+                Assert.Equal(1, first.Count);
+                Assert.Equal(DelayedTaskDispatchStatus.QueueFull, first[0].Status);
+                Assert.Equal(1, afterRequeue.DelayedTaskCount);
+                Assert.Equal(1, delayed.Attempt);
+                Assert.True(delayed.DueAt > now, "requeued task due time should be pushed back.");
+
+                release.SetResult(true);
+                WaitForCompletion(running);
+                WaitForCompletion(filler);
+                var second = scheduler.DispatchDueTasks(now.AddSeconds(2));
+                var final = WaitForCompletion(createdTask);
+                var afterDispatch = scheduler.GetSnapshot(now.AddSeconds(2));
+
+                Assert.Equal(1, second.Count);
+                Assert.Equal(DelayedTaskDispatchStatus.Dispatched, second[0].Status);
+                Assert.True(final.Success);
+                Assert.Equal(0, afterDispatch.DelayedTaskCount);
+                Assert.Equal(1L, afterDispatch.DispatchSuccessCount);
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+        }
+
+        // P1 回归：dispatcher 整体停止时返回 DISPATCHER_STOPPED，到期任务应被重排（可恢复），不再静默丢失。
+        [TestCase]
+        public static void DelayedDeviceTaskScheduler_DispatcherStopped_RequeuesTask()
+        {
+            var dispatcher = NewDispatcher(queueCapacity: 5);
+            var scheduler = NewScheduler(dispatcher);
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            var delayed = NewDelayedTask(now, "face:stopped-requeue", DeviceTaskType.UploadFace, DeviceTaskPriority.Normal);
+            try
+            {
+                dispatcher.Start();
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+                scheduler.Schedule(delayed);
+                var results = scheduler.DispatchDueTasks(now);
+                var snapshot = scheduler.GetSnapshot(now);
+
+                Assert.Equal(1, results.Count);
+                Assert.Equal("DISPATCHER_STOPPED", results[0].Code);
+                Assert.Equal(1, snapshot.DelayedTaskCount);
+                Assert.Equal(1, delayed.Attempt);
+            }
+            finally
+            {
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+        }
+
+        // P1 回归：瞬时重排达到上限后放弃，避免 dispatcher 持续故障时形成固定频率重试风暴。
+        [TestCase]
+        public static void DelayedDeviceTaskScheduler_TransientRequeueExhausted_DropsTask()
+        {
+            var dispatcher = NewDispatcher(queueCapacity: 5);
+            var scheduler = NewScheduler(dispatcher);
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            var delayed = NewDelayedTask(now, "face:stopped-cap", DeviceTaskType.UploadFace, DeviceTaskPriority.Normal);
+            try
+            {
+                dispatcher.Start();
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+                delayed.Attempt = 5; // 已达重排上限（MaxTransientRequeueAttempts=5）
+                scheduler.Schedule(delayed);
+                var results = scheduler.DispatchDueTasks(now);
+                var snapshot = scheduler.GetSnapshot(now);
+
+                Assert.Equal(1, results.Count);
+                Assert.Equal("DISPATCHER_STOPPED", results[0].Code);
+                Assert.Equal(0, snapshot.DelayedTaskCount); // 超限后丢弃，不再重排
+                Assert.Equal(5, delayed.Attempt); // 未再递增
+            }
+            finally
+            {
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+        }
+
+        // P1 回归：非瞬时失败（DEVICE_NOT_FOUND）不得重排，且需可观测（不再静默丢失）。
+        [TestCase]
+        public static void DelayedDeviceTaskScheduler_NonTransientFailure_DoesNotRequeue()
+        {
+            var dispatcher = NewDispatcher(queueCapacity: 5);
+            var scheduler = NewScheduler(dispatcher);
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            // 设备 2 未在 dispatcher 注册表登记 → Submit 返回 DEVICE_NOT_FOUND（非瞬时）。
+            var delayed = new DelayedDeviceTask(2, DeviceTaskType.UploadFace, DeviceTaskPriority.Normal, now, "face:not-found", "stage2-test",
+                () => new DeviceSdkTask(2, DeviceTaskType.UploadFace, "upload", context => Task.FromResult(Success(context.Task))),
+                now.AddMinutes(-1));
+            try
+            {
+                scheduler.Schedule(delayed);
+                var results = scheduler.DispatchDueTasks(now);
+                var snapshot = scheduler.GetSnapshot(now);
+
+                Assert.Equal(1, results.Count);
+                Assert.Equal("DEVICE_NOT_FOUND", results[0].Code);
+                Assert.Equal(0, snapshot.DelayedTaskCount); // 非瞬时失败不重排
+                Assert.Equal(0, delayed.Attempt);
+            }
+            finally
+            {
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
         }
 
         private static DelayedDeviceTaskScheduler NewScheduler(DeviceSdkDispatcher dispatcher, int dispatchBatchSize = 100, bool coalesceByTaskKey = true)

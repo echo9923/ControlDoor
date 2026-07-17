@@ -105,6 +105,28 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(2, second.QueueInfo.WorkerIndex);
         }
 
+        // P1 回归：手动断开不得清空被动离线遗留的旧布防句柄，否则后续重连无法撤防。
+        [TestCase]
+        public static void DeviceRuntimeState_MarkManualDisconnected_KeepsStaleAlarmHandle()
+        {
+            var state = NewState(6, "front", "10.0.0.12", true, DateTime.UtcNow);
+            var now = new DateTime(2026, 1, 1, 11, 0, 0, DateTimeKind.Utc);
+            state.MarkLoginSucceeded(77, "SN077", now);
+            state.MarkAlarmArmed(900, now.AddSeconds(1));
+            state.MarkDisconnected(DeviceRuntimeError.Create("HealthCheck", "SDK_ERROR", "offline", now.AddSeconds(2), sdkErrorCode: 7, retryable: true), now.AddSeconds(2));
+            var passive = state.ToSnapshot();
+            Assert.Equal(900, passive.StaleAlarmHandle.Value);
+
+            state.MarkManualDisconnected(null, now.AddSeconds(3));
+            var snapshot = state.ToSnapshot();
+
+            Assert.Equal(DeviceConnectionStatus.Disconnected, snapshot.Status);
+            Assert.False(snapshot.SdkUserId.HasValue);
+            Assert.False(snapshot.AlarmHandle.HasValue);
+            Assert.Equal(900, snapshot.StaleAlarmHandle.Value);
+            Assert.True(snapshot.Reconnect.ManualDisconnected);
+        }
+
         private static DeviceRuntimeState NewState(int deviceId, string name, string ipAddress, bool enabled, DateTime now)
         {
             return new DeviceRuntimeState(new DeviceRuntimeCreationOptions

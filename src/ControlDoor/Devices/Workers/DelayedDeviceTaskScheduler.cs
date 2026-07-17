@@ -52,6 +52,11 @@ namespace ControlDoor.Devices.Workers
                 this.options.WakeupMaxSleepMilliseconds = 30000;
             }
 
+            if (this.options.DispatchRetryDelayMilliseconds <= 0)
+            {
+                this.options.DispatchRetryDelayMilliseconds = 1000;
+            }
+
             this.logger = logger;
             queue = new DelayedTaskQueue(this.options.MaxDelayedTaskCount);
         }
@@ -401,11 +406,78 @@ namespace ControlDoor.Devices.Workers
             {
                 var task = delayedTask.CreateTask();
                 var submission = dispatcher.Submit(task);
-                return DelayedTaskDispatchResult.FromSubmission(delayedTask, task, submission, now);
+                var result = DelayedTaskDispatchResult.FromSubmission(delayedTask, task, submission, now);
+                if (!result.Success && IsTransientDispatchFailure(result.Code))
+                {
+                    // 瞬时背压：按重试延迟重新入队，避免到期任务被静默丢弃。
+                    RequeueAfterTransientFailure(delayedTask, now);
+                }
+                else if (!result.Success)
+                {
+                    // 非瞬时失败（如 DEVICE_NOT_FOUND / INTERNAL_ERROR）：任务已从延迟队列取出且无后续补偿，记录告警保证可观测。
+                    logger?.Warn("DelayedDeviceTaskScheduler", "Delayed task dispatch failed terminally; task dropped from delayed queue.", new LogFields
+                    {
+                        DeviceId = delayedTask.DeviceId,
+                        OperationName = delayedTask.TaskType.ToString(),
+                        ErrorCode = result.Code
+                    });
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
                 return DelayedTaskDispatchResult.FactoryError(delayedTask, ex, now);
+            }
+        }
+
+        // 重排上限：避免 dispatcher 持续故障（停止/队列满）时形成固定频率重试风暴。完整退避/抖动见 P2 #4。
+        private const int MaxTransientRequeueAttempts = 5;
+
+        private static bool IsTransientDispatchFailure(string code)
+        {
+            return string.Equals(code, "QUEUE_FULL", StringComparison.Ordinal) ||
+                string.Equals(code, "DISPATCHER_STOPPING", StringComparison.Ordinal) ||
+                string.Equals(code, "DISPATCHER_STOPPED", StringComparison.Ordinal);
+        }
+
+        private void RequeueAfterTransientFailure(DelayedDeviceTask delayedTask, DateTime now)
+        {
+            if (delayedTask.Attempt >= MaxTransientRequeueAttempts)
+            {
+                // 超过重排上限：记录告警后放弃，避免 dispatcher 持续故障时形成固定频率重试风暴。
+                logger?.Warn("DelayedDeviceTaskScheduler", "Delayed task requeue attempts exhausted after transient dispatch failures; task dropped.", new LogFields
+                {
+                    DeviceId = delayedTask.DeviceId,
+                    OperationName = delayedTask.TaskType.ToString(),
+                    ErrorCode = "REQUEUE_ATTEMPTS_EXHAUSTED"
+                });
+                return;
+            }
+
+            delayedTask.Attempt++;
+            delayedTask.MoveDueAt(now.AddMilliseconds(options.DispatchRetryDelayMilliseconds));
+            DelayedTaskScheduleResult requeue;
+            lock (gate)
+            {
+                if (stopping || stopped)
+                {
+                    return;
+                }
+
+                requeue = queue.TryEnqueue(delayedTask, coalesceByTaskKey: false);
+                Monitor.PulseAll(gate);
+            }
+
+            if (!requeue.Accepted && requeue.Code != "DUPLICATE_DELAYED_TASK_KEY")
+            {
+                // 同 key 已有更新任务属于正常合并不再告警；其余重排失败记录告警，任务丢失可观测。
+                logger?.Warn("DelayedDeviceTaskScheduler", "Delayed task requeue after transient dispatch failure was rejected.", new LogFields
+                {
+                    DeviceId = delayedTask.DeviceId,
+                    OperationName = delayedTask.TaskType.ToString(),
+                    ErrorCode = requeue.Code
+                });
             }
         }
 

@@ -369,6 +369,12 @@ namespace ControlDoor.Devices.Workers
                 {
                     result = DeviceTaskResult.Rejected(task, "DEVICE_DELETING", "Device is deleting.");
                 }
+                else if (!task.AllowWhenManualDisconnected &&
+                    (snapshotBeforeExecution.Reconnect.ManualDisconnected || snapshotBeforeExecution.Status == DeviceConnectionStatus.Disconnected))
+                {
+                    // 操作员已手动断开：已进入 worker 的延迟重连/登录等任务不得再把设备拉回在线。
+                    result = DeviceTaskResult.Rejected(task, "DEVICE_MANUAL_DISCONNECTED", "Device is manually disconnected.");
+                }
                 else if (task.RequiresOnline && !snapshotBeforeExecution.IsConnected)
                 {
                     result = DeviceTaskResult.Rejected(task, "DEVICE_OFFLINE", "Device is offline.");

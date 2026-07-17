@@ -319,6 +319,47 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public DeviceRuntimeMutationResult RecordPendingSdkLogout(int deviceId, int userId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.RecordPendingSdkLogout(userId, now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "PENDING_SDK_LOGOUT_RECORDED", "Pending SDK logout was recorded.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult ClearPendingSdkLogout(int deviceId, int userId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.ClearPendingSdkLogout(userId, now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "PENDING_SDK_LOGOUT_CLEARED", "Pending SDK logout was cleared.");
+            }
+        }
+
+        public IReadOnlyList<int> GetPendingSdkLogouts(int deviceId)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return new List<int>();
+                }
+
+                return state.GetPendingSdkLogouts();
+            }
+        }
+
         public DeviceRuntimeMutationResult MarkLoggedOut(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
             lock (gate)

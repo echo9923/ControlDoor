@@ -14,7 +14,8 @@ namespace ControlEntradaSalida.Tests
         {
             Registry = new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = 2 });
             Dispatcher = new DeviceSdkDispatcher(Registry, workerCount: 2, queueCapacityPerWorker: 50, defaultTaskTimeoutMilliseconds: defaultTaskTimeoutMilliseconds);
-            DelayedScheduler = new DelayedDeviceTaskScheduler(Dispatcher, new DelayedDeviceTaskSchedulerOptions { WakeupMaxSleepMilliseconds = 10 });
+            DelayedOptions = new DelayedDeviceTaskSchedulerOptions { WakeupMaxSleepMilliseconds = 10 };
+            DelayedScheduler = new DelayedDeviceTaskScheduler(Dispatcher, DelayedOptions);
             Gateway = new MockHikvisionGateway();
             Repository = new InMemoryDeviceRepository();
             Options = new DeviceLifecycleOptions
@@ -37,6 +38,8 @@ namespace ControlEntradaSalida.Tests
         public DeviceSdkDispatcher Dispatcher { get; }
 
         public DelayedDeviceTaskScheduler DelayedScheduler { get; }
+
+        public DelayedDeviceTaskSchedulerOptions DelayedOptions { get; }
 
         public MockHikvisionGateway Gateway { get; }
 
@@ -64,6 +67,7 @@ namespace ControlEntradaSalida.Tests
 
         public void Dispose()
         {
+            DelayedScheduler.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
             Dispatcher.StopAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
             Gateway.Dispose();
         }

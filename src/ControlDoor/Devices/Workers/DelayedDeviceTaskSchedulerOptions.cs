@@ -11,5 +11,8 @@ namespace ControlDoor.Devices.Workers
         public int WakeupMaxSleepMilliseconds { get; set; } = 30000;
 
         public bool CoalesceByTaskKey { get; set; } = true;
+
+        // 派发遇到瞬时背压（worker 队列满 / dispatcher 停止中）时，重新入队前的延迟毫秒数。
+        public int DispatchRetryDelayMilliseconds { get; set; } = 1000;
     }
 }

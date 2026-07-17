@@ -721,14 +721,15 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SdkWrapper_LogoutFailure_DoesNotThrow()
+        public static void SdkWrapper_LogoutFailure_ThrowsLastError()
         {
-            var native = new FakeNativeClient { LogoutResult = false };
+            var native = new FakeNativeClient { LogoutResult = false, LastError = 1 };
             var gateway = new HikvisionSdkWrapper(native);
             var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
 
-            gateway.LogoutAsync(new LogoutRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+            var ex = Expect<DeviceGatewayException>(() => gateway.LogoutAsync(new LogoutRequest { UserId = login.UserId }).GetAwaiter().GetResult());
 
+            Assert.Equal(1, ex.Error.Code);
             Assert.Equal(1, native.LogoutCallCount);
         }
 

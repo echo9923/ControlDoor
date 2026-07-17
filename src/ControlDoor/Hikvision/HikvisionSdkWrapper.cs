@@ -79,7 +79,11 @@ namespace ControlDoor.Hikvision
             return Execute("Logout", request, () =>
             {
                 EnsureInitialized();
-                nativeClient.Logout(request.UserId);
+                if (!nativeClient.Logout(request.UserId))
+                {
+                    ThrowLastError("Logout");
+                }
+
                 return 0;
             });
         }
