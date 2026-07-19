@@ -20,6 +20,33 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SnapshotStorage_InvalidRootAtConstruction_DoesNotThrow()
+        {
+            var workspace = TestWorkspace.Create();
+            // Windows 上不存在的盘符会让 CreateDirectory 失败。
+            var invalidRoot = "Z:\\control-door-missing-drive-" + Guid.NewGuid().ToString("N") + "\\snapshots";
+
+            SnapshotStorage storage = null;
+            Exception constructionError = null;
+            try
+            {
+                storage = new SnapshotStorage(workspace, new FaceEventLoggingOptions { SnapshotRootDirectory = invalidRoot });
+            }
+            catch (Exception ex)
+            {
+                constructionError = ex;
+            }
+
+            Assert.True(constructionError == null, constructionError == null ? null : constructionError.ToString());
+            Assert.True(storage != null);
+            Assert.Equal(Path.GetFullPath(invalidRoot), storage.RootDirectory);
+
+            var result = storage.Save(NewEvent("10001", JpegBytes()));
+            Assert.False(result.Saved);
+            Assert.Equal("WRITE_FAILED", result.ErrorCode);
+        }
+
+        [TestCase]
         public static void SnapshotStorage_SaveJpeg_WritesFileAndReturnsAbsolutePath()
         {
             var workspace = TestWorkspace.Create();

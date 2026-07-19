@@ -20,7 +20,23 @@ namespace ControlDoor.FaceEvents
             this.options = options ?? new FaceEventLoggingOptions();
             this.logger = logger;
             rootDirectory = ResolveRootDirectory(this.runDirectory, this.options.SnapshotRootDirectory);
-            Directory.CreateDirectory(rootDirectory);
+            // 启动阶段目录不可用时不阻断服务；Save 路径会再次创建并在失败时降级为无抓拍入库。
+            try
+            {
+                Directory.CreateDirectory(rootDirectory);
+            }
+            catch (Exception ex)
+            {
+                logger?.Warn("SnapshotStorage", "Snapshot root is unavailable at startup; face events will continue without snapshots until the directory is writable.", new LogFields
+                {
+                    ErrorCode = ex.GetType().Name,
+                    Extra =
+                    {
+                        ["rootDirectory"] = rootDirectory ?? string.Empty,
+                        ["message"] = ex.Message ?? string.Empty
+                    }
+                });
+            }
         }
 
         public string RootDirectory => rootDirectory;
