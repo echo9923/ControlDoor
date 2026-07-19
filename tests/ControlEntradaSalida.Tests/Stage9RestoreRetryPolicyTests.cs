@@ -162,5 +162,26 @@ namespace ControlEntradaSalida.Tests
                     "second retry should back off beyond the fixed first retry interval.");
             }
         }
+        [TestCase]
+        public static void Stage9RestoreRetry_RetryableFailure_UsesConfiguredInitialDelay()
+        {
+            using (var fixture = new Stage9Fixture(windowSeconds: 5, restoreRetryIntervalMs: 750))
+            {
+                fixture.Gateway.ConfigureException("ControlGatewayAsync", new DeviceGatewayException("ControlGateway", SdkError.FromCode(7, "busy")));
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                fixture.Service.ExpireWindows(t0.AddSeconds(5));
+
+                Stage9Fixture.SpinFor(() =>
+                    fixture.TargetManager.TryGetActivity("10:1", out var failure) && failure.RestoreNextRetryAt.HasValue,
+                    "首次失败应按配置安排下次重试。");
+                fixture.TargetManager.TryGetActivity("10:1", out var activity);
+
+                Assert.Equal(t0.AddSeconds(5).AddMilliseconds(750), activity.RestoreNextRetryAt.Value);
+            }
+        }
+
     }
 }

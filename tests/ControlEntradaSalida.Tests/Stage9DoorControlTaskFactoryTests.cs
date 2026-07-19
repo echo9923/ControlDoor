@@ -92,6 +92,26 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+        [TestCase]
+        public static void Stage9TaskFactory_TransientSdkErrors_AreRetryable()
+        {
+            using (var inner = new Stage4Fixture())
+            {
+                LoginDoor(inner, 10, "10.0.0.10");
+                var factory = new DoorControlTaskFactory(inner.Gateway);
+                foreach (var sdkErrorCode in new[] { 7, 8, 9, 10, 12, 13, 15, 20, 41, 43, 52, 408, 500 })
+                {
+                    inner.Gateway.ConfigureException("ControlGatewayAsync", new DeviceGatewayException("ControlGateway", SdkError.FromCode(sdkErrorCode, "transient")));
+
+                    var result = inner.Dispatcher.SubmitAndWaitAsync(factory.CreateAlwaysClose(10, 1, "10:1", "req-" + sdkErrorCode)).GetAwaiter().GetResult();
+
+                    Assert.False(result.Success);
+                    Assert.Equal(sdkErrorCode, result.SdkErrorCode.Value);
+                    Assert.True(result.Retryable, "SDK error " + sdkErrorCode + " must be retryable.");
+                }
+            }
+        }
+
         private static void LoginDoor(Stage4Fixture inner, int deviceId, string ip)
         {
             inner.AddRecord(deviceId, ip);

@@ -19,7 +19,7 @@ namespace ControlDoor.CameraDoorInterlock
 
         private const int DefaultTimeoutMs = 10000;
 
-        private static readonly int[] RetryableSdkErrorCodes = { 7, 41, 43, 52, 408, 500 };
+        private static readonly int[] RetryableSdkErrorCodes = { 7, 8, 9, 10, 12, 13, 15, 20, 41, 43, 52, 408, 500 };
 
         private readonly IHikvisionGateway gateway;
         private readonly ServiceLogger logger;

@@ -3,6 +3,7 @@ using System.Linq;
 using ControlDoor.CameraDoorInterlock;
 using ControlDoor.Configuration;
 using ControlDoor.Devices.Runtime;
+using ControlDoor.Devices.Management;
 
 namespace ControlEntradaSalida.Tests
 {
@@ -58,6 +59,54 @@ namespace ControlEntradaSalida.Tests
 
             Assert.Equal(1, targets.Count);
             Assert.Equal(77, targets[0].DoorDeviceId);
+        }
+
+        [TestCase]
+        public static void Stage9Resolver_DoorIdFallback_RejectsRegisteredNonAcsDevice()
+        {
+            var registry = new DeviceRuntimeRegistry();
+            registry.Register(new DeviceRuntimeCreationOptions
+            {
+                DeviceId = 77,
+                DeviceName = "摄像头-77",
+                IpAddress = "10.0.0.77",
+                Port = 8000,
+                Username = "admin",
+                Password = "12345",
+                Types = new List<DeviceType> { DeviceType.Camera }
+            });
+            var options = new CameraAlarmDoorInterlockOptions
+            {
+                Enabled = true,
+                Mappings = new List<CameraAlarmDoorInterlockMapping>
+                {
+                    new CameraAlarmDoorInterlockMapping
+                    {
+                        Camera = new InterlockCamera { Ip = "10.0.0.5" },
+                        DoorDevice = new InterlockDoorDevice { Id = 77 },
+                        DoorNos = new List<int> { 1 }
+                    }
+                }
+            };
+            var resolver = new InterlockMappingResolver(options, registry);
+
+            Assert.Equal(0, resolver.ResolveTargets("10.0.0.5").Count);
+        }
+
+        [TestCase]
+        public static void Stage9Resolver_DoorIpCache_RefreshesAfterRegisteredDeviceIsReplaced()
+        {
+            var registry = RegisterDoorDevice(new DeviceRuntimeRegistry(), 10, "10.0.0.10");
+            var resolver = new InterlockMappingResolver(Options("10.0.0.5", doorIp: "10.0.0.10"), registry);
+
+            Assert.Equal(10, resolver.ResolveTargets("10.0.0.5")[0].DoorDeviceId);
+            Assert.True(registry.RemoveDevice(10, new System.DateTime(2026, 1, 1)).Success);
+            RegisterDoorDevice(registry, 11, "10.0.0.10");
+
+            var targets = resolver.ResolveTargets("10.0.0.5");
+
+            Assert.Equal(1, targets.Count);
+            Assert.Equal(11, targets[0].DoorDeviceId);
         }
 
         [TestCase]

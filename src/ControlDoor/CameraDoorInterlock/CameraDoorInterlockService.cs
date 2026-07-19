@@ -789,7 +789,7 @@ namespace ControlDoor.CameraDoorInterlock
 
         private int CalculateRestoreRetryDelayMilliseconds(int nextAttempt)
         {
-            var initial = Math.Max(1000, options.RestoreRetryIntervalMs);
+            var initial = Math.Max(100, options.RestoreRetryIntervalMs);
             var exponent = Math.Max(0, Math.Min(6, nextAttempt - 1));
             var delay = (long)initial * (1 << exponent);
             return (int)Math.Min(delay, 60000);

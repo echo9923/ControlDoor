@@ -212,6 +212,17 @@ namespace ControlDoor.CameraDoorInterlock
         {
             if (entry.DoorId > 0 && string.IsNullOrEmpty(entry.DoorIp))
             {
+                var idLookup = registry.TryGetByDeviceId(entry.DoorId);
+                if (idLookup.Found && idLookup.Snapshot != null && !HasDeclaredType(idLookup.Snapshot, DeviceType.Acs))
+                {
+                    logger?.Warn("CameraDoorInterlock", "门禁目标设备未声明 Acs 类型，已跳过。", new LogFields
+                    {
+                        DeviceId = idLookup.Snapshot.DeviceId,
+                        Extra = { ["doorId"] = entry.DoorId.ToString() }
+                    });
+                    return 0;
+                }
+
                 return entry.DoorId;
             }
 
@@ -225,7 +236,15 @@ namespace ControlDoor.CameraDoorInterlock
             {
                 if (doorDeviceIdByIp.TryGetValue(doorIp, out var cached))
                 {
-                    return cached;
+                    var cachedLookup = registry.TryGetByDeviceId(cached);
+                    if (cachedLookup.Found && cachedLookup.Snapshot != null &&
+                        string.Equals(NormalizeIp(cachedLookup.Snapshot.IpAddress), doorIp, StringComparison.OrdinalIgnoreCase) &&
+                        HasDeclaredType(cachedLookup.Snapshot, DeviceType.Acs))
+                    {
+                        return cached;
+                    }
+
+                    doorDeviceIdByIp.Remove(doorIp);
                 }
             }
 
