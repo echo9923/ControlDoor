@@ -122,6 +122,50 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SyncPersons_PersonTimeoutWithFace_QueuesPersonAndFaceIntents()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureTimeout("UpsertPersonAsync");
+
+                var response = fixture.Response(fixture.Service.SyncPersons(
+                    @"{""items"":[{""employee_id"":""10001"",""name"":""Test User"",""face_image_base64"":""" + Stage5TestData.JpegBase64() + @"""}]}",
+                    fixture.Context("person-timeout-with-face")));
+
+                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
+                Assert.Equal(1, Convert.ToInt32(response["queued"]));
+                Assert.Equal(0, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal(0, Convert.ToInt32(response["facesUploaded"]));
+                Assert.False(fixture.UserWriter.PersonsSynced.Contains("10001"));
+                Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "UploadFaceAsync"));
+                Assert.True(fixture.RetryWriter.Intents.Any(intent => intent.Operation == "SyncPerson"));
+                Assert.True(fixture.RetryWriter.Intents.Any(intent => intent.Operation == "UploadFace"));
+            }
+        }
+
+        [TestCase]
+        public static void SyncPersons_DispatcherWaitTimeout_QueuesPersonIntent()
+        {
+            using (var fixture = new Stage5Fixture(defaultFaceCaptureDeviceId: null, dispatcherTimeoutMilliseconds: 50))
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureDelay("UpsertPersonAsync", TimeSpan.FromSeconds(2));
+
+                var response = fixture.Response(fixture.Service.SyncPersons(
+                    @"{""items"":[{""employee_id"":""10004"",""name"":""Wait User""}]}",
+                    fixture.Context("person-wait-timeout")));
+
+                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
+                Assert.Equal(1, Convert.ToInt32(response["queued"]));
+                Assert.Equal(0, Convert.ToInt32(response["failed"]));
+                Assert.Equal(1, fixture.RetryWriter.Intents.Count);
+                Assert.Equal("SyncPerson", fixture.RetryWriter.Intents[0].Operation);
+                Assert.Equal("10004", fixture.RetryWriter.Intents[0].EmployeeId);
+            }
+        }
+
+        [TestCase]
         public static void DeleteFaces_RetryableTimeout_QueuesDeleteFaceIntent()
         {
             using (var fixture = new Stage5Fixture())

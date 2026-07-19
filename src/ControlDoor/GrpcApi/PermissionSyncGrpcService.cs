@@ -112,7 +112,7 @@ namespace ControlDoor.GrpcApi
                 {
                     var result = ExecutePermissionTask(device, command, context);
                     var detail = ToDeviceResult(device, result);
-                    var shouldQueueRetry = ShouldQueueSyncPermissionRetry(result);
+                    var shouldQueueRetry = ShouldQueueMutatingRetry(result);
                     if (shouldQueueRetry)
                     {
                         detail.Queued = true;
@@ -211,7 +211,8 @@ namespace ControlDoor.GrpcApi
                 {
                     var personResult = ExecutePersonTask(device, command, context);
                     var personDetail = ToDeviceResult(device, personResult, "SyncPerson");
-                    if (!personResult.Success && personResult.Retryable)
+                    var shouldQueuePersonRetry = ShouldQueueMutatingRetry(personResult);
+                    if (shouldQueuePersonRetry)
                     {
                         personDetail.Queued = true;
                     }
@@ -220,9 +221,15 @@ namespace ControlDoor.GrpcApi
                     if (!personResult.Success)
                     {
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, personResult));
-                        if (personResult.Retryable)
+                        if (shouldQueuePersonRetry)
                         {
                             queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context));
+                            // 人员可重试失败时同步保留人脸意图，避免补偿只恢复人员后丢失人脸下发。
+                            if (command.HasFace)
+                            {
+                                queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, personResult.Message, context));
+                                employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace", personResult.Message));
+                            }
                         }
 
                         continue;
@@ -232,7 +239,8 @@ namespace ControlDoor.GrpcApi
                     {
                         var faceResult = ExecuteUploadFaceTask(device, command, context);
                         var faceDetail = ToDeviceResult(device, faceResult, "UploadFace");
-                        if (!faceResult.Success && faceResult.Retryable)
+                        var shouldQueueFaceRetry = ShouldQueueMutatingRetry(faceResult);
+                        if (shouldQueueFaceRetry)
                         {
                             faceDetail.Queued = true;
                         }
@@ -245,7 +253,7 @@ namespace ControlDoor.GrpcApi
                         else
                         {
                             deviceErrors.Add(ToDeviceError(device, command.EmployeeId, faceResult));
-                            if (faceResult.Retryable)
+                            if (shouldQueueFaceRetry)
                             {
                                 queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context));
                             }
@@ -622,7 +630,8 @@ namespace ControlDoor.GrpcApi
                         ? ExecuteDeleteFaceTask(device, command.EmployeeId, context)
                         : ExecuteDeletePersonTask(device, command.EmployeeId, context);
                     var detail = ToDeviceResult(device, result, operation);
-                    if (!result.Success && result.Retryable)
+                    var shouldQueueRetry = ShouldQueueMutatingRetry(result);
+                    if (shouldQueueRetry)
                     {
                         detail.Queued = true;
                     }
@@ -631,7 +640,7 @@ namespace ControlDoor.GrpcApi
                     if (!result.Success)
                     {
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
-                        if (result.Retryable)
+                        if (shouldQueueRetry)
                         {
                             queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context));
                         }
@@ -1176,7 +1185,7 @@ namespace ControlDoor.GrpcApi
             };
         }
 
-        private static DeviceOperationDetail ToQueuedDeviceResult(DeviceRuntimeSnapshot device, string operation)
+        private static DeviceOperationDetail ToQueuedDeviceResult(DeviceRuntimeSnapshot device, string operation, string message = null)
         {
             return new DeviceOperationDetail
             {
@@ -1186,7 +1195,7 @@ namespace ControlDoor.GrpcApi
                 Success = false,
                 Queued = true,
                 Code = "QUEUED",
-                Message = "设备离线，已生成补偿意图。"
+                Message = string.IsNullOrWhiteSpace(message) ? "设备离线，已生成补偿意图。" : message
             };
         }
 
@@ -1315,17 +1324,17 @@ namespace ControlDoor.GrpcApi
             }
         }
 
-        private static bool ShouldQueueSyncPermissionRetry(DeviceTaskResult result)
+        private static bool ShouldQueueMutatingRetry(DeviceTaskResult result)
         {
             if (result == null || result.Success)
             {
                 return false;
             }
 
-            return result.Retryable || IsSyncPermissionWaitFailure(result.Code);
+            return result.Retryable || IsMutatingWaitFailure(result.Code);
         }
 
-        private static bool IsSyncPermissionWaitFailure(string code)
+        private static bool IsMutatingWaitFailure(string code)
         {
             return string.Equals(code, "CANCELLED", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(code, "TIMEOUT", StringComparison.OrdinalIgnoreCase);
