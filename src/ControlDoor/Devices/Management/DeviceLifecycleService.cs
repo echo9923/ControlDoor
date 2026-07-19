@@ -419,6 +419,9 @@ namespace ControlDoor.Devices.Management
 
             CancelDelayedReconnect(deviceId);
             CancelDelayedReArm(deviceId);
+            // 删除前 best-effort 排空历史遗留的待清理 SDK 会话（补偿登出失败留下的）；
+            // 失败保留 pending（不丢记录），由 RemoveDevice 时再放弃运行时状态。设备端 SDK 会话视可达性尽力回收。
+            DrainPendingSdkLogoutsForDevice(deviceId);
             var delete = repository.DeleteDevice(deviceId);
             if (!delete.Success)
             {
@@ -445,6 +448,45 @@ namespace ControlDoor.Devices.Management
             };
         }
 
+        // 删除/断开前同步排空历史遗留的待清理 SDK 会话；与 DrainPendingSdkLogoutsAsync（登录路径）保持一致的语义：
+        // 登出成功或返回 17（设备端已无此会话）即清除；其余失败保留 pending，避免静默丢弃待清理记录。
+        private void DrainPendingSdkLogoutsForDevice(int deviceId)
+        {
+            var pending = registry.GetPendingSdkLogouts(deviceId);
+            if (pending.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var userId in pending)
+            {
+                try
+                {
+                    gateway.LogoutAsync(new LogoutRequest { UserId = userId }, CancellationToken.None).GetAwaiter().GetResult();
+                    registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
+                }
+                catch (Exception ex)
+                {
+                    var error = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
+                    if (error.SdkErrorCode == 17)
+                    {
+                        registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
+                    }
+                    else
+                    {
+                        // 保留 pending：删除路径仅 RemoveDevice 释放运行时状态，设备端 SDK 会话记录留在 pending 列表直至进程退出前不再被读取；
+                        // 此处不丢弃，保留可观测性，与登录路径一致。
+                        logger?.Warn("DeviceLifecycle", "Drain of pending SDK logout " + userId + " failed before delete; record retained.", new LogFields
+                        {
+                            DeviceId = deviceId,
+                            OperationName = "DeviceLogout",
+                            ErrorCode = error.Code
+                        });
+                    }
+                }
+            }
+        }
+
         public void StopAllDevicesBestEffort()
         {
             var snapshots = registry.GetAllSnapshots()
@@ -464,6 +506,14 @@ namespace ControlDoor.Devices.Management
                     logger?.Warn("DeviceLifecycle", "服务停止清理设备失败: " + ex.Message, new LogFields { DeviceId = snapshot.DeviceId });
                 }
             }
+        }
+
+        // 服务停止前取消指定设备的延迟 reconnect/rearm 任务，确保 delayedScheduler 即便有残存任务也不会触发重新登录/布防。
+        // 与单设备路径的 CancelDelayedReconnect/CancelDelayedReArm 等价，集中暴露给 Host 停止流程调用。
+        public void CancelDelayedDeviceTasksForDevice(int deviceId)
+        {
+            CancelDelayedReconnect(deviceId);
+            CancelDelayedReArm(deviceId);
         }
 
         public void Dispose()

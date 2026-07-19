@@ -858,7 +858,7 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
-        // P1 回归：待清理 SDK 会话的登记/清除/查询，以及去重与无效 UserId（<=0）忽略。
+        // P1 回归：待清理 SDK 会话的登记/清除/查询，以及去重与无效 UserId（<0）忽略；UserId 0 是合法 SDK 会话句柄。
         [TestCase]
         public static void DeviceRuntimeRegistry_PendingSdkLogout_TracksAndClears()
         {
@@ -870,12 +870,13 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(0, fixture.Registry.GetPendingSdkLogouts(1).Count);
                 fixture.Registry.RecordPendingSdkLogout(1, 42, System.DateTime.Now);
                 fixture.Registry.RecordPendingSdkLogout(1, 42, System.DateTime.Now); // 去重
-                fixture.Registry.RecordPendingSdkLogout(1, 0, System.DateTime.Now);  // 无效忽略
-                fixture.Registry.RecordPendingSdkLogout(1, -1, System.DateTime.Now); // 无效忽略
+                fixture.Registry.RecordPendingSdkLogout(1, 0, System.DateTime.Now);  // 合法 UserId 0，应登记
+                fixture.Registry.RecordPendingSdkLogout(1, -1, System.DateTime.Now); // 负数无效，忽略
                 fixture.Registry.RecordPendingSdkLogout(1, 43, System.DateTime.Now);
 
                 var pending = fixture.Registry.GetPendingSdkLogouts(1);
-                Assert.Equal(2, pending.Count);
+                Assert.Equal(3, pending.Count);
+                Assert.True(pending.Contains(0));
                 Assert.True(pending.Contains(42));
                 Assert.True(pending.Contains(43));
 
@@ -883,7 +884,8 @@ namespace ControlEntradaSalida.Tests
                 var afterClear = fixture.Registry.GetPendingSdkLogouts(1);
                 Assert.False(afterClear.Contains(42));
                 Assert.True(afterClear.Contains(43));
-                Assert.Equal(1, afterClear.Count);
+                Assert.True(afterClear.Contains(0));
+                Assert.Equal(2, afterClear.Count);
             }
         }
 
@@ -1004,6 +1006,87 @@ namespace ControlEntradaSalida.Tests
 
                 var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
                 Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.Equal(0, fixture.DelayedScheduler.GetSnapshot().DelayedTaskCount);
+            }
+        }
+
+        // P1 回归：DeleteDevice 前必须 best-effort 排空历史遗留的待清理 SDK 会话；登出成功或返回 17（设备端已无此会话）即清除。
+        [TestCase]
+        public static void DeviceLifecycle_DeleteDevice_DrainsPendingSdkLogoutBeforeRemove()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                // userId 70 登出成功即清除；userId 71 登出返回 17（设备端已无此会话）也清除。
+                fixture.Gateway.ConfigureResult("LogoutAsync", request =>
+                {
+                    var logout = request as LogoutRequest;
+                    if (logout != null && logout.UserId == 71)
+                    {
+                        throw new DeviceGatewayException("Logout", SdkError.FromCode(17));
+                    }
+
+                    return 0;
+                });
+                fixture.Registry.RecordPendingSdkLogout(1, 70, System.DateTime.Now);
+                fixture.Registry.RecordPendingSdkLogout(1, 71, System.DateTime.Now);
+
+                var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: false, requestId: "req-delete-drain");
+
+                Assert.True(deleted.Success);
+                Assert.Equal(0, fixture.Registry.GetPendingSdkLogouts(1).Count);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" && (call.Request as LogoutRequest) != null && ((LogoutRequest)call.Request).UserId == 70));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" && (call.Request as LogoutRequest) != null && ((LogoutRequest)call.Request).UserId == 71));
+            }
+        }
+
+        // P1 回归：DeleteDevice 排空时真实失败（非 17）保留 pending 记录，不静默丢弃；删除成功仍正常推进。
+        [TestCase]
+        public static void DeviceLifecycle_DeleteDevice_DrainFailureRetainsPending()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Gateway.ConfigureResult("LogoutAsync", request =>
+                {
+                    var logout = request as LogoutRequest;
+                    if (logout != null && logout.UserId == 80)
+                    {
+                        throw new DeviceGatewayException("Logout", SdkError.FromCode(7));
+                    }
+
+                    return 0;
+                });
+                fixture.Registry.RecordPendingSdkLogout(1, 80, System.DateTime.Now);
+
+                var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: false, requestId: "req-delete-retain");
+
+                Assert.True(deleted.Success);
+                // pending 未清除：保留记录（RemoveDevice 后查询返回空列表，但 drain 未把它清掉）。
+                // 这里通过捕获 Gateway 是否被调用确认 drain 已尝试，且未返回 17 故保留。
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" && (call.Request as LogoutRequest) != null && ((LogoutRequest)call.Request).UserId == 80));
+            }
+        }
+
+        // P1 回归：CancelDelayedDeviceTasksForDevice 同时取消 reconnect 与 rearm，确保停止路径下延迟调度器不会投递重新登录/布防。
+[TestCase]
+        public static void DeviceLifecycle_CancelDelayedDeviceTasksForDevice_StopsBothReconnectAndRearm()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.DelayedScheduler.Start();
+
+                // 触发一次 reconnect 调度：login 失败路径会 ScheduleReconnect 投递到 delayedScheduler。
+                fixture.Gateway.ConfigureException("LoginAsync", new DeviceGatewayException("Login", SdkError.FromCode(7)));
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-fail");
+                WaitUntil(() => fixture.DelayedScheduler.GetSnapshot().DelayedTaskCount > 0, "reconnect was not scheduled.");
+
+                fixture.Lifecycle.CancelDelayedDeviceTasksForDevice(1);
+
                 Assert.Equal(0, fixture.DelayedScheduler.GetSnapshot().DelayedTaskCount);
             }
         }

@@ -401,7 +401,8 @@ namespace ControlDoor.Devices.Runtime
         {
             lock (gate)
             {
-                if (userId > 0 && !pendingSdkLogoutUserIds.Contains(userId))
+                // UserId >= 0 是合法 SDK 会话（0 是合法句柄）；负数才是无效输入，忽略以免污染待清理列表。
+                if (userId >= 0 && !pendingSdkLogoutUserIds.Contains(userId))
                 {
                     pendingSdkLogoutUserIds.Add(userId);
                     Touch(now);
