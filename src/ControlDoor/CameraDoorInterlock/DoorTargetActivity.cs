@@ -26,6 +26,10 @@ namespace ControlDoor.CameraDoorInterlock
 
         public DateTime? AlwaysCloseSubmittedAt { get; set; }
 
+        public int? PendingAlwaysCloseAttempt { get; set; }
+
+        public DateTime? AlwaysCloseNextRetryAt { get; set; }
+
         public DateTime? RestoreSubmittedAt { get; set; }
 
         public int? PendingRestoreAttempt { get; set; }

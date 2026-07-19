@@ -43,6 +43,8 @@ namespace ControlDoor.CameraDoorInterlock
                 {
                     activity.InterlockId = interlockId ?? string.Empty;
                     activity.AlwaysCloseSubmittedAt = now;
+                    activity.PendingAlwaysCloseAttempt = null;
+                    activity.AlwaysCloseNextRetryAt = null;
                     activity.RestoreSubmittedAt = null;
                     activity.PendingRestoreAttempt = null;
                     activity.RestoreNextRetryAt = null;
@@ -96,7 +98,38 @@ namespace ControlDoor.CameraDoorInterlock
                 if (activitiesByKey.TryGetValue(targetKey, out activity) && activity != null)
                 {
                     activity.AlwaysCloseSubmittedAt = now;
+                    activity.PendingAlwaysCloseAttempt = null;
+                    activity.AlwaysCloseNextRetryAt = null;
                 }
+            }
+        }
+
+        /// <summary>
+        /// 登记 always-close 失败：常闭是实时安全动作，可重试错误持续重试直至成功（task09，AIOP-02）。
+        /// 不可重试错误转终态，仅打日志，避免对配置类错误做无意义重试。
+        /// </summary>
+        public void RecordAlwaysCloseFailure(string targetKey, int attempt, DateTime? nextRetryAt, DateTime now)
+        {
+            lock (gate)
+            {
+                DoorTargetActivity activity;
+                if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
+                {
+                    return;
+                }
+
+                activity.PendingAlwaysCloseAttempt = attempt;
+                activity.AlwaysCloseNextRetryAt = nextRetryAt;
+            }
+        }
+
+        public IReadOnlyList<DoorTargetActivity> GetDueAlwaysCloseRetries(DateTime now)
+        {
+            lock (gate)
+            {
+                return activitiesByKey.Values
+                    .Where(a => a.PendingAlwaysCloseAttempt.HasValue && a.AlwaysCloseNextRetryAt.HasValue && a.AlwaysCloseNextRetryAt.Value <= now)
+                    .ToList();
             }
         }
 
@@ -118,6 +151,28 @@ namespace ControlDoor.CameraDoorInterlock
                 {
                     activitiesByKey.Remove(targetKey);
                 }
+            }
+        }
+
+        /// <summary>
+        /// 恢复任务已投递但尚未拿到结果（AIOP-05：异步 fire-and-observe）。登记 submitted 时间与 attempt，
+        /// 用于重试去重——若同一 attempt 已投递，扫描循环不会再次拉起。
+        /// </summary>
+        public void RecordRestoreSubmitted(string targetKey, int attempt, DateTime now)
+        {
+            lock (gate)
+            {
+                DoorTargetActivity activity;
+                if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
+                {
+                    return;
+                }
+
+                activity.RestoreSubmittedAt = now;
+                activity.PendingRestoreAttempt = attempt;
+                // 等待结果期间不再被 GetDueRestoreRetries 触发：设下次重试为 null 直到失败回调写入。
+                activity.RestoreNextRetryAt = null;
+                activity.RestoreTerminalFailed = false;
             }
         }
 

@@ -113,6 +113,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(1, fixture.WindowManager.GetActive().Count);
 
                 fixture.Service.ExpireWindows(t0.AddSeconds(9));
+                fixture.SpinForControlGatewayCalls(2); // 等待异步恢复任务分配并执行（1 常闭 + 1 恢复）。
                 Assert.Equal(1, RestoreCount(fixture), "最后一条报警后静默满 WindowSeconds 才应恢复。");
             }
         }
@@ -128,6 +129,7 @@ namespace ControlEntradaSalida.Tests
                 fixture.SpinForControlGatewayCalls(1);
 
                 fixture.Service.ExpireWindows(t0.AddSeconds(5));
+                fixture.SpinForControlGatewayCalls(2); // 等待异步恢复任务执行完成。
 
                 var restore = RestoreRequest(fixture);
                 Assert.NotNull(restore);
@@ -155,6 +157,7 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(2, alwaysCloseDoorNos[1]);
 
                 fixture.Service.ExpireWindows(t0.AddSeconds(5));
+                fixture.SpinForControlGatewayCalls(4); // 等待异步恢复任务执行完成（2 常闭 + 2 恢复）。
 
                 var restoreDoorNos = fixture.Gateway.Calls
                     .Where(c => c.MethodName == "ControlGatewayAsync" && ((GateControlRequest)c.Request).Command == GateControlCommand.Restore)
@@ -181,11 +184,11 @@ namespace ControlEntradaSalida.Tests
                 fixture.SpinForControlGatewayCalls(1);
 
                 Assert.Equal(1, fixture.Gateway.Calls.Count(c => CommandOf(c) == GateControlCommand.AlwaysClose));
-
                 fixture.Service.ExpireWindows(t0.AddSeconds(5));
                 Assert.Equal(0, RestoreCount(fixture), "第一摄像头窗口结束、仍有活动摄像头时不应恢复。");
 
                 fixture.Service.ExpireWindows(t0.AddSeconds(7));
+                fixture.SpinForControlGatewayCalls(2); // 等待异步恢复任务执行完成（1 常闭 + 1 恢复）。
                 Assert.Equal(1, RestoreCount(fixture), "最后一个摄像头窗口结束才应恢复。");
             }
         }
@@ -347,6 +350,7 @@ namespace ControlEntradaSalida.Tests
                 fixture.EmitAiopAlarm(fixture.CameraIp);
                 fixture.Service.ProcessEvents(t0);
                 fixture.Service.ExpireWindows(t0.AddSeconds(5));
+                fixture.SpinForControlGatewayCalls(2); // 等待异步常闭和恢复任务都执行完成，日志写入。
 
                 var text = System.IO.File.ReadAllText(logger.CurrentLogPath);
                 var interlockId = ExtractField(text, "interlockId");
@@ -360,6 +364,112 @@ namespace ControlEntradaSalida.Tests
                 Assert.Contains("sdkErrorCode=\"7\"", text);
                 Assert.Contains("retryable=\"True\"", text);
                 Assert.Contains("manualActionRequired=\"False\"", text);
+            }
+        }
+
+        [TestCase]
+        public static void Stage9Service_AlwaysCloseExecutionFailure_RegistersRetryAndResubmitsOnScan()
+        {
+            // AIOP-02：常闭投递/执行失败必须登记重试，扫描循环按配置间隔重投，直至成功。
+            using (var fixture = new Stage9Fixture(windowSeconds: 30, restoreRetryIntervalMs: 60000))
+            {
+                fixture.Gateway.ConfigureException("ControlGatewayAsync", new DeviceGatewayException("ControlGateway", SdkError.FromCode(7, "busy")));
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                // 等 always-close 异步完成回调登记失败 + 排下次重试。
+                Stage9Fixture.SpinFor(() =>
+                    fixture.TargetManager.TryGetActivity("10:1", out var after) &&
+                    after.PendingAlwaysCloseAttempt.HasValue &&
+                    after.AlwaysCloseNextRetryAt.HasValue,
+                    "常闭失败必须登记下次重试，而不是只打日志。");
+
+                fixture.TargetManager.TryGetActivity("10:1", out var failed);
+                var nextRetryAt = failed.AlwaysCloseNextRetryAt.Value;
+
+                // 设备恢复在线，扫描循环到点重投应成功并清掉挂起重试。
+                fixture.Gateway.ConfigureResult<GateControlResponse>("ControlGatewayAsync", new GateControlResponse { Success = true, Code = "OK", Message = "ok", GateIndex = 1, Command = GateControlCommand.AlwaysClose });
+                var retry = fixture.Service.ProcessAlwaysCloseRetries(nextRetryAt);
+                Assert.Equal(1, retry.RetriesProcessed, "扫描循环应按登记的下次重试时间重投常闭。");
+
+                Stage9Fixture.SpinFor(() =>
+                    fixture.TargetManager.TryGetActivity("10:1", out var after) &&
+                    !after.PendingAlwaysCloseAttempt.HasValue &&
+                    !after.AlwaysCloseNextRetryAt.HasValue,
+                    "常闭重试成功后应清掉挂起重试状态。");
+                Assert.True(fixture.Gateway.Calls.Count(c => CommandOf(c) == GateControlCommand.AlwaysClose) >= 2,
+                    "常闭至少应有首次失败 + 重试成功两次投递。");
+            }
+        }
+
+        [TestCase]
+        public static void Stage9Service_AlwaysCloseExecutionRetryableFailure_RegistersRetryAndResubmitsOnScan()
+        {
+            // AIOP-02：常闭执行可重试失败必须登记重试，不能只打日志后窗口内永不重试。
+            using (var fixture = new Stage9Fixture(windowSeconds: 30, restoreRetryIntervalMs: 60000))
+            {
+                fixture.Gateway.ConfigureException("ControlGatewayAsync", new DeviceGatewayException("ControlGateway", SdkError.FromCode(7, "busy")));
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                // 等待 always-close 任务执行完成并回调登记失败 + 排下次重试。
+                Stage9Fixture.SpinFor(() =>
+                    fixture.TargetManager.TryGetActivity("10:1", out var after) &&
+                    after.PendingAlwaysCloseAttempt.HasValue &&
+                    after.AlwaysCloseNextRetryAt.HasValue,
+                    "常闭执行失败必须登记下次重试，不能只打日志后窗口内永不重试。");
+            }
+        }
+
+        [TestCase]
+        public static void Stage9Service_RestoreActiveTargetsBestEffort_AllotsPerDoorTimeSliceAndCoversAllDoors()
+        {
+            // AIOP-04：停止恢复时第一扇门慢/超时不能把全局超时吃光，至少为每扇门提交一次 best-effort 恢复。
+            using (var fixture = new Stage9Fixture(doorNos: new[] { 1, 2, 3 }))
+            {
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+                fixture.SpinForControlGatewayCalls(3);
+
+                // 第一扇门慢：模拟它在 door slice 内不返回，best-effort 应超时但继续走后续门。
+                fixture.Gateway.ConfigureDelay("ControlGatewayAsync", System.TimeSpan.FromMilliseconds(800));
+                var startedAt = System.DateTime.UtcNow;
+                var result = fixture.Service.RestoreActiveTargetsBestEffort(System.TimeSpan.FromMilliseconds(1500));
+                var elapsed = System.DateTime.UtcNow - startedAt;
+
+                Assert.Equal(3, result.Total);
+                // 至少为每扇门提交一次（投递数应覆盖全部 3 扇门，不是只有第一扇）。
+                Assert.True(fixture.Gateway.Calls.Count(c => CommandOf(c) == GateControlCommand.Restore) >= 3,
+                    "至少为每扇门提交一次 best-effort 恢复。");
+                // 总耗时受全局超时约束（每门最多 slice，全局 1500ms）。
+                Assert.True(elapsed < System.TimeSpan.FromSeconds(8), "best-effort 恢复总耗时应受全局超时约束。");
+            }
+        }
+
+        [TestCase]
+        public static void Stage9Service_ScanLoopSubmitRestore_DoesNotBlockOnWorkerExecution()
+        {
+            // AIOP-05：扫描循环 SubmitRestore 改为异步提交/完成回调，恢复执行慢不能卡住 ProcessRestoreRetries 返回。
+            using (var fixture = new Stage9Fixture(windowSeconds: 5, restoreRetryIntervalMs: 1000))
+            {
+                // 设备执行慢（远大于扫描间隔）。
+                fixture.Gateway.ConfigureDelay("ControlGatewayAsync", System.TimeSpan.FromMilliseconds(800));
+                var t0 = new DateTime(2026, 1, 1, 8, 0, 0);
+
+                fixture.EmitAiopAlarm(fixture.CameraIp);
+                fixture.Service.ProcessEvents(t0);
+
+                var startedAt = System.DateTime.UtcNow;
+                var expireResult = fixture.Service.ExpireWindows(t0.AddSeconds(5));
+                var elapsed = System.DateTime.UtcNow - startedAt;
+
+                Assert.Equal(1, expireResult.RestoreSubmissions);
+                // ExpireWindows 必须立即返回（异步提交），不等 worker 执行完成。
+                Assert.True(elapsed < System.TimeSpan.FromMilliseconds(300),
+                    "ExpireWindows 调用 SubmitRestore 不能同步等待 worker 执行完成。");
             }
         }
 

@@ -190,6 +190,8 @@ namespace ControlDoor.Configuration
 
         public int RestoreRetryIntervalMs { get; set; } = 1000;
 
+        public int AlwaysCloseRetryIntervalMs { get; set; } = 1000;
+
         public List<CameraAlarmDoorInterlockMapping> Mappings { get; set; } = new List<CameraAlarmDoorInterlockMapping>();
     }
 

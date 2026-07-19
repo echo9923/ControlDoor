@@ -150,6 +150,22 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+        public static void SpinFor(Func<bool> condition, string failureMessage, int timeoutMs = 2000)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (condition())
+                {
+                    return;
+                }
+
+                Thread.Sleep(5);
+            }
+
+            Assert.True(false, failureMessage);
+        }
+
         public void Dispose()
         {
             Router?.Dispose();
