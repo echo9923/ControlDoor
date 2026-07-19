@@ -106,30 +106,57 @@ namespace ControlDoor.GrpcApi
             var deviceErrors = new List<object>();
             var dbErrors = new List<object>();
 
-            foreach (var command in parsed.Items)
+            // PERM-07: 不同设备的 SubmitAndWait 可并行（dispatcher 已按 deviceId 路由到各自 worker）；
+            // 同一设备内仍按员工顺序串行。聚合结构用单一锁串行化写入，保证响应一致性。
+            var aggregateLock = new object();
+            Action<DeviceRuntimeSnapshot, PermissionCommand> processOnlinePermission = (device, command) =>
             {
-                foreach (var device in onlineDevices)
+                var result = ExecutePermissionTask(device, command, context);
+                var detail = ToDeviceResult(device, result);
+                var shouldQueueRetry = ShouldQueueMutatingRetry(result);
+                if (shouldQueueRetry)
                 {
-                    var result = ExecutePermissionTask(device, command, context);
-                    var detail = ToDeviceResult(device, result);
-                    var shouldQueueRetry = ShouldQueueMutatingRetry(result);
-                    if (shouldQueueRetry)
+                    object queuedDetail;
+                    bool queued;
+                    lock (aggregateLock)
                     {
-                        object queuedDetail;
-                        if (TryQueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context, out queuedDetail, dbErrors))
-                        {
-                            detail.Queued = true;
-                            queuedDetails.Add(queuedDetail);
-                        }
+                        queued = TryQueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context, out queuedDetail, dbErrors);
                     }
+                    if (queued)
+                    {
+                        detail.Queued = true;
+                        lock (aggregateLock) queuedDetails.Add(queuedDetail);
+                    }
+                }
 
+                lock (aggregateLock)
+                {
                     employeeResults[command.EmployeeId].DeviceResults.Add(detail);
                     if (!result.Success)
                     {
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
                     }
                 }
+            };
 
+            var onlineDeviceTasks = onlineDevices.Count == 0
+                ? null
+                : onlineDevices.Select(device => System.Threading.Tasks.Task.Run(() =>
+                {
+                    foreach (var command in parsed.Items)
+                    {
+                        processOnlinePermission(device, command);
+                    }
+                })).ToArray();
+
+            if (onlineDeviceTasks != null)
+            {
+                System.Threading.Tasks.Task.WaitAll(onlineDeviceTasks);
+            }
+
+            // 离线分支仅写补偿意图，保持串行（无设备 IO）。
+            foreach (var command in parsed.Items)
+            {
                 foreach (var device in offlineDevices)
                 {
                     object queuedDetail;
@@ -220,39 +247,53 @@ namespace ControlDoor.GrpcApi
             var dbErrors = new List<object>();
             var facesUploaded = 0;
 
-            foreach (var command in parsed.Items)
+            // PERM-07: 按设备并行（dispatcher 已按 deviceId 路由到各自 worker），
+            // 单设备内员工串行；同员工必须先 SyncPerson 成功后才 UploadFace。
+            var aggregateLock = new object();
+            Action<DeviceRuntimeSnapshot, PersonSyncCommand> processOnlinePerson = (device, command) =>
             {
-                foreach (var device in onlineDevices)
+                var personResult = ExecutePersonTask(device, command, context);
+                var personDetail = ToDeviceResult(device, personResult, "SyncPerson");
+                var shouldQueuePersonRetry = ShouldQueueMutatingRetry(personResult);
+                object personQueueDetail = null;
+                var personQueued = false;
+                if (shouldQueuePersonRetry)
                 {
-                    var personResult = ExecutePersonTask(device, command, context);
-                    var personDetail = ToDeviceResult(device, personResult, "SyncPerson");
-                    var shouldQueuePersonRetry = ShouldQueueMutatingRetry(personResult);
-                    object personQueueDetail = null;
-                    var personQueued = false;
-                    if (shouldQueuePersonRetry)
+                    lock (aggregateLock)
                     {
                         personQueued = TryQueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context, out personQueueDetail, dbErrors);
-                        if (personQueued)
-                        {
-                            personDetail.Queued = true;
-                            queuedDetails.Add(personQueueDetail);
-                        }
                     }
-
-                    employeeResults[command.EmployeeId].DeviceResults.Add(personDetail);
-                    if (!personResult.Success)
+                    if (personQueued)
                     {
-                        deviceErrors.Add(ToDeviceError(device, command.EmployeeId, personResult));
-                        if (personQueued && command.HasFace)
+                        personDetail.Queued = true;
+                        lock (aggregateLock) queuedDetails.Add(personQueueDetail);
+                    }
+                }
+
+                lock (aggregateLock) employeeResults[command.EmployeeId].DeviceResults.Add(personDetail);
+                if (!personResult.Success)
+                {
+                    lock (aggregateLock) deviceErrors.Add(ToDeviceError(device, command.EmployeeId, personResult));
+                    if (personQueued && command.HasFace)
+                    {
+                        // 人员可重试失败时同步保留人脸意图，避免补偿只恢复人员后丢失人脸下发。
+                        object faceQueueDetail;
+                        bool faceQueued;
+                        lock (aggregateLock)
                         {
-                            // 人员可重试失败时同步保留人脸意图，避免补偿只恢复人员后丢失人脸下发。
-                            object faceQueueDetail;
-                            if (TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, personResult.Message, context, out faceQueueDetail, dbErrors))
+                            faceQueued = TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, personResult.Message, context, out faceQueueDetail, dbErrors);
+                        }
+                        if (faceQueued)
+                        {
+                            lock (aggregateLock)
                             {
                                 queuedDetails.Add(faceQueueDetail);
                                 employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace", personResult.Message));
                             }
-                            else
+                        }
+                        else
+                        {
+                            lock (aggregateLock)
                             {
                                 employeeResults[command.EmployeeId].DeviceResults.Add(new DeviceOperationDetail
                                 {
@@ -266,25 +307,33 @@ namespace ControlDoor.GrpcApi
                                 });
                             }
                         }
-
-                        continue;
                     }
 
-                    if (command.HasFace)
-                    {
-                        var faceResult = ExecuteUploadFaceTask(device, command, context);
-                        var faceDetail = ToDeviceResult(device, faceResult, "UploadFace");
-                        var shouldQueueFaceRetry = ShouldQueueMutatingRetry(faceResult);
-                        if (shouldQueueFaceRetry)
-                        {
-                            object faceQueueDetail;
-                            if (TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context, out faceQueueDetail, dbErrors))
-                            {
-                                faceDetail.Queued = true;
-                                queuedDetails.Add(faceQueueDetail);
-                            }
-                        }
+                    return;
+                }
 
+                if (command.HasFace)
+                {
+                    var faceResult = ExecuteUploadFaceTask(device, command, context);
+                    var faceDetail = ToDeviceResult(device, faceResult, "UploadFace");
+                    var shouldQueueFaceRetry = ShouldQueueMutatingRetry(faceResult);
+                    if (shouldQueueFaceRetry)
+                    {
+                        object faceQueueDetail;
+                        bool faceQueued;
+                        lock (aggregateLock)
+                        {
+                            faceQueued = TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context, out faceQueueDetail, dbErrors);
+                        }
+                        if (faceQueued)
+                        {
+                            faceDetail.Queued = true;
+                            lock (aggregateLock) queuedDetails.Add(faceQueueDetail);
+                        }
+                    }
+
+                    lock (aggregateLock)
+                    {
                         employeeResults[command.EmployeeId].DeviceResults.Add(faceDetail);
                         if (faceResult.Success)
                         {
@@ -296,7 +345,26 @@ namespace ControlDoor.GrpcApi
                         }
                     }
                 }
+            };
 
+            var onlineDeviceTasks = onlineDevices.Count == 0
+                ? null
+                : onlineDevices.Select(device => System.Threading.Tasks.Task.Run(() =>
+                {
+                    foreach (var command in parsed.Items)
+                    {
+                        processOnlinePerson(device, command);
+                    }
+                })).ToArray();
+
+            if (onlineDeviceTasks != null)
+            {
+                System.Threading.Tasks.Task.WaitAll(onlineDeviceTasks);
+            }
+
+            // 离线分支仅写补偿意图，保持串行。
+            foreach (var command in parsed.Items)
+            {
                 foreach (var device in offlineDevices)
                 {
                     object personQueueDetail;
@@ -434,6 +502,22 @@ namespace ControlDoor.GrpcApi
                 return Error(context, parsed.Code, parsed.Message);
             }
 
+            // FACE-03: 默认不返回完整 rawResponse（其中包含与 faces 重复的 Base64 图片，体积翻倍）。
+            // 仅在请求显式 includeRaw=true 时透传；否则保留字段为空串以维持响应契约。
+            var includeRaw = false;
+            try
+            {
+                var root = JsonRequestReader.ParseAny(requestJson) as IDictionary<string, object>;
+                if (root != null)
+                {
+                    includeRaw = JsonRequestReader.GetBool(root, "include_raw", "includeRaw") ?? false;
+                }
+            }
+            catch (Exception)
+            {
+                includeRaw = false;
+            }
+
             var onlineDevices = GetAcsTargetDevices().Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
             var results = CreateEmployeeResults(parsed.Items.Select(item => item.EmployeeId));
             var failedEmployees = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -444,12 +528,18 @@ namespace ControlDoor.GrpcApi
                 {
                     var result = ExecuteQueryFaceTask(device, command.EmployeeId, context);
                     var deviceResult = ToDeviceResult(device, result, "QueryFace");
+                    // 始终保留 rawResponse 字段（默认空串），保持响应契约；
+                    // 仅 includeRaw=true 时透传完整原始响应。
+                    deviceResult.RawResponse = string.Empty;
                     var query = result.Data as QueryFaceResponse;
                     if (query != null)
                     {
                         deviceResult.FaceCount = query.TotalCount;
                         deviceResult.Exists = query.Exists;
-                        deviceResult.RawResponse = query.RawResponse;
+                        if (includeRaw)
+                        {
+                            deviceResult.RawResponse = query.RawResponse ?? string.Empty;
+                        }
                         deviceResult.Faces = query.Faces.Select(ToFaceDictionary).Cast<object>().ToList();
                     }
 
@@ -693,32 +783,58 @@ namespace ControlDoor.GrpcApi
             var deviceErrors = new List<object>();
             var dbErrors = new List<object>();
 
-            foreach (var command in parsed.Items)
+            // PERM-07: 按设备并行；同设备内员工串行（DeletePerson 内部已 best-effort 删除人脸再删除人员）。
+            var aggregateLock = new object();
+            Action<DeviceRuntimeSnapshot, EmployeeCommand> processOnlineDelete = (device, command) =>
             {
-                foreach (var device in onlineDevices)
+                var result = operation == "DeleteFace"
+                    ? ExecuteDeleteFaceTask(device, command.EmployeeId, context)
+                    : ExecuteDeletePersonTask(device, command.EmployeeId, context);
+                var detail = ToDeviceResult(device, result, operation);
+                var shouldQueueRetry = ShouldQueueMutatingRetry(result);
+                if (shouldQueueRetry)
                 {
-                    var result = operation == "DeleteFace"
-                        ? ExecuteDeleteFaceTask(device, command.EmployeeId, context)
-                        : ExecuteDeletePersonTask(device, command.EmployeeId, context);
-                    var detail = ToDeviceResult(device, result, operation);
-                    var shouldQueueRetry = ShouldQueueMutatingRetry(result);
-                    if (shouldQueueRetry)
+                    object queueDetail;
+                    bool queued;
+                    lock (aggregateLock)
                     {
-                        object queueDetail;
-                        if (TryQueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context, out queueDetail, dbErrors))
-                        {
-                            detail.Queued = true;
-                            queuedDetails.Add(queueDetail);
-                        }
+                        queued = TryQueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context, out queueDetail, dbErrors);
                     }
+                    if (queued)
+                    {
+                        detail.Queued = true;
+                        lock (aggregateLock) queuedDetails.Add(queueDetail);
+                    }
+                }
 
+                lock (aggregateLock)
+                {
                     employeeResults[command.EmployeeId].DeviceResults.Add(detail);
                     if (!result.Success)
                     {
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
                     }
                 }
+            };
 
+            var onlineDeviceTasks = onlineDevices.Count == 0
+                ? null
+                : onlineDevices.Select(device => System.Threading.Tasks.Task.Run(() =>
+                {
+                    foreach (var command in parsed.Items)
+                    {
+                        processOnlineDelete(device, command);
+                    }
+                })).ToArray();
+
+            if (onlineDeviceTasks != null)
+            {
+                System.Threading.Tasks.Task.WaitAll(onlineDeviceTasks);
+            }
+
+            // 离线分支仅写补偿意图，保持串行。
+            foreach (var command in parsed.Items)
+            {
                 foreach (var device in offlineDevices)
                 {
                     object queueDetail;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -9,12 +10,14 @@ namespace ControlDoor.Hikvision
     public sealed class MockHikvisionGateway : IHikvisionGateway
     {
         private readonly object gate = new object();
-        private readonly IDictionary<string, MockGatewayBehavior> behaviors = new Dictionary<string, MockGatewayBehavior>(StringComparer.OrdinalIgnoreCase);
-        private readonly IDictionary<int, LoginResponse> sessions = new Dictionary<int, LoginResponse>();
-        private readonly IDictionary<int, AlarmSetupRequest> alarms = new Dictionary<int, AlarmSetupRequest>();
-        private readonly IDictionary<string, PersonInfo> persons = new Dictionary<string, PersonInfo>(StringComparer.OrdinalIgnoreCase);
-        private readonly IDictionary<string, FaceInfo> faces = new Dictionary<string, FaceInfo>(StringComparer.OrdinalIgnoreCase);
-        private readonly IDictionary<string, PermissionInfo> permissions = new Dictionary<string, PermissionInfo>(StringComparer.OrdinalIgnoreCase);
+        // PERM-07: 多设备并行后，Mock gateway 需要支持跨设备并发调用（真实 SDK 每设备独立会话天然线程安全）。
+        // 字典改为 ConcurrentDictionary，自增字段用 Interlocked，避免并发写入损坏状态。
+        private readonly IDictionary<string, MockGatewayBehavior> behaviors = new ConcurrentDictionary<string, MockGatewayBehavior>(StringComparer.OrdinalIgnoreCase);
+        private readonly IDictionary<int, LoginResponse> sessions = new ConcurrentDictionary<int, LoginResponse>();
+        private readonly IDictionary<int, AlarmSetupRequest> alarms = new ConcurrentDictionary<int, AlarmSetupRequest>();
+        private readonly IDictionary<string, PersonInfo> persons = new ConcurrentDictionary<string, PersonInfo>(StringComparer.OrdinalIgnoreCase);
+        private readonly IDictionary<string, FaceInfo> faces = new ConcurrentDictionary<string, FaceInfo>(StringComparer.OrdinalIgnoreCase);
+        private readonly IDictionary<string, PermissionInfo> permissions = new ConcurrentDictionary<string, PermissionInfo>(StringComparer.OrdinalIgnoreCase);
         private readonly IList<MockGatewayCall> calls = new List<MockGatewayCall>();
         private int nextUserId = 1;
         private int nextAlarmHandle = 1000;
@@ -137,7 +140,7 @@ namespace ControlDoor.Hikvision
 
                 var response = new LoginResponse
                 {
-                    UserId = nextUserId++,
+                    UserId = Interlocked.Increment(ref nextUserId) - 1,
                     DeviceInfo = CloneDeviceInfo(DeviceInfo)
                 };
                 sessions[response.UserId] = response;
@@ -171,7 +174,7 @@ namespace ControlDoor.Hikvision
             return ExecuteAsync("SetAlarmAsync", request, cancellationToken, () =>
             {
                 RequireSession(request.UserId);
-                var handle = nextAlarmHandle++;
+                var handle = Interlocked.Increment(ref nextAlarmHandle) - 1;
                 alarms[handle] = request;
                 return new AlarmSetupResponse { AlarmHandle = handle };
             });
