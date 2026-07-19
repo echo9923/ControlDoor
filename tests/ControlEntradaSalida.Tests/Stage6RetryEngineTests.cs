@@ -300,7 +300,6 @@ namespace ControlEntradaSalida.Tests
             var sql = database.Commands.Last(item => item.OperationName == "DeviceOperationRetryStore.HasBlockingPermissionStateForEmployee").CommandText;
             Assert.Contains("employee_id = @employeeId", sql);
             Assert.Contains("id <> @id", sql);
-            Assert.Contains("exhausted_at IS NULL", sql);
             Assert.Contains("permission_pending = 1", sql);
             Assert.Contains("permission_sync_completion_blocked = 1", sql);
         }

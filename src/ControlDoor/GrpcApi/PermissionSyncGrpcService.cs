@@ -98,7 +98,7 @@ namespace ControlDoor.GrpcApi
 
             var devices = GetAcsTargetDevices();
             var onlineDevices = devices.Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
-            var offlineDevices = devices.Where(item => item.Enabled && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
+            var offlineDevices = devices.Where(item => item.Enabled && item.Status != DeviceConnectionStatus.Disabled && item.Status != DeviceConnectionStatus.InvalidConfig && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
             var disabledCount = devices.Count(item => !item.Enabled || item.Status == DeviceConnectionStatus.Disabled || item.Status == DeviceConnectionStatus.InvalidConfig);
 
             var employeeResults = CreateEmployeeResults(parsed.Items.Select(item => item.EmployeeId));
@@ -213,7 +213,7 @@ namespace ControlDoor.GrpcApi
 
             var devices = GetAcsTargetDevices();
             var onlineDevices = devices.Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
-            var offlineDevices = devices.Where(item => item.Enabled && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
+            var offlineDevices = devices.Where(item => item.Enabled && item.Status != DeviceConnectionStatus.Disabled && item.Status != DeviceConnectionStatus.InvalidConfig && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
             var employeeResults = CreateEmployeeResults(parsed.Items.Select(item => item.EmployeeId));
             var queuedDetails = new List<object>();
             var deviceErrors = new List<object>();
@@ -463,7 +463,7 @@ namespace ControlDoor.GrpcApi
 
             var succeeded = results.Values.Count(item => item.DeviceResults.Any(device => device.Success));
             var failed = failedEmployees.Count;
-            var code = failed > 0 && succeeded > 0 ? "PARTIAL_SUCCESS" : failed > 0 ? "FAILED" : "OK";
+            var code = failed > 0 && succeeded > 0 ? "PARTIAL_SUCCESS" : (failed > 0 || (parsed.Items.Count > 0 && succeeded == 0)) ? "FAILED" : "OK";
             return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
             {
                 ["total"] = parsed.Items.Count,
@@ -687,7 +687,7 @@ namespace ControlDoor.GrpcApi
 
             var devices = GetAcsTargetDevices();
             var onlineDevices = devices.Where(item => item.Enabled && item.IsConnected && item.SdkUserId.HasValue).ToList();
-            var offlineDevices = devices.Where(item => item.Enabled && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
+            var offlineDevices = devices.Where(item => item.Enabled && item.Status != DeviceConnectionStatus.Disabled && item.Status != DeviceConnectionStatus.InvalidConfig && (!item.IsConnected || !item.SdkUserId.HasValue)).ToList();
             var employeeResults = CreateEmployeeResults(parsed.Items.Select(item => item.EmployeeId));
             var queuedDetails = new List<object>();
             var deviceErrors = new List<object>();
@@ -1096,8 +1096,8 @@ namespace ControlDoor.GrpcApi
             {
                 var values = JsonRequestReader.AsObject(item);
                 var employeeId = TrimRequired(JsonRequestReader.GetString(values, "employee_id", "employeeId", "employee_no", "employeeNo"), "employee_id");
-                var validFrom = JsonRequestReader.GetDateTime(values, "valid_from", "validFrom");
-                var validTo = JsonRequestReader.GetDateTime(values, "valid_to", "validTo");
+                var validFrom = JsonRequestReader.TryGetDateTime(values, "valid_from", "validFrom");
+                var validTo = JsonRequestReader.TryGetDateTime(values, "valid_to", "validTo");
                 if (validFrom.HasValue && validTo.HasValue && validFrom.Value > validTo.Value)
                 {
                     throw new RequestValidationException("INVALID_ARGUMENT", "valid_from 不能晚于 valid_to。");
@@ -1444,7 +1444,7 @@ namespace ControlDoor.GrpcApi
                 return "PARTIAL_SUCCESS";
             }
 
-            if (total > 0 && succeeded == 0 && failed > 0)
+            if (total > 0 && succeeded == 0)
             {
                 return "FAILED";
             }

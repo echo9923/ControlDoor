@@ -150,7 +150,6 @@ WHERE id = @id
 FROM dbo.device_operation_retry_states
 WHERE employee_id = @employeeId
   AND id <> @id
-  AND exhausted_at IS NULL
   AND (
       permission_pending = 1
       OR permission_sync_completion_blocked = 1

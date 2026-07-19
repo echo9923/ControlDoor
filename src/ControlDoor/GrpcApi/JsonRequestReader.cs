@@ -165,6 +165,32 @@ namespace ControlDoor.GrpcApi
                 : (DateTime?)null;
         }
 
+        public static DateTime? TryGetDateTime(IDictionary<string, object> values, params string[] names)
+        {
+            object value;
+            if (!TryGetValue(values, out value, names) || value == null)
+            {
+                return null;
+            }
+
+            if (value is DateTime)
+            {
+                return (DateTime)value;
+            }
+
+            DateTime parsed;
+            if (!DateTime.TryParse(
+                Convert.ToString(value, CultureInfo.InvariantCulture),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeLocal,
+                out parsed))
+            {
+                throw new ArgumentException($"无法解析日期时间字段 \"{names[0]}\"。");
+            }
+
+            return parsed;
+        }
+
         public static bool TryGetValue(IDictionary<string, object> values, out object value, params string[] names)
         {
             value = null;
