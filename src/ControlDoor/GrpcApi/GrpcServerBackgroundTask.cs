@@ -26,7 +26,14 @@ namespace ControlDoor.GrpcApi
         public Task StartAsync(BackgroundTaskContext context)
         {
             status.MarkStarting();
-            server = new Server
+            // 500 人+ 人脸契约（含大图 base64）单条消息可超过默认 4MB 上限；统一放宽到 100MB 以匹配批量下发与抓拍回传。
+            // Grpc.Core 2.46 的 Server 没有公开 MaxReceive/MaxSend 属性，需要通过 ChannelOption 在构造时传入。
+            const int MaxMessageLengthBytes = 100 * 1024 * 1024;
+            server = new Server(new[]
+            {
+                new ChannelOption(ChannelOptions.MaxReceiveMessageLength, MaxMessageLengthBytes),
+                new ChannelOption(ChannelOptions.MaxSendMessageLength, MaxMessageLengthBytes)
+            })
             {
                 Ports = { new ServerPort("0.0.0.0", port, ServerCredentials.Insecure) }
             };

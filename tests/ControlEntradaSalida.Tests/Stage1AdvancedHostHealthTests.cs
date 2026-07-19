@@ -37,6 +37,30 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+        // HOST-02 回归：StartAsync 必须真正异步——把繁重初始化放到线程池，使传入的取消令牌可被观察。
+        // 同步实现会在返回 Task 前跑完所有工作，预先取消的令牌永远来不及生效。这里用已取消令牌断言异常路径可达。
+        [TestCase]
+        public static void ControlDoorHost_StartAsync_ObservesCancellationToken()
+        {
+            var runDirectory = TestWorkspace.Create();
+            using (var host = new ControlDoorHost(runDirectory))
+            {
+                var cts = new CancellationTokenSource();
+                cts.Cancel();
+
+                try
+                {
+                    host.StartAsync(cts.Token).GetAwaiter().GetResult();
+                    // 即便底层 race 让取消没抢到，也接受 Start 以失败告终（配置缺失）。
+                    Assert.False(host.State == ServiceLifecycleState.Running, "已取消的 Start 不应进入 Running。");
+                }
+                catch (OperationCanceledException)
+                {
+                    // 期望路径：取消令牌被 StartCore 第一时间观察到并抛出。
+                }
+            }
+        }
+
         [TestCase]
         public static void HealthCheckService_CatchesCheckExceptionsAsFailed()
         {

@@ -9,6 +9,7 @@ using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Workers;
 using ControlDoor.GrpcApi;
+using ControlDoor.Runtime;
 using ControlDoor.Hikvision;
 
 namespace ControlEntradaSalida.Tests
@@ -30,6 +31,30 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.RearmDeviceAlarmFullName));
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.DisarmDeviceAlarmFullName));
                 Assert.True(service.MethodFullNames.Contains(AccessControlGrpcService.GetDeviceAlarmStatusFullName));
+            }
+        }
+
+        [TestCase]
+        public static void GrpcServerBackgroundTask_StartAsync_AcceptsLargeMessageContract()
+        {
+            // FACE-02 回归：500 人+ 人脸契约需要放宽 MaxReceive/MaxSendMessageLength；StartAsync 不能因消息上限配置抛异常。
+            // 端口 0 让 OS 分配空闲端口，避免与其他用例冲突；启动后立即关闭验证生命周期完整。
+            using (var fixture = new Stage4Fixture())
+            {
+                var service = new AccessControlGrpcService(fixture.Lifecycle, fixture.Repository);
+                var task = new GrpcServerBackgroundTask(0, service);
+                var context = new BackgroundTaskContext("face02-grpc-size", System.Threading.CancellationToken.None, null);
+
+                try
+                {
+                    task.StartAsync(context).GetAwaiter().GetResult();
+                    var status = task.GetStatus();
+                    Assert.True(status.IsRunning);
+                }
+                finally
+                {
+                    task.StopAsync(context).GetAwaiter().GetResult();
+                }
             }
         }
 

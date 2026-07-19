@@ -65,25 +65,44 @@ namespace ControlDoor.Host
             }
         }
 
-        public Task<HostStartupResult> StartAsync(CancellationToken cancellationToken = default)
+        public async Task<HostStartupResult> StartAsync(CancellationToken cancellationToken = default)
         {
+            // 锁与状态快速路径保持同步：重复 Start 直接返回已完成 Task。
+            // 真正的初始化（配置/健康检查/后台任务启动/设备加载）放到线程池，让 ServiceLifecycleController 的超时可中断。
+            Task<HostStartupResult> fastPath;
             lock (gate)
             {
-                ThrowIfDisposed();
-
-                if (state == ServiceLifecycleState.Running)
-                {
-                    return Task.FromResult(HostStartupResult.Succeeded("Host 已在运行。"));
-                }
-
-                if (state == ServiceLifecycleState.Starting)
-                {
-                    return Task.FromResult(HostStartupResult.Succeeded("Host 正在启动。"));
-                }
-
-                state = ServiceLifecycleState.Starting;
+                fastPath = EvaluateStartFastPath();
             }
 
+            if (fastPath != null)
+            {
+                return await fastPath.ConfigureAwait(false);
+            }
+
+            return await Task.Run(() => StartCore(cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+
+        private Task<HostStartupResult> EvaluateStartFastPath()
+        {
+            ThrowIfDisposed();
+
+            if (state == ServiceLifecycleState.Running)
+            {
+                return Task.FromResult(HostStartupResult.Succeeded("Host 已在运行。"));
+            }
+
+            if (state == ServiceLifecycleState.Starting)
+            {
+                return Task.FromResult(HostStartupResult.Succeeded("Host 正在启动。"));
+            }
+
+            state = ServiceLifecycleState.Starting;
+            return null;
+        }
+
+        private HostStartupResult StartCore(CancellationToken cancellationToken)
+        {
             var stopwatch = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -95,7 +114,7 @@ namespace ControlDoor.Host
                     state = ServiceLifecycleState.Failed;
                 }
 
-                return Task.FromResult(HostStartupResult.Failed("配置加载失败。", configurationResult.Errors));
+                return HostStartupResult.Failed("配置加载失败。", configurationResult.Errors);
             }
 
             settings = configurationResult.Settings;
@@ -128,7 +147,7 @@ namespace ControlDoor.Host
                     state = ServiceLifecycleState.Failed;
                 }
 
-                return Task.FromResult(HostStartupResult.Failed("基础健康检查失败。", healthSummary.Results.Where(item => item.Status == HealthCheckStatus.Failed).Select(item => item.Message).ToList()));
+                return HostStartupResult.Failed("基础健康检查失败。", healthSummary.Results.Where(item => item.Status == HealthCheckStatus.Failed).Select(item => item.Message).ToList());
             }
 
             deviceRegistry = new DeviceRuntimeRegistry(new DeviceRuntimeRegistryOptions { WorkerCount = settings.DeviceSdkDispatcher.WorkerCount });
@@ -167,7 +186,7 @@ namespace ControlDoor.Host
                     state = ServiceLifecycleState.Failed;
                 }
 
-                return Task.FromResult(HostStartupResult.Failed("设备清单初始化失败。", new[] { ex.Message }));
+                return HostStartupResult.Failed("设备清单初始化失败。", new[] { ex.Message });
             }
 
             deviceLifecycle = new DeviceLifecycleService(deviceRegistry, deviceDispatcher, delayedScheduler, deviceRepository, hikvisionGateway, deviceOptions, logger);
@@ -239,7 +258,7 @@ namespace ControlDoor.Host
                     state = ServiceLifecycleState.Failed;
                 }
 
-                return Task.FromResult(HostStartupResult.Failed("后台任务启动失败。", backgroundResult.Errors));
+                return HostStartupResult.Failed("后台任务启动失败。", backgroundResult.Errors);
             }
 
             try
@@ -257,7 +276,7 @@ namespace ControlDoor.Host
                     state = ServiceLifecycleState.Failed;
                 }
 
-                return Task.FromResult(HostStartupResult.Failed("阶段 4 设备加载失败。", new[] { ex.Message }));
+                return HostStartupResult.Failed("阶段 4 设备加载失败。", new[] { ex.Message });
             }
 
             lock (gate)
@@ -267,50 +286,121 @@ namespace ControlDoor.Host
 
             logger.Info("Host", "ControlDoor Host 启动成功。", new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
 
-            return Task.FromResult(HostStartupResult.Succeeded("Host 启动成功。"));
+            return HostStartupResult.Succeeded("Host 启动成功。");
         }
 
-        public Task<HostStopResult> StopAsync(string reason = "Manual", CancellationToken cancellationToken = default)
+        public async Task<HostStopResult> StopAsync(string reason = "Manual", CancellationToken cancellationToken = default)
         {
             lock (gate)
             {
                 if (disposed)
                 {
-                    return Task.FromResult(HostStopResult.Succeeded(reason, "Host 已释放。"));
+                    return HostStopResult.Succeeded(reason, "Host 已释放。");
                 }
 
                 if (state == ServiceLifecycleState.Stopped || state == ServiceLifecycleState.Created)
                 {
                     state = ServiceLifecycleState.Stopped;
-                    return Task.FromResult(HostStopResult.Succeeded(reason, "Host 已停止。"));
+                    return HostStopResult.Succeeded(reason, "Host 已停止。");
                 }
 
                 state = ServiceLifecycleState.Stopping;
             }
 
+            // 真异步执行：将繁重的同步清理放到线程池，让 ServiceLifecycleController 的超时/取消可生效。
+            // 直接同步执行会让本方法在返回 Task 前跑完所有清理，超时永远无法触发。
+            return await Task.Run(() => StopCore(reason, cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+
+        private HostStopResult StopCore(string reason, CancellationToken cancellationToken)
+        {
             var stopwatch = Stopwatch.StartNew();
-            cancellationToken.ThrowIfCancellationRequested();
+            // 取消请求到达即尽快返回：后续每步前都检查一次，保证 ServiceLifecycleController 的超时可中断清理。
+            if (cancellationToken.IsCancellationRequested)
+            {
+                lock (gate)
+                {
+                    state = ServiceLifecycleState.Stopped;
+                }
+
+                return HostStopResult.Succeeded(reason, "Host 收到取消，已尽快返回。");
+            }
 
             logger?.Info("Host", "ControlDoor Host 正在停止。", new LogFields { Extra = { ["reason"] = reason ?? string.Empty } });
-            aiopAlarmEventRouter?.Dispose();
+
+            // 顺序：先卸下事件订阅与门禁联动恢复（需要设备仍在登录态），再停后台生产者与延迟调度（停止投递 reconnect/rearm），
+            // 然后清理设备会话（此时不会再被延迟任务重新登录），最后停 dispatcher。
+            try
+            {
+                aiopAlarmEventRouter?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("Host", "阶段 9 AIOP 路由停止失败，继续停止流程。", ex);
+            }
+
             StopCameraDoorInterlockBeforeDeviceLogout();
-            deviceLifecycle?.StopAllDevicesBestEffort();
-            backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
-            deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
-            deviceDispatcher?.Dispose();
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return FinalizeStop(reason, stopwatch);
+            }
+
+            // 先停后台生产者：healthCheck / retryManager / faceEventIngestion / grpc / cameraDoorInterlock，最后停 delayedScheduler（reconnect/rearm 投递源）。
+            // delayedScheduler 一旦 Stopped，Schedule/DispatchDueTasks 均不再投递，reconnect 不可能在设备清理期间重新登录。
+            try
+            {
+                backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("Host", "后台任务停止失败，继续清理设备。", ex);
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return FinalizeStop(reason, stopwatch);
+            }
+
+            // 双保险：取消 delayedScheduler 中尚未到期/或已停止前残存的 reconnect/rearm 任务，避免任何残余投递。
+            CancelAllDelayedDeviceTasks();
+
+            try
+            {
+                deviceLifecycle?.StopAllDevicesBestEffort();
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("Host", "设备清理失败，继续停止 dispatcher。", ex);
+            }
+
+            try
+            {
+                deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+                deviceDispatcher?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("Host", "Dispatcher 停止失败。", ex);
+            }
+
             acsAlarmEventRouter?.Dispose();
             cameraDoorInterlockService?.Dispose();
             faceEventIngestionService?.Dispose();
             database?.Dispose();
 
+            return FinalizeStop(reason, stopwatch);
+        }
+
+        private HostStopResult FinalizeStop(string reason, Stopwatch stopwatch)
+        {
             lock (gate)
             {
                 state = ServiceLifecycleState.Stopped;
             }
 
             logger?.Info("Host", "ControlDoor Host 停止成功。", new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
-
-            return Task.FromResult(HostStopResult.Succeeded(reason, "Host 停止成功。"));
+            return HostStopResult.Succeeded(reason, "Host 停止成功。");
         }
 
         private void StopCameraDoorInterlockBeforeDeviceLogout()
@@ -330,6 +420,34 @@ namespace ControlDoor.Host
             catch (Exception ex)
             {
                 logger?.Error("Host", "阶段 9 门禁联动停止恢复失败，继续停止设备。", ex);
+            }
+        }
+
+        // 停止设备清理前取消所有设备的延迟 reconnect/rearm 任务，确保延迟调度器即便有残存任务也不会投递重新登录/布防。
+        private void CancelAllDelayedDeviceTasks()
+        {
+            if (deviceLifecycle == null)
+            {
+                return;
+            }
+
+            try
+            {
+                foreach (var snapshot in deviceRegistry?.GetAllSnapshots() ?? Enumerable.Empty<DeviceRuntimeSnapshot>())
+                {
+                    try
+                    {
+                        deviceLifecycle.CancelDelayedDeviceTasksForDevice(snapshot.DeviceId);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.Warn("Host", "停止期间取消设备延迟任务失败: " + ex.Message, new LogFields { DeviceId = snapshot.DeviceId });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Warn("Host", "枚举设备快照取消延迟任务失败: " + ex.Message);
             }
         }
 
