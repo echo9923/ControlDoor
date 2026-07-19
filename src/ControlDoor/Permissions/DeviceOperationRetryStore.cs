@@ -394,7 +394,12 @@ WHERE id IN (
                 new DatabaseParameter("@permissionLevel", (object)state.PermissionLevel ?? DBNull.Value),
                 new DatabaseParameter("@permissionPayload", (object)state.PermissionPayloadJson ?? DBNull.Value),
                 new DatabaseParameter("@personPayload", (object)state.PersonPayloadJson ?? DBNull.Value),
-                new DatabaseParameter("@facePayload", (object)state.FacePayloadJson ?? DBNull.Value)
+                new DatabaseParameter("@facePayload", (object)state.FacePayloadJson ?? DBNull.Value),
+                new DatabaseParameter("@deletePersonPending", state.DeletePersonPending ? 1 : 0),
+                new DatabaseParameter("@deleteFacePending", state.DeleteFacePending ? 1 : 0),
+                new DatabaseParameter("@personPending", state.PersonPending ? 1 : 0),
+                new DatabaseParameter("@facePending", state.FacePending ? 1 : 0),
+                new DatabaseParameter("@permissionPending", state.PermissionPending ? 1 : 0)
             };
         }
 
@@ -570,6 +575,7 @@ SET delete_face_pending = 0,
     updated_at = @updatedAt
 WHERE id = @id;";
                 case RetryOperation.DeletePerson:
+                    // 仅在扫描时看到的 pending/payload 快照仍匹配时才清空；并发 upsert 新意图后整行清零会被拒绝。
                     return @"UPDATE dbo.device_operation_retry_states
 SET permission_pending = 0,
     permission_sync_completion_blocked = 0,
@@ -581,7 +587,25 @@ SET permission_pending = 0,
     person_payload = NULL,
     face_payload = NULL,
     updated_at = @updatedAt
-WHERE id = @id;";
+WHERE id = @id
+  AND delete_person_pending = 1
+  AND delete_person_pending = @deletePersonPending
+  AND delete_face_pending = @deleteFacePending
+  AND person_pending = @personPending
+  AND face_pending = @facePending
+  AND permission_pending = @permissionPending
+  AND (
+      (person_payload = @personPayload)
+      OR (person_payload IS NULL AND @personPayload IS NULL)
+  )
+  AND (
+      (face_payload = @facePayload)
+      OR (face_payload IS NULL AND @facePayload IS NULL)
+  )
+  AND (
+      (permission_payload = @permissionPayload)
+      OR (permission_payload IS NULL AND @permissionPayload IS NULL)
+  );";
                 default:
                     throw new ArgumentOutOfRangeException(nameof(operation));
             }

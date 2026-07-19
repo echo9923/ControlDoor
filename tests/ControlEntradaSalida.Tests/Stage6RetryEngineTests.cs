@@ -234,6 +234,29 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceOperationRetryStore_DeletePersonSuccess_GuardsAgainstConcurrentNewIntents()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database);
+            var state = DeviceOperationRetryState.FromRow(Row(
+                id: 21,
+                deviceId: 1,
+                employeeId: "10001",
+                deletePersonPending: true));
+
+            store.MarkOperationSuccess(state, RetryOperation.DeletePerson);
+
+            var sql = database.Commands.Single().CommandText;
+            Assert.Contains("delete_person_pending = 1", sql);
+            Assert.Contains("person_pending = @personPending", sql);
+            Assert.Contains("face_pending = @facePending", sql);
+            Assert.Contains("permission_pending = @permissionPending", sql);
+            Assert.Contains("person_payload = @personPayload", sql);
+            Assert.Contains("face_payload = @facePayload", sql);
+            Assert.Contains("permission_payload = @permissionPayload", sql);
+        }
+
+        [TestCase]
         public static void DeviceOperationRetryStore_PermissionSuccess_UpdatesUserOnlyWhenStateRowChanged()
         {
             var staleDatabase = new RecordingDatabaseClient { RowsAffected = 0 };
