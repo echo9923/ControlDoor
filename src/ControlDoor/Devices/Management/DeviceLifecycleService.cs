@@ -661,6 +661,10 @@ namespace ControlDoor.Devices.Management
                     await gateway.LogoutAsync(new LogoutRequest { UserId = userId }, context.CancellationToken).ConfigureAwait(false);
                     context.Registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
                 }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     var error = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
@@ -1239,9 +1243,11 @@ namespace ControlDoor.Devices.Management
             }
 
             var attempt = IncrementReArmFailure(deviceId);
+            var baseMs = Math.Max(1, options.ReArmBaseDelayMs);
+            var maxMs = Math.Max(baseMs, options.ReArmMaxDelayMs);
             var policy = RetryBackoffPolicy.Exponential(
-                TimeSpan.FromMilliseconds(options.ReArmBaseDelayMs),
-                TimeSpan.FromMilliseconds(options.ReArmMaxDelayMs));
+                TimeSpan.FromMilliseconds(baseMs),
+                TimeSpan.FromMilliseconds(maxMs));
             var delay = policy.CalculateDelay(attempt);
             var dueAt = DateTime.Now.Add(delay);
             var scheduled = delayedScheduler?.Schedule(new DelayedDeviceTask(

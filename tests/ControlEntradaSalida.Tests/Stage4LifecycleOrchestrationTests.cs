@@ -919,6 +919,47 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+        // DEV-01: 排空 SDK 会话时 token 已取消必须 rethrow OperationCanceledException，不可被 catch(Exception) 吞掉。
+        [TestCase]
+        public static void DeviceLifecycle_DrainPendingSdkLogout_OperationCanceled_PropagatesAndRetainsPending()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                // Gateway 在 LogoutAsync 时抛出 OperationCanceledException（模拟 token 取消）。
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+
+                fixture.Gateway.ConfigureException("LogoutAsync", new System.OperationCanceledException("Token was cancelled during drain."));
+
+                fixture.Registry.RecordPendingSdkLogout(1, 50, System.DateTime.Now);
+
+                // 捕获 SubmitLogin 可能抛出的异常（如果 OCE 未被任务执行器吞掉）。
+                try
+                {
+                    var result = fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login-cancel");
+                    // 没抛异常 → 检查结果
+                    Assert.False(result.Success,
+                        "Login should fail when drain is cancelled. Code=" + result.Code + " TaskResult.Code=" + (result.TaskResult?.Code ?? "null"));
+                }
+                catch (System.AggregateException ex)
+                {
+                    if (ex.InnerException is System.OperationCanceledException)
+                    {
+                        // 预期行为：OCE 传播到最外层，待清理会话保留。
+                        Assert.True(fixture.Registry.GetPendingSdkLogouts(1).Contains(50),
+                            "Pending logout should be retained when drain is cancelled.");
+                        return;
+                    }
+                    throw;
+                }
+
+                // 待清理 SDK 会话必须保留
+                Assert.True(fixture.Registry.GetPendingSdkLogouts(1).Contains(50),
+                    "Pending logout for userId 50 should be retained when drain is cancelled."
+                    + " Count=" + fixture.Registry.GetPendingSdkLogouts(1).Count);
+            }
+        }
+
         // P1 回归：旧布防关闭失败触发补偿登出，补偿登出失败（非 17）须保留待清理会话（不再静默丢弃 UserId）。
         // 排空逻辑由 DrainsPendingSdkLogoutOnLogin 单独覆盖（同一登录代码路径）。
         [TestCase]

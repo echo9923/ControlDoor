@@ -147,6 +147,19 @@ namespace ControlDoor.Configuration
                 "DeviceConnection.AlarmStatusProbeFailureThreshold",
                 warnings);
 
+            settings.DeviceConnection.ReArmBaseDelayMs = MinimumOrDefault(
+                settings.DeviceConnection.ReArmBaseDelayMs,
+                1,
+                1000,
+                "DeviceConnection.ReArmBaseDelayMs",
+                warnings);
+
+            if (settings.DeviceConnection.ReArmMaxDelayMs < settings.DeviceConnection.ReArmBaseDelayMs)
+            {
+                warnings.Add("DeviceConnection.ReArmMaxDelayMs 小于 ReArmBaseDelayMs，已回退为 60000。");
+                settings.DeviceConnection.ReArmMaxDelayMs = 60000;
+            }
+
             if (!string.Equals(settings.HikvisionSdk.Platform, "x86", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(settings.HikvisionSdk.Platform, "x64", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(settings.HikvisionSdk.Platform, "AnyCPU", StringComparison.OrdinalIgnoreCase))

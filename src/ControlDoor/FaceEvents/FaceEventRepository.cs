@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
+using System.IO;
 using ControlDoor.Database;
 
 namespace ControlDoor.FaceEvents
@@ -194,6 +195,26 @@ namespace ControlDoor.FaceEvents
             catch (SqlException ex) when (IsDuplicate(ex.Number))
             {
                 // 事务已回滚。降级为逐条 InsertEvent（靠它自己的 Exists + 2601/2627 兜底）。
+                // 清理本批已落盘的快照文件（逐条 InsertEvent 会重新 Save，避免遗留孤儿文件）。
+                for (var k = 0; k < snapshots.Length; k++)
+                {
+                    if (snapshots[k] != null)
+                    {
+                        try
+                        {
+                            var absolutePath = Path.Combine(snapshotStorage.RootDirectory, snapshots[k]);
+                            if (File.Exists(absolutePath))
+                            {
+                                File.Delete(absolutePath);
+                            }
+                        }
+                        catch
+                        {
+                            // best-effort 清理，失败不影响后续降级插入。
+                        }
+                    }
+                }
+
                 for (var k = 0; k < toInsert.Count; k++)
                 {
                     results[toInsertIndexes[k]] = InsertEvent(toInsert[k]);

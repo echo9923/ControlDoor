@@ -130,6 +130,62 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(2, section.Mappings[0].DoorNos[1]);
         }
 
+        // CFG-03: ReArmBaseDelayMs 必须 > 0；ReArmMaxDelayMs 必须 >= ReArmBaseDelayMs。
+        [TestCase]
+        public static void Stage9Config_ReArmBaseDelayMs_TooSmall_FallsBackToDefault()
+        {
+            var settings = NewSettings();
+            settings.DeviceConnection.ReArmBaseDelayMs = 0;
+
+            var result = new ConfigurationValidator().Validate(settings);
+
+            Assert.True(result.Success, string.Join("; ", result.Errors));
+            Assert.Equal(1000, result.Settings.DeviceConnection.ReArmBaseDelayMs);
+            Assert.True(result.Warnings.Any(w => w.Contains("ReArmBaseDelayMs")));
+        }
+
+        [TestCase]
+        public static void Stage9Config_ReArmBaseDelayMs_Negative_FallsBackToDefault()
+        {
+            var settings = NewSettings();
+            settings.DeviceConnection.ReArmBaseDelayMs = -500;
+
+            var result = new ConfigurationValidator().Validate(settings);
+
+            Assert.True(result.Success, string.Join("; ", result.Errors));
+            Assert.Equal(1000, result.Settings.DeviceConnection.ReArmBaseDelayMs);
+            Assert.True(result.Warnings.Any(w => w.Contains("ReArmBaseDelayMs")));
+        }
+
+        [TestCase]
+        public static void Stage9Config_ReArmMaxDelayMs_LessThanBase_FallsBackToDefault()
+        {
+            var settings = NewSettings();
+            settings.DeviceConnection.ReArmBaseDelayMs = 5000;
+            settings.DeviceConnection.ReArmMaxDelayMs = 1000;
+
+            var result = new ConfigurationValidator().Validate(settings);
+
+            Assert.True(result.Success, string.Join("; ", result.Errors));
+            Assert.Equal(60000, result.Settings.DeviceConnection.ReArmMaxDelayMs);
+            Assert.True(result.Warnings.Any(w => w.Contains("ReArmMaxDelayMs")));
+        }
+
+        [TestCase]
+        public static void Stage9Config_ReArmDelays_ValidValues_Unchanged()
+        {
+            var settings = NewSettings();
+            settings.DeviceConnection.ReArmBaseDelayMs = 2000;
+            settings.DeviceConnection.ReArmMaxDelayMs = 30000;
+
+            var result = new ConfigurationValidator().Validate(settings);
+
+            Assert.True(result.Success, string.Join("; ", result.Errors));
+            Assert.Equal(2000, result.Settings.DeviceConnection.ReArmBaseDelayMs);
+            Assert.Equal(30000, result.Settings.DeviceConnection.ReArmMaxDelayMs);
+            Assert.False(result.Warnings.Any(w => w.Contains("ReArmBaseDelayMs") || w.Contains("ReArmMaxDelayMs")));
+        }
+
         private static AppSettings NewSettings()
         {
             return new AppSettings
