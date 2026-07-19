@@ -100,7 +100,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SyncPersons_UploadFaceTimeout_QueuesFaceIntentAndKeepsPersonSync()
+        public static void SyncPersons_UploadFaceTimeout_QueuesFaceIntentAndDoesNotMarkSynced()
         {
             using (var fixture = new Stage5Fixture())
             {
@@ -112,11 +112,11 @@ namespace ControlEntradaSalida.Tests
                     fixture.Context("face-timeout")));
 
                 Assert.Equal("PARTIAL_SUCCESS", response["code"]);
-                Assert.Equal(1, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal(0, Convert.ToInt32(response["succeeded"]));
                 Assert.Equal(1, Convert.ToInt32(response["queued"]));
                 Assert.Equal(0, Convert.ToInt32(response["failed"]));
                 Assert.Equal(0, Convert.ToInt32(response["facesUploaded"]));
-                Assert.True(fixture.UserWriter.PersonsSynced.Contains("10001"));
+                Assert.False(fixture.UserWriter.PersonsSynced.Contains("10001"));
                 Assert.True(fixture.RetryWriter.Intents.Any(intent => intent.Operation == "UploadFace"));
             }
         }
@@ -165,6 +165,61 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+
+        [TestCase]
+        public static void SyncPersons_OmittedName_DefaultsToEmployeeId()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice();
+
+                var response = fixture.Response(fixture.Service.SyncPersons(
+                    @"{""items"":[{""employee_id"":""10009""}]}",
+                    fixture.Context("person-default-name")));
+
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(1, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal("10009", fixture.LastUpsertPerson("10009").Name);
+            }
+        }
+
+        [TestCase]
+        public static void SyncPersons_PartialDeviceSuccess_DoesNotMarkPersonSynced()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(1);
+                fixture.AddOfflineDevice(2);
+
+                var response = fixture.Response(fixture.Service.SyncPersons(
+                    @"{""items"":[{""employee_id"":""10008"",""name"":""Partial""}]}",
+                    fixture.Context("person-partial-device")));
+
+                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
+                Assert.Equal(0, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal(1, Convert.ToInt32(response["queued"]));
+                Assert.False(fixture.UserWriter.PersonsSynced.Contains("10008"));
+            }
+        }
+
+        [TestCase]
+        public static void SyncPersons_RetryWriteFailure_DoesNotReportQueued()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOfflineDevice();
+                fixture.RetryWriter.FailNext = true;
+
+                var response = fixture.Response(fixture.Service.SyncPersons(
+                    @"{""items"":[{""employee_id"":""10007"",""name"":""DB Fail""}]}",
+                    fixture.Context("person-retry-write-fail")));
+
+                Assert.Equal("FAILED", response["code"]);
+                Assert.Equal(0, Convert.ToInt32(response["queued"]));
+                Assert.Equal(1, Convert.ToInt32(response["failed"]));
+                Assert.Equal(0, fixture.RetryWriter.Intents.Count);
+            }
+        }
         [TestCase]
         public static void DeleteFaces_RetryableTimeout_QueuesDeleteFaceIntent()
         {

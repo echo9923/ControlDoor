@@ -115,7 +115,12 @@ namespace ControlDoor.GrpcApi
                     var shouldQueueRetry = ShouldQueueMutatingRetry(result);
                     if (shouldQueueRetry)
                     {
-                        detail.Queued = true;
+                        object queuedDetail;
+                        if (TryQueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context, out queuedDetail, dbErrors))
+                        {
+                            detail.Queued = true;
+                            queuedDetails.Add(queuedDetail);
+                        }
                     }
 
                     employeeResults[command.EmployeeId].DeviceResults.Add(detail);
@@ -123,19 +128,29 @@ namespace ControlDoor.GrpcApi
                     {
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
                     }
-
-                    if (shouldQueueRetry)
-                    {
-                        var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context);
-                        queuedDetails.Add(queued);
-                    }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, "设备离线，已生成补偿意图。", context);
-                    queuedDetails.Add(queued);
-                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPermission"));
+                    object queuedDetail;
+                    if (TryQueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, "设备离线，已生成补偿意图。", context, out queuedDetail, dbErrors))
+                    {
+                        queuedDetails.Add(queuedDetail);
+                        employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPermission"));
+                    }
+                    else
+                    {
+                        employeeResults[command.EmployeeId].DeviceResults.Add(new DeviceOperationDetail
+                        {
+                            DeviceId = device.DeviceId,
+                            DeviceName = device.DeviceName,
+                            Operation = "SyncPermission",
+                            Success = false,
+                            Queued = false,
+                            Code = "DB_ERROR",
+                            Message = "补偿意图写入失败。"
+                        });
+                    }
                 }
 
                 if (IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
@@ -212,23 +227,43 @@ namespace ControlDoor.GrpcApi
                     var personResult = ExecutePersonTask(device, command, context);
                     var personDetail = ToDeviceResult(device, personResult, "SyncPerson");
                     var shouldQueuePersonRetry = ShouldQueueMutatingRetry(personResult);
+                    object personQueueDetail = null;
+                    var personQueued = false;
                     if (shouldQueuePersonRetry)
                     {
-                        personDetail.Queued = true;
+                        personQueued = TryQueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context, out personQueueDetail, dbErrors);
+                        if (personQueued)
+                        {
+                            personDetail.Queued = true;
+                            queuedDetails.Add(personQueueDetail);
+                        }
                     }
 
                     employeeResults[command.EmployeeId].DeviceResults.Add(personDetail);
                     if (!personResult.Success)
                     {
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, personResult));
-                        if (shouldQueuePersonRetry)
+                        if (personQueued && command.HasFace)
                         {
-                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context));
                             // 人员可重试失败时同步保留人脸意图，避免补偿只恢复人员后丢失人脸下发。
-                            if (command.HasFace)
+                            object faceQueueDetail;
+                            if (TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, personResult.Message, context, out faceQueueDetail, dbErrors))
                             {
-                                queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, personResult.Message, context));
+                                queuedDetails.Add(faceQueueDetail);
                                 employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace", personResult.Message));
+                            }
+                            else
+                            {
+                                employeeResults[command.EmployeeId].DeviceResults.Add(new DeviceOperationDetail
+                                {
+                                    DeviceId = device.DeviceId,
+                                    DeviceName = device.DeviceName,
+                                    Operation = "UploadFace",
+                                    Success = false,
+                                    Queued = false,
+                                    Code = "DB_ERROR",
+                                    Message = "补偿意图写入失败。"
+                                });
                             }
                         }
 
@@ -242,7 +277,12 @@ namespace ControlDoor.GrpcApi
                         var shouldQueueFaceRetry = ShouldQueueMutatingRetry(faceResult);
                         if (shouldQueueFaceRetry)
                         {
-                            faceDetail.Queued = true;
+                            object faceQueueDetail;
+                            if (TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context, out faceQueueDetail, dbErrors))
+                            {
+                                faceDetail.Queued = true;
+                                queuedDetails.Add(faceQueueDetail);
+                            }
                         }
 
                         employeeResults[command.EmployeeId].DeviceResults.Add(faceDetail);
@@ -253,32 +293,63 @@ namespace ControlDoor.GrpcApi
                         else
                         {
                             deviceErrors.Add(ToDeviceError(device, command.EmployeeId, faceResult));
-                            if (shouldQueueFaceRetry)
-                            {
-                                queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context));
-                            }
                         }
                     }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, "设备离线，已生成补偿意图。", context));
-                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPerson"));
+                    object personQueueDetail;
+                    if (TryQueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, "设备离线，已生成补偿意图。", context, out personQueueDetail, dbErrors))
+                    {
+                        queuedDetails.Add(personQueueDetail);
+                        employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPerson"));
+                    }
+                    else
+                    {
+                        employeeResults[command.EmployeeId].DeviceResults.Add(new DeviceOperationDetail
+                        {
+                            DeviceId = device.DeviceId,
+                            DeviceName = device.DeviceName,
+                            Operation = "SyncPerson",
+                            Success = false,
+                            Queued = false,
+                            Code = "DB_ERROR",
+                            Message = "补偿意图写入失败。"
+                        });
+                    }
+
                     if (command.HasFace)
                     {
-                        queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, "设备离线，已生成补偿意图。", context));
-                        employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace"));
+                        object faceQueueDetail;
+                        if (TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, "设备离线，已生成补偿意图。", context, out faceQueueDetail, dbErrors))
+                        {
+                            queuedDetails.Add(faceQueueDetail);
+                            employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace"));
+                        }
+                        else
+                        {
+                            employeeResults[command.EmployeeId].DeviceResults.Add(new DeviceOperationDetail
+                            {
+                                DeviceId = device.DeviceId,
+                                DeviceName = device.DeviceName,
+                                Operation = "UploadFace",
+                                Success = false,
+                                Queued = false,
+                                Code = "DB_ERROR",
+                                Message = "补偿意图写入失败。"
+                            });
+                        }
                     }
                 }
 
-                if (employeeResults[command.EmployeeId].DeviceResults.Any(item => item.Success && item.Operation == "SyncPerson"))
+                if (IsPersonSyncComplete(employeeResults[command.EmployeeId], command.HasFace))
                 {
                     TryUpdateUser(dbErrors, () => userSyncWriter.MarkPersonSynced(command.EmployeeId), command.EmployeeId, "MarkPersonSynced");
                 }
             }
 
-            var succeededEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Success && device.Operation == "SyncPerson"));
+            var succeededEmployees = parsed.Items.Count(command => IsPersonSyncComplete(employeeResults[command.EmployeeId], command.HasFace));
             var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
             var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
             var code = DetermineCode(parsed.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
@@ -633,24 +704,42 @@ namespace ControlDoor.GrpcApi
                     var shouldQueueRetry = ShouldQueueMutatingRetry(result);
                     if (shouldQueueRetry)
                     {
-                        detail.Queued = true;
+                        object queueDetail;
+                        if (TryQueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context, out queueDetail, dbErrors))
+                        {
+                            detail.Queued = true;
+                            queuedDetails.Add(queueDetail);
+                        }
                     }
 
                     employeeResults[command.EmployeeId].DeviceResults.Add(detail);
                     if (!result.Success)
                     {
                         deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
-                        if (shouldQueueRetry)
-                        {
-                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context));
-                        }
                     }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, "设备离线，已生成补偿意图。", context));
-                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, operation));
+                    object queueDetail;
+                    if (TryQueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, "设备离线，已生成补偿意图。", context, out queueDetail, dbErrors))
+                    {
+                        queuedDetails.Add(queueDetail);
+                        employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, operation));
+                    }
+                    else
+                    {
+                        employeeResults[command.EmployeeId].DeviceResults.Add(new DeviceOperationDetail
+                        {
+                            DeviceId = device.DeviceId,
+                            DeviceName = device.DeviceName,
+                            Operation = operation,
+                            Success = false,
+                            Queued = false,
+                            Code = "DB_ERROR",
+                            Message = "补偿意图写入失败。"
+                        });
+                    }
                 }
 
                 if (operation == "DeletePerson" && IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
@@ -905,7 +994,16 @@ namespace ControlDoor.GrpcApi
             return DeviceTaskResult.FromTask(task, false, "DEVICE_ERROR", ex == null ? "设备操作失败。" : ex.Message, status, started, DateTime.Now);
         }
 
-        private object QueueRetry(DeviceRuntimeSnapshot device, string employeeId, string operation, IDictionary<string, object> payload, int? permissionLevel, string message, GrpcRequestContext context = null)
+        private bool TryQueueRetry(
+            DeviceRuntimeSnapshot device,
+            string employeeId,
+            string operation,
+            IDictionary<string, object> payload,
+            int? permissionLevel,
+            string message,
+            GrpcRequestContext context,
+            out object detail,
+            IList<object> dbErrors = null)
         {
             var payloadJson = payload == null ? null : JsonRequestReader.Serialize(payload);
             var intent = new DeviceOperationRetryIntent
@@ -937,7 +1035,26 @@ namespace ControlDoor.GrpcApi
             fields.Extra["message"] = message ?? string.Empty;
             fields.Extra["writeMessage"] = written.Message ?? string.Empty;
             logger?.Info("DeviceOperationRetry", "Retry intent queued from gRPC.", fields);
-            return intent.ToDetail(written.Code, written.Success ? message : written.Message);
+
+            detail = intent.ToDetail(written.Code, written.Success ? message : written.Message);
+            if (written.Success)
+            {
+                return true;
+            }
+
+            if (dbErrors != null)
+            {
+                dbErrors.Add(new Dictionary<string, object>
+                {
+                    ["deviceId"] = device.DeviceId,
+                    ["employeeId"] = employeeId ?? string.Empty,
+                    ["operation"] = operation ?? string.Empty,
+                    ["code"] = string.IsNullOrWhiteSpace(written.Code) ? "DB_ERROR" : written.Code,
+                    ["message"] = string.IsNullOrWhiteSpace(written.Message) ? "补偿意图写入失败。" : written.Message
+                });
+            }
+
+            return false;
         }
 
         private static ParseResult<PermissionCommand> ParsePermissionCommands(string requestJson)
@@ -1206,6 +1323,37 @@ namespace ControlDoor.GrpcApi
                 summary.DeviceResults.All(item => item.Success && !item.Queued);
         }
 
+        private static bool IsPersonSyncComplete(EmployeeOperationSummary summary, bool requiresFace)
+        {
+            if (summary == null || summary.DeviceResults.Count == 0)
+            {
+                return false;
+            }
+
+            // 每个目标设备都必须成功完成 SyncPerson；若请求带人脸，同一设备还必须成功 UploadFace。
+            var deviceIds = summary.DeviceResults.Select(item => item.DeviceId).Distinct().ToList();
+            foreach (var deviceId in deviceIds)
+            {
+                var deviceResults = summary.DeviceResults.Where(item => item.DeviceId == deviceId).ToList();
+                if (!deviceResults.Any(item => item.Success && !item.Queued && item.Operation == "SyncPerson"))
+                {
+                    return false;
+                }
+
+                if (requiresFace && !deviceResults.Any(item => item.Success && !item.Queued && item.Operation == "UploadFace"))
+                {
+                    return false;
+                }
+
+                if (deviceResults.Any(item => !item.Success || item.Queued))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static IDictionary<string, object> ToDeviceError(DeviceRuntimeSnapshot device, string employeeId, DeviceTaskResult result)
         {
             return new Dictionary<string, object>
@@ -1459,7 +1607,7 @@ namespace ControlDoor.GrpcApi
                 var person = new PersonInfo
                 {
                     EmployeeId = EmployeeId,
-                    Name = Name,
+                    Name = string.IsNullOrWhiteSpace(Name) ? EmployeeId : Name.Trim(),
                     Enabled = Enabled,
                     ValidFrom = ValidFrom,
                     ValidTo = ValidTo

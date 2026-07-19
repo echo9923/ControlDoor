@@ -674,8 +674,16 @@ namespace ControlEntradaSalida.Tests
     {
         public IList<DeviceOperationRetryIntent> Intents { get; } = new List<DeviceOperationRetryIntent>();
 
+        public bool FailNext { get; set; }
+
         public DeviceOperationRetryWriteResult UpsertIntent(DeviceOperationRetryIntent intent)
         {
+            if (FailNext)
+            {
+                FailNext = false;
+                return DeviceOperationRetryWriteResult.Failed(intent, "DB_ERROR", "补偿意图写入失败。");
+            }
+
             Intents.Add(intent);
             return DeviceOperationRetryWriteResult.Ok(intent);
         }

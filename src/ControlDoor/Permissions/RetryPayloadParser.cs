@@ -16,13 +16,17 @@ namespace ControlDoor.Permissions
             var person = new PersonInfo
             {
                 EmployeeId = FirstString(values, employeeId, "employee_id", "employeeId", "employee_no", "employeeNo"),
-                Name = GetString(values, "name", "full_name", "fullName"),
+                Name = FirstString(values, null, "name", "full_name", "fullName"),
                 CardNumber = GetString(values, "card_number", "cardNumber"),
                 Department = GetString(values, "department", "dept"),
                 Enabled = GetBool(values, "enabled", "active", "is_active") ?? true,
                 ValidFrom = GetDateTime(values, "valid_from", "validFrom"),
                 ValidTo = GetDateTime(values, "valid_to", "validTo")
             };
+            if (string.IsNullOrWhiteSpace(person.Name))
+            {
+                person.Name = person.EmployeeId;
+            }
 
             var gender = GetString(values, "gender", "sex");
             if (!string.IsNullOrWhiteSpace(gender))
