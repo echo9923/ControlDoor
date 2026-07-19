@@ -9,25 +9,39 @@ namespace ControlDoor.FaceEvents
     public sealed class FaceEventRepository
     {
         private const string ServiceName = "ControlDoor";
+        private const int DefaultCommandTimeoutSeconds = 30;
+
         private readonly IDatabaseClient database;
         private readonly SnapshotStorage snapshotStorage;
         private readonly Func<SqlConnection> connectionFactory;
+        private readonly int commandTimeoutSeconds;
 
         public FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage)
-            : this(database, snapshotStorage, (Func<SqlConnection>)null)
+            : this(database, snapshotStorage, (Func<SqlConnection>)null, DefaultCommandTimeoutSeconds)
         {
         }
 
         public FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage, string connectionString)
-            : this(database, snapshotStorage, CreateDefaultConnectionFactory(connectionString))
+            : this(database, snapshotStorage, connectionString, DefaultCommandTimeoutSeconds)
+        {
+        }
+
+        public FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage, string connectionString, int commandTimeoutSeconds)
+            : this(database, snapshotStorage, CreateDefaultConnectionFactory(connectionString), commandTimeoutSeconds)
         {
         }
 
         internal FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage, Func<SqlConnection> connectionFactory)
+            : this(database, snapshotStorage, connectionFactory, DefaultCommandTimeoutSeconds)
+        {
+        }
+
+        internal FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage, Func<SqlConnection> connectionFactory, int commandTimeoutSeconds)
         {
             this.database = database ?? throw new ArgumentNullException(nameof(database));
             this.snapshotStorage = snapshotStorage ?? throw new ArgumentNullException(nameof(snapshotStorage));
             this.connectionFactory = connectionFactory;
+            this.commandTimeoutSeconds = commandTimeoutSeconds > 0 ? commandTimeoutSeconds : DefaultCommandTimeoutSeconds;
         }
 
         public FaceEventInsertResult InsertEvent(AcsFaceEvent faceEvent)
@@ -272,7 +286,7 @@ namespace ControlDoor.FaceEvents
         private void InsertInTransaction(IReadOnlyList<AcsFaceEvent> toInsert, string[] snapshots)
         {
             using (var connection = connectionFactory())
-            using (var command = new SqlCommand(InsertSql, connection))
+            using (var command = new SqlCommand(InsertSql, connection) { CommandTimeout = commandTimeoutSeconds })
             {
                 // 预建 22 个参数（与 BuildParameters 列集一致），循环只换值，避免每条重建参数集合。
                 AddCommandParameters(command);
@@ -315,7 +329,7 @@ namespace ControlDoor.FaceEvents
 
             var sql = "SELECT id FROM dbo.attendance_gate_v2 WHERE id IN (" + string.Join(",", parameterNames) + ")";
             using (var connection = connectionFactory())
-            using (var command = new SqlCommand(sql, connection))
+            using (var command = new SqlCommand(sql, connection) { CommandTimeout = commandTimeoutSeconds })
             {
                 for (var i = 0; i < events.Count; i++)
                 {
@@ -360,7 +374,7 @@ namespace ControlDoor.FaceEvents
 
             var sql = "SELECT username, nickname FROM dbo.system_users WHERE deleted = 0 AND username IN (" + string.Join(",", parameterNames) + ")";
             using (var connection = connectionFactory())
-            using (var command = new SqlCommand(sql, connection))
+            using (var command = new SqlCommand(sql, connection) { CommandTimeout = commandTimeoutSeconds })
             {
                 index = 0;
                 foreach (var employeeId in employeeIds)

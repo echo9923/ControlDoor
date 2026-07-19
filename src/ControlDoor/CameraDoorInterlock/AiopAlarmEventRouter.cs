@@ -126,7 +126,7 @@ namespace ControlDoor.CameraDoorInterlock
                 }
                 else
                 {
-                    logger?.Info("AiopAlarmEventRouter", "AIOP 报警已入队。", new LogFields
+                    logger?.Debug("AiopAlarmEventRouter", "AIOP 报警已入队。", new LogFields
                     {
                         RequestId = rawEvent.InterlockId,
                         OperationName = "AiopAlarmRoute",
