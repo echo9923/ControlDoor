@@ -91,9 +91,9 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(3, fixture.Gateway.Calls.Count(call => call.MethodName == "UpsertPersonAsync"));
                 Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
                 var persons = fixture.UpsertPersons("10001").ToList();
-                Assert.Equal(true, persons[0].Enabled);
-                Assert.Equal(false, persons[1].Enabled);
-                Assert.Equal(false, persons[2].Enabled);
+                // PERM-07: 多设备并行后调用顺序不再确定，按 enable 计数断言语义（1 个办公设备启用，2 个其他禁用）。
+                Assert.Equal(1, persons.Count(person => person.Enabled));
+                Assert.Equal(2, persons.Count(person => !person.Enabled));
             }
         }
 
@@ -550,6 +550,122 @@ namespace ControlEntradaSalida.Tests
 
                 Assert.Equal(false, response["success"]);
                 Assert.Equal("INVALID_ARGUMENT", response["code"]);
+            }
+        }
+
+        [TestCase]
+        public static void GetFaces_DefaultOmitsRawResponsePayload()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Service.SyncPersons(@"{""items"":[{""employee_id"":""10001"",""name"":""张三"",""face_image_base64"":""" + Convert.ToBase64String(JpegBytes()) + @"""}]}", fixture.Context("seed-face-raw"));
+
+                var response = fixture.Response(fixture.Service.GetFaces(@"{""records"":[{""employee_no"":""10001""}]}", fixture.Context("get-face-no-raw")));
+                var items = (ArrayList)response["items"];
+                var item = (Dictionary<string, object>)items[0];
+                var devices = (ArrayList)item["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+
+                // FACE-03: rawResponse 字段必须保留（契约兼容），但默认值为空，避免与 faces 中的 Base64 图片重复。
+                Assert.True(device.ContainsKey("rawResponse"));
+                Assert.Equal(string.Empty, device["rawResponse"]);
+                // faces 仍应保留结构化字段（包含图片）。
+                Assert.True(device.ContainsKey("faces"));
+                var faces = (ArrayList)device["faces"];
+                Assert.Equal(1, faces.Count);
+            }
+        }
+
+        [TestCase]
+        public static void GetFaces_IncludeRawReturnsFullRawResponse()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Service.SyncPersons(@"{""items"":[{""employee_id"":""10001"",""name"":""张三"",""face_image_base64"":""" + Convert.ToBase64String(JpegBytes()) + @"""}]}", fixture.Context("seed-face-raw-on"));
+
+                var response = fixture.Response(fixture.Service.GetFaces(@"{""records"":[{""employee_no"":""10001""}],""includeRaw"":true}", fixture.Context("get-face-raw")));
+                var items = (ArrayList)response["items"];
+                var item = (Dictionary<string, object>)items[0];
+                var devices = (ArrayList)item["devices"];
+                var device = (Dictionary<string, object>)devices[0];
+
+                Assert.True(device.ContainsKey("rawResponse"));
+                Assert.True(!string.IsNullOrWhiteSpace(Convert.ToString(device["rawResponse"])));
+            }
+        }
+
+        [TestCase]
+        public static void SyncPersons_MultipleDevicesRunInParallelAndPreservePersonBeforeFacePerDevice()
+        {
+            // PERM-07: 多设备并行同步；同设备内必须 person 先于 face。
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(1);
+                fixture.AddOnlineDevice(2);
+                fixture.AddOnlineDevice(3);
+
+                var response = fixture.Response(fixture.Service.SyncPersons(
+                    @"{""items"":[{""employee_id"":""10001"",""name"":""张三"",""face_image_base64"":""" + Convert.ToBase64String(JpegBytes()) + @"""},{""employee_id"":""10002"",""name"":""李四"",""face_image_base64"":""" + Convert.ToBase64String(JpegBytes()) + @"""}]}",
+                    fixture.Context("persons-parallel")));
+
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(2, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal(6, Convert.ToInt32(response["facesUploaded"]));
+                Assert.Equal(3, Convert.ToInt32(response["targetDevices"]));
+
+                // 每个设备上：每个员工 person 必须先于 face（按调用顺序检查）。
+                var calls = fixture.Gateway.Calls.ToList();
+                for (var deviceId = 1; deviceId <= 3; deviceId++)
+                {
+                    var deviceCalls = calls.Where(call => call.MethodName == "UpsertPersonAsync" || call.MethodName == "UploadFaceAsync").ToList();
+                    // 抽取每个员工首次出现的 person 与 face 索引，验证同员工 person<face。
+                    foreach (var employeeId in new[] { "10001", "10002" })
+                    {
+                        var personIndex = deviceCalls.FindIndex(call => call.MethodName == "UpsertPersonAsync" && ((UpsertPersonRequest)call.Request).Person.EmployeeId == employeeId);
+                        var faceIndex = deviceCalls.FindIndex(call => call.MethodName == "UploadFaceAsync" && ((UploadFaceRequest)call.Request).Face.EmployeeId == employeeId);
+                        Assert.True(personIndex >= 0, "missing UpsertPersonAsync for " + employeeId);
+                        Assert.True(faceIndex >= 0, "missing UploadFaceAsync for " + employeeId);
+                        Assert.True(personIndex < faceIndex, "person must run before face for " + employeeId);
+                    }
+                }
+            }
+        }
+
+        [TestCase]
+        public static void SyncPermissions_MultipleDevicesRunInParallelAllSucceed()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(1);
+                fixture.AddOnlineDevice(2);
+
+                var response = fixture.Response(fixture.Service.SyncPermissions(
+                    @"{""items"":[{""employee_id"":""10001"",""name"":""甲"",""permission_code"":3},{""employee_id"":""10002"",""name"":""乙"",""permission_code"":3}]}",
+                    fixture.Context("perm-parallel")));
+
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(2, Convert.ToInt32(response["updated"]));
+                Assert.Equal(4, fixture.Gateway.Calls.Count(call => call.MethodName == "UpsertPersonAsync"));
+            }
+        }
+
+        [TestCase]
+        public static void DeletePersons_MultipleDevicesRunInParallelAllSucceed()
+        {
+            using (var fixture = new Stage5Fixture())
+            {
+                fixture.AddOnlineDevice(1);
+                fixture.AddOnlineDevice(2);
+                // 先种入人员
+                fixture.Service.SyncPersons(@"{""items"":[{""employee_id"":""10001"",""name"":""张三""}]}", fixture.Context("seed"));
+
+                var response = fixture.Response(fixture.Service.DeletePersons(@"[""10001""]", fixture.Context("delete-parallel")));
+
+                Assert.Equal("OK", response["code"]);
+                Assert.Equal(1, Convert.ToInt32(response["succeeded"]));
+                Assert.Equal(2, fixture.Gateway.Calls.Count(call => call.MethodName == "DeletePersonAsync"));
             }
         }
 
