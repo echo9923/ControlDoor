@@ -308,11 +308,18 @@ namespace ControlDoor.FaceEvents
                     var result = processor.Process(item);
                     watch.Stop();
                     LogProcessResult(item, result.Success, result.Code, result.Message, watch.ElapsedMilliseconds);
+                    if (IsRetryableProcessCode(result == null ? null : result.Code))
+                    {
+                        RequeueRetryable(item, result.Code, result.Message);
+                        return;
+                    }
                 }
                 finally
                 {
-                    Interlocked.Increment(ref completedCount);
+                    // 仅在未 requeue 时计 completed；requeue 成功后仍保留 accepted 计数语义。
                 }
+
+                Interlocked.Increment(ref completedCount);
                 return;
             }
 
@@ -321,17 +328,99 @@ namespace ControlDoor.FaceEvents
             {
                 var results = processor.ProcessBatch(batch);
                 batchWatch.Stop();
-                for (var i = 0; i < batch.Count && i < results.Count; i++)
+                for (var i = 0; i < batch.Count; i++)
                 {
                     var item = batch[i];
-                    var r = results[i];
-                    LogProcessResult(item, r.Success, r.Code, r.Message, batchWatch.ElapsedMilliseconds);
+                    var r = results != null && i < results.Count ? results[i] : null;
+                    var success = r != null && r.Success;
+                    var code = r == null ? "INTERNAL_ERROR" : r.Code;
+                    var message = r == null ? "batch item result missing" : r.Message;
+                    LogProcessResult(item, success, code, message, batchWatch.ElapsedMilliseconds);
+                    if (IsRetryableProcessCode(code))
+                    {
+                        RequeueRetryable(item, code, message);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref completedCount);
+                    }
                 }
             }
-            finally
+            catch
             {
+                // 整批异常时让上层 FlushAndClear 记录；这里不 requeue 以免无限循环，仍计 completed。
                 Interlocked.Add(ref completedCount, batch.Count);
+                throw;
             }
+        }
+
+        private void RequeueRetryable(RawAcsAlarmEvent item, string code, string message)
+        {
+            if (item == null)
+            {
+                Interlocked.Increment(ref completedCount);
+                return;
+            }
+
+            if (disposed || !accepting || queue.IsAddingCompleted)
+            {
+                logger?.Warn("FaceEventIngestion", "Retryable ACS event dropped because queue is stopped.", new LogFields
+                {
+                    DeviceId = item.DeviceId > 0 ? (int?)item.DeviceId : null,
+                    RequestId = item.RequestId,
+                    ErrorCode = code,
+                    Extra = { ["message"] = message ?? string.Empty }
+                });
+                Interlocked.Increment(ref completedCount);
+                return;
+            }
+
+            try
+            {
+                if (!queue.TryAdd(item, 0))
+                {
+                    logger?.Error("FaceEventIngestion", "Retryable ACS event dropped because queue is full.", null, new LogFields
+                    {
+                        DeviceId = item.DeviceId > 0 ? (int?)item.DeviceId : null,
+                        RequestId = item.RequestId,
+                        ErrorCode = code,
+                        Extra =
+                        {
+                            ["message"] = message ?? string.Empty,
+                            ["capacity"] = capacity.ToString()
+                        }
+                    });
+                    Interlocked.Increment(ref completedCount);
+                    return;
+                }
+
+                logger?.Warn("FaceEventIngestion", "Retryable ACS event requeued.", new LogFields
+                {
+                    DeviceId = item.DeviceId > 0 ? (int?)item.DeviceId : null,
+                    RequestId = item.RequestId,
+                    ErrorCode = code,
+                    Extra =
+                    {
+                        ["message"] = message ?? string.Empty,
+                        ["queueDepth"] = Count.ToString()
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("FaceEventIngestion", "Retryable ACS event requeue failed.", ex, new LogFields
+                {
+                    DeviceId = item.DeviceId > 0 ? (int?)item.DeviceId : null,
+                    RequestId = item.RequestId,
+                    ErrorCode = code
+                });
+                Interlocked.Increment(ref completedCount);
+            }
+        }
+
+        private static bool IsRetryableProcessCode(string code)
+        {
+            return string.Equals(code, "RETRYABLE_FAILURE", StringComparison.OrdinalIgnoreCase);
         }
 
         private void LogProcessResult(RawAcsAlarmEvent item, bool success, string code, string message, long elapsedMs)

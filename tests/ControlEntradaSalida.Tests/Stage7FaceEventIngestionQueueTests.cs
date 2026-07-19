@@ -98,6 +98,30 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void FaceEventIngestionService_RetryableFailure_IsRequeuedAndProcessedLater()
+        {
+            var processor = new RetryableThenSuccessProcessor();
+            var service = new FaceEventIngestionService(
+                new FaceEventLoggingOptions { QueueCapacity = 10, BatchSize = 1, FlushIntervalMs = 20 },
+                processor);
+            var context = new BackgroundTaskContext("stage7-retryable-requeue", CancellationToken.None, null);
+            service.StartAsync(context).GetAwaiter().GetResult();
+            try
+            {
+                Assert.True(service.TryEnqueue(NewRawEvent()).Accepted);
+                WaitUntil(() => processor.SuccessCount >= 1, "retryable ACS event was not requeued and processed after recovery.");
+                Assert.True(processor.SawRetryable);
+                Assert.Equal(1, processor.SuccessCount);
+                Assert.True(processor.Attempts >= 2);
+            }
+            finally
+            {
+                service.StopAsync(context).GetAwaiter().GetResult();
+                service.Dispose();
+            }
+        }
+
+        [TestCase]
         public static void FaceEventIngestionService_StopAsync_DrainsAcceptedEventsBeforeReturning()
         {
             var processor = new BlockingRecordingProcessor();
@@ -185,6 +209,44 @@ namespace ControlEntradaSalida.Tests
             }
 
             Assert.True(condition(), message);
+        }
+
+        private sealed class RetryableThenSuccessProcessor : IAcsFaceEventProcessor
+        {
+            private int attempts;
+
+            public bool SawRetryable { get; private set; }
+
+            public int SuccessCount { get; private set; }
+
+            public int Attempts => attempts;
+
+            public FaceEventProcessResult Process(RawAcsAlarmEvent rawEvent)
+            {
+                attempts++;
+                if (attempts == 1)
+                {
+                    SawRetryable = true;
+                    return FaceEventProcessResult.Failed("RETRYABLE_FAILURE", "temporary db failure");
+                }
+
+                SuccessCount++;
+                return FaceEventProcessResult.Ok("INSERTED", "ok");
+            }
+
+            public IReadOnlyList<FaceEventBatchItemResult> ProcessBatch(IReadOnlyList<RawAcsAlarmEvent> rawEvents)
+            {
+                var results = new List<FaceEventBatchItemResult>(rawEvents.Count);
+                foreach (var rawEvent in rawEvents)
+                {
+                    var result = Process(rawEvent);
+                    results.Add(result.Success
+                        ? FaceEventBatchItemResult.Ok(0, result.Code, result.Message)
+                        : FaceEventBatchItemResult.Failed(0, result.Code, result.Message));
+                }
+
+                return results;
+            }
         }
 
         private sealed class ThrowingThenRecordingProcessor : IAcsFaceEventProcessor
