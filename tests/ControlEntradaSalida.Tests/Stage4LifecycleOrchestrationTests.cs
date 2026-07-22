@@ -1082,7 +1082,7 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
-        // P1 回归：DeleteDevice 排空时真实失败（非 17）保留 pending 记录，不静默丢弃；删除成功仍正常推进。
+        // P0 回归：DeleteDevice 排空时真实失败（非 17）保留 pending 记录，并拒绝移除运行时，避免孤儿 SDK 会话。
         [TestCase]
         public static void DeviceLifecycle_DeleteDevice_DrainFailureRetainsPending()
         {
@@ -1104,9 +1104,9 @@ namespace ControlEntradaSalida.Tests
 
                 var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: false, requestId: "req-delete-retain");
 
-                Assert.True(deleted.Success);
-                // pending 未清除：保留记录（RemoveDevice 后查询返回空列表，但 drain 未把它清掉）。
-                // 这里通过捕获 Gateway 是否被调用确认 drain 已尝试，且未返回 17 故保留。
+                Assert.False(deleted.Success);
+                Assert.Equal("PENDING_LOGOUT", deleted.Code);
+                Assert.True(fixture.Registry.GetPendingSdkLogouts(1).Contains(80));
                 Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" && (call.Request as LogoutRequest) != null && ((LogoutRequest)call.Request).UserId == 80));
             }
         }

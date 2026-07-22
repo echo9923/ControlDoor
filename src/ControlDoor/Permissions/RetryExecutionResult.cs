@@ -37,6 +37,12 @@ namespace ControlDoor.Permissions
 
         public int? SdkErrorCode { get; }
 
+        public long IntentVersion => State == null ? 0 : State.IntentVersion;
+
+        public string ClaimToken => State == null ? null : State.ClaimToken;
+
+        public bool IsStale { get; internal set; }
+
         public bool AllSucceeded => !FailedOperation.HasValue;
     }
 }

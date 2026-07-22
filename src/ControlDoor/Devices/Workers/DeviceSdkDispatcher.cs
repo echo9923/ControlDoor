@@ -224,7 +224,9 @@ namespace ControlDoor.Devices.Workers
             if (completed == cancellationTask)
             {
                 TryCancelQueuedTask(task.TaskId, "Caller cancelled before task started.");
-                return DeviceTaskResult.Cancelled(task, "Caller cancelled while waiting for task result.");
+                var cancelled = DeviceTaskResult.Cancelled(task, "Caller cancelled while waiting for task result.");
+                cancelled.IsWaitOutcome = true;
+                return cancelled;
             }
 
             TryCancelQueuedTask(task.TaskId, "Caller wait timed out before task started.");

@@ -290,6 +290,43 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public void MarkSdkSessionRegistered(int newSdkUserId, string newSerialNumber, DateTime now)
+        {
+            if (newSdkUserId < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(newSdkUserId), "SDK user id must be non-negative.");
+            }
+
+            lock (gate)
+            {
+                sdkUserId = newSdkUserId;
+                serialNumber = newSerialNumber ?? string.Empty;
+                status = DeviceConnectionStatus.Connecting;
+                lastError = null;
+                Touch(now);
+            }
+        }
+
+        public void PromoteRegisteredSdkSession(DateTime now)
+        {
+            lock (gate)
+            {
+                if (!sdkUserId.HasValue)
+                {
+                    return;
+                }
+
+                status = DeviceConnectionStatus.Online;
+                lastLoginAt = now;
+                reconnect.AttemptCount = 0;
+                reconnect.InCooldown = false;
+                reconnect.CooldownReason = null;
+                reconnect.LastSuccessAt = now;
+                lastError = null;
+                Touch(now);
+            }
+        }
+
         public void MarkLoginFailed(DeviceRuntimeError error, DateTime now, bool faulted = false)
         {
             lock (gate)
@@ -570,6 +607,20 @@ namespace ControlDoor.Devices.Runtime
             {
                 isDeleting = true;
                 status = DeviceConnectionStatus.Disconnecting;
+                Touch(now);
+            }
+        }
+
+        public void ClearDeleting(DateTime now)
+        {
+            lock (gate)
+            {
+                isDeleting = false;
+                if (status == DeviceConnectionStatus.Disconnecting)
+                {
+                    status = sdkUserId.HasValue ? DeviceConnectionStatus.Online : DeviceConnectionStatus.Offline;
+                }
+
                 Touch(now);
             }
         }

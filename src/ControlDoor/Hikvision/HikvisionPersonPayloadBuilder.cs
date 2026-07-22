@@ -14,13 +14,6 @@ namespace ControlDoor.Hikvision
         {
             HikvisionGatewayValidator.RequirePerson(person);
 
-            var enabled = person.Enabled;
-            var normalizedDoorCount = NormalizeDoorCount(doorCount);
-            var rightPlans = BuildRightPlans(enabled, normalizedDoorCount);
-            var doorRight = enabled
-                ? string.Join(",", Enumerable.Range(1, normalizedDoorCount).Select(item => item.ToString(CultureInfo.InvariantCulture)))
-                : string.Empty;
-
             return new
             {
                 UserInfo = new
@@ -29,16 +22,7 @@ namespace ControlDoor.Hikvision
                     name = person.Name ?? string.Empty,
                     userType = "normal",
                     gender = ResolveGender(person),
-                    userVerifyMode = UserVerifyModeFace,
-                    Valid = new
-                    {
-                        enable = enabled,
-                        beginTime = FormatDateTime(person.ValidFrom) ?? DefaultBeginTime,
-                        endTime = FormatDateTime(person.ValidTo) ?? DefaultEndTime,
-                        timeType = "local"
-                    },
-                    doorRight,
-                    RightPlan = rightPlans
+                    userVerifyMode = UserVerifyModeFace
                 }
             };
         }

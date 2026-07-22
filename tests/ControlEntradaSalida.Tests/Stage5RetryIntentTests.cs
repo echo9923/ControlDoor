@@ -32,7 +32,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SyncPermissions_CallerCancelled_QueuesSyncPermissionIntent()
+        public static void SyncPermissions_CallerCancelled_DoesNotQueueQueuedTask()
         {
             using (var fixture = new Stage5Fixture())
             using (var cancellation = new CancellationTokenSource())
@@ -46,30 +46,17 @@ namespace ControlEntradaSalida.Tests
                 var response = fixture.Response(fixture.Service.SyncPermissions(
                     @"{""items"":[{""employee_id"":""10002"",""name"":""Cancel User"",""permission_code"":4}]}",
                     context));
-                var queuedDetails = (ArrayList)response["queuedDetails"];
 
-                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
-                Assert.Equal(1, Convert.ToInt32(response["queued"]));
-                Assert.Equal(0, Convert.ToInt32(response["failed"]));
-                Assert.Equal(1, queuedDetails.Count);
-                var queuedDetail = (Dictionary<string, object>)queuedDetails[0];
-                Assert.Equal(1, Convert.ToInt32(queuedDetail["deviceId"]));
-                Assert.Equal("10002", queuedDetail["employeeId"]);
-                Assert.Equal("SyncPermission", queuedDetail["operation"]);
-                Assert.NotNull(queuedDetail["nextRetryAt"]);
-                Assert.Equal(1, fixture.RetryWriter.Intents.Count);
-                Assert.Equal("SyncPermission", fixture.RetryWriter.Intents[0].Operation);
-                Assert.Equal("10002", fixture.RetryWriter.Intents[0].EmployeeId);
-                Assert.Equal(4, fixture.RetryWriter.Intents[0].PermissionLevel.Value);
-                Assert.Equal("permission-cancelled", fixture.RetryWriter.Intents[0].RequestId);
-                Assert.Contains("permission_code", fixture.RetryWriter.Intents[0].PayloadJson);
-                Assert.Contains("Cancel User", fixture.RetryWriter.Intents[0].PermissionPayloadJson);
+                Assert.Equal("FAILED", response["code"]);
+                Assert.Equal(0, Convert.ToInt32(response["queued"]));
+                Assert.Equal(1, Convert.ToInt32(response["failed"]));
+                Assert.Equal(0, fixture.RetryWriter.Intents.Count);
                 Assert.False(fixture.UserWriter.PermissionLevels.ContainsKey("10002"));
             }
         }
 
         [TestCase]
-        public static void SyncPermissions_DispatcherWaitTimeout_QueuesSyncPermissionIntent()
+        public static void SyncPermissions_DispatcherWaitTimeout_DoesNotQueueIntent()
         {
             using (var fixture = new Stage5Fixture(defaultFaceCaptureDeviceId: null, dispatcherTimeoutMilliseconds: 50))
             {
@@ -79,22 +66,11 @@ namespace ControlEntradaSalida.Tests
                 var response = fixture.Response(fixture.Service.SyncPermissions(
                     @"{""items"":[{""employee_id"":""10003"",""name"":""Timeout User"",""permission_code"":5}]}",
                     fixture.Context("permission-wait-timeout")));
-                var queuedDetails = (ArrayList)response["queuedDetails"];
 
-                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
-                Assert.Equal(1, Convert.ToInt32(response["queued"]));
-                Assert.Equal(0, Convert.ToInt32(response["failed"]));
-                Assert.Equal(1, queuedDetails.Count);
-                var queuedDetail = (Dictionary<string, object>)queuedDetails[0];
-                Assert.Equal(1, Convert.ToInt32(queuedDetail["deviceId"]));
-                Assert.Equal("10003", queuedDetail["employeeId"]);
-                Assert.Equal("SyncPermission", queuedDetail["operation"]);
-                Assert.NotNull(queuedDetail["nextRetryAt"]);
-                Assert.Equal(1, fixture.RetryWriter.Intents.Count);
-                Assert.Equal("SyncPermission", fixture.RetryWriter.Intents[0].Operation);
-                Assert.Equal("10003", fixture.RetryWriter.Intents[0].EmployeeId);
-                Assert.Equal(5, fixture.RetryWriter.Intents[0].PermissionLevel.Value);
-                Assert.Equal("permission-wait-timeout", fixture.RetryWriter.Intents[0].RequestId);
+                Assert.Equal("FAILED", response["code"]);
+                Assert.Equal(0, Convert.ToInt32(response["queued"]));
+                Assert.Equal(1, Convert.ToInt32(response["failed"]));
+                Assert.Equal(0, fixture.RetryWriter.Intents.Count);
                 Assert.False(fixture.UserWriter.PermissionLevels.ContainsKey("10003"));
             }
         }
@@ -145,7 +121,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SyncPersons_DispatcherWaitTimeout_QueuesPersonIntent()
+        public static void SyncPersons_DispatcherWaitTimeout_DoesNotQueueIntent()
         {
             using (var fixture = new Stage5Fixture(defaultFaceCaptureDeviceId: null, dispatcherTimeoutMilliseconds: 50))
             {
@@ -156,12 +132,10 @@ namespace ControlEntradaSalida.Tests
                     @"{""items"":[{""employee_id"":""10004"",""name"":""Wait User""}]}",
                     fixture.Context("person-wait-timeout")));
 
-                Assert.Equal("PARTIAL_SUCCESS", response["code"]);
-                Assert.Equal(1, Convert.ToInt32(response["queued"]));
-                Assert.Equal(0, Convert.ToInt32(response["failed"]));
-                Assert.Equal(1, fixture.RetryWriter.Intents.Count);
-                Assert.Equal("SyncPerson", fixture.RetryWriter.Intents[0].Operation);
-                Assert.Equal("10004", fixture.RetryWriter.Intents[0].EmployeeId);
+                Assert.Equal("FAILED", response["code"]);
+                Assert.Equal(0, Convert.ToInt32(response["queued"]));
+                Assert.Equal(1, Convert.ToInt32(response["failed"]));
+                Assert.Equal(0, fixture.RetryWriter.Intents.Count);
             }
         }
 

@@ -41,10 +41,13 @@ namespace ControlDoor.CameraDoorInterlock
                 activity.ActiveCameraKeys.Add(cameraKey ?? string.Empty);
                 if (wasEmpty)
                 {
+                    activity.ActivityGeneration++;
                     activity.InterlockId = interlockId ?? string.Empty;
+                    activity.AlwaysCloseOperationToken = NewOperationToken();
                     activity.AlwaysCloseSubmittedAt = now;
                     activity.PendingAlwaysCloseAttempt = null;
                     activity.AlwaysCloseNextRetryAt = null;
+                    activity.RestoreOperationToken = string.Empty;
                     activity.RestoreSubmittedAt = null;
                     activity.PendingRestoreAttempt = null;
                     activity.RestoreNextRetryAt = null;
@@ -59,7 +62,7 @@ namespace ControlDoor.CameraDoorInterlock
                 {
                     ShouldSubmitAlwaysClose = wasEmpty,
                     ShouldSubmitRestore = false,
-                    Activity = activity
+                    Activity = CloneActivity(activity)
                 };
             }
         }
@@ -79,28 +82,48 @@ namespace ControlDoor.CameraDoorInterlock
                     return new DoorTargetChange { ShouldSubmitAlwaysClose = false, ShouldSubmitRestore = false, Activity = null };
                 }
 
-                activity.ActiveCameraKeys.Remove(cameraKey ?? string.Empty);
-                var shouldRestore = activity.ActiveCameraKeys.Count == 0;
+                var wasActive = activity.ActiveCameraKeys.Remove(cameraKey ?? string.Empty);
+                var shouldRestore = wasActive && activity.ActiveCameraKeys.Count == 0;
+                if (shouldRestore)
+                {
+                    activity.RestoreOperationToken = NewOperationToken();
+                    activity.RestoreSubmittedAt = null;
+                    activity.PendingRestoreAttempt = null;
+                    activity.RestoreNextRetryAt = null;
+                    activity.RestoreTerminalFailed = false;
+                }
+
                 return new DoorTargetChange
                 {
                     ShouldSubmitAlwaysClose = false,
                     ShouldSubmitRestore = shouldRestore,
-                    Activity = activity
+                    Activity = CloneActivity(activity)
                 };
             }
         }
 
         public void MarkAlwaysCloseSubmitted(string targetKey, DateTime now)
         {
+            if (TryGetActivity(targetKey, out var activity))
+            {
+                MarkAlwaysCloseSubmitted(targetKey, activity.ActivityGeneration, activity.AlwaysCloseOperationToken, now);
+            }
+        }
+
+        public bool MarkAlwaysCloseSubmitted(string targetKey, long generation, string operationToken, DateTime now)
+        {
             lock (gate)
             {
                 DoorTargetActivity activity;
-                if (activitiesByKey.TryGetValue(targetKey, out activity) && activity != null)
+                if (!TryGetCurrentOperation(targetKey, generation, operationToken, restoreOperation: false, out activity) || !activity.IsActive)
                 {
-                    activity.AlwaysCloseSubmittedAt = now;
-                    activity.PendingAlwaysCloseAttempt = null;
-                    activity.AlwaysCloseNextRetryAt = null;
+                    return false;
                 }
+
+                activity.AlwaysCloseSubmittedAt = now;
+                activity.PendingAlwaysCloseAttempt = null;
+                activity.AlwaysCloseNextRetryAt = null;
+                return true;
             }
         }
 
@@ -110,16 +133,25 @@ namespace ControlDoor.CameraDoorInterlock
         /// </summary>
         public void RecordAlwaysCloseFailure(string targetKey, int attempt, DateTime? nextRetryAt, DateTime now)
         {
+            if (TryGetActivity(targetKey, out var activity))
+            {
+                RecordAlwaysCloseFailure(targetKey, activity.ActivityGeneration, activity.AlwaysCloseOperationToken, attempt, nextRetryAt, now);
+            }
+        }
+
+        public bool RecordAlwaysCloseFailure(string targetKey, long generation, string operationToken, int attempt, DateTime? nextRetryAt, DateTime now)
+        {
             lock (gate)
             {
                 DoorTargetActivity activity;
-                if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
+                if (!TryGetCurrentOperation(targetKey, generation, operationToken, restoreOperation: false, out activity) || !activity.IsActive)
                 {
-                    return;
+                    return false;
                 }
 
                 activity.PendingAlwaysCloseAttempt = attempt;
                 activity.AlwaysCloseNextRetryAt = nextRetryAt;
+                return true;
             }
         }
 
@@ -128,29 +160,36 @@ namespace ControlDoor.CameraDoorInterlock
             lock (gate)
             {
                 return activitiesByKey.Values
-                    .Where(a => a.PendingAlwaysCloseAttempt.HasValue && a.AlwaysCloseNextRetryAt.HasValue && a.AlwaysCloseNextRetryAt.Value <= now)
+                    .Where(a => a.IsActive && a.PendingAlwaysCloseAttempt.HasValue && a.AlwaysCloseNextRetryAt.HasValue && a.AlwaysCloseNextRetryAt.Value <= now)
+                    .Select(CloneActivity)
                     .ToList();
             }
         }
 
         public void MarkRestoreSucceeded(string targetKey, DateTime now)
         {
+            if (TryGetActivity(targetKey, out var activity))
+            {
+                MarkRestoreSucceeded(targetKey, activity.ActivityGeneration, activity.RestoreOperationToken, now);
+            }
+        }
+
+        public bool MarkRestoreSucceeded(string targetKey, long generation, string operationToken, DateTime now)
+        {
             lock (gate)
             {
                 DoorTargetActivity activity;
-                if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
+                if (!TryGetCurrentOperation(targetKey, generation, operationToken, restoreOperation: true, out activity) || activity.IsActive)
                 {
-                    return;
+                    return false;
                 }
 
                 activity.RestoreSubmittedAt = now;
                 activity.PendingRestoreAttempt = null;
                 activity.RestoreNextRetryAt = null;
                 activity.RestoreTerminalFailed = false;
-                if (activity.ActiveCameraKeys.Count == 0)
-                {
-                    activitiesByKey.Remove(targetKey);
-                }
+                activitiesByKey.Remove(targetKey);
+                return true;
             }
         }
 
@@ -160,12 +199,20 @@ namespace ControlDoor.CameraDoorInterlock
         /// </summary>
         public void RecordRestoreSubmitted(string targetKey, int attempt, DateTime now)
         {
+            if (TryGetActivity(targetKey, out var activity))
+            {
+                RecordRestoreSubmitted(targetKey, activity.ActivityGeneration, activity.RestoreOperationToken, attempt, now);
+            }
+        }
+
+        public bool RecordRestoreSubmitted(string targetKey, long generation, string operationToken, int attempt, DateTime now)
+        {
             lock (gate)
             {
                 DoorTargetActivity activity;
-                if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
+                if (!TryGetCurrentOperation(targetKey, generation, operationToken, restoreOperation: true, out activity) || activity.IsActive)
                 {
-                    return;
+                    return false;
                 }
 
                 activity.RestoreSubmittedAt = now;
@@ -173,23 +220,33 @@ namespace ControlDoor.CameraDoorInterlock
                 // 等待结果期间不再被 GetDueRestoreRetries 触发：设下次重试为 null 直到失败回调写入。
                 activity.RestoreNextRetryAt = null;
                 activity.RestoreTerminalFailed = false;
+                return true;
             }
         }
 
         public void RecordRestoreFailure(string targetKey, int attempt, DateTime? nextRetryAt, DateTime now)
         {
+            if (TryGetActivity(targetKey, out var activity))
+            {
+                RecordRestoreFailure(targetKey, activity.ActivityGeneration, activity.RestoreOperationToken, attempt, nextRetryAt, now);
+            }
+        }
+
+        public bool RecordRestoreFailure(string targetKey, long generation, string operationToken, int attempt, DateTime? nextRetryAt, DateTime now)
+        {
             lock (gate)
             {
                 DoorTargetActivity activity;
-                if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
+                if (!TryGetCurrentOperation(targetKey, generation, operationToken, restoreOperation: true, out activity) || activity.IsActive)
                 {
-                    return;
+                    return false;
                 }
 
                 activity.RestoreSubmittedAt = now;
                 activity.PendingRestoreAttempt = attempt;
                 activity.RestoreNextRetryAt = nextRetryAt;
                 activity.RestoreTerminalFailed = !nextRetryAt.HasValue;
+                return true;
             }
         }
 
@@ -198,7 +255,8 @@ namespace ControlDoor.CameraDoorInterlock
             lock (gate)
             {
                 return activitiesByKey.Values
-                    .Where(a => !a.RestoreTerminalFailed && a.PendingRestoreAttempt.HasValue && a.RestoreNextRetryAt.HasValue && a.RestoreNextRetryAt.Value <= now)
+                    .Where(a => !a.IsActive && !a.RestoreTerminalFailed && a.PendingRestoreAttempt.HasValue && a.RestoreNextRetryAt.HasValue && a.RestoreNextRetryAt.Value <= now)
+                    .Select(CloneActivity)
                     .ToList();
             }
         }
@@ -207,7 +265,7 @@ namespace ControlDoor.CameraDoorInterlock
         {
             lock (gate)
             {
-                return activitiesByKey.Values.Where(a => !a.RestoreTerminalFailed).ToList();
+                return activitiesByKey.Values.Where(a => !a.RestoreTerminalFailed).Select(CloneActivity).ToList();
             }
         }
 
@@ -215,8 +273,60 @@ namespace ControlDoor.CameraDoorInterlock
         {
             lock (gate)
             {
-                return activitiesByKey.TryGetValue(targetKey, out activity);
+                DoorTargetActivity current;
+                if (!activitiesByKey.TryGetValue(targetKey, out current) || current == null)
+                {
+                    activity = null;
+                    return false;
+                }
+
+                activity = CloneActivity(current);
+                return true;
             }
+        }
+
+        private bool TryGetCurrentOperation(string activityKey, long generation, string operationToken, bool restoreOperation, out DoorTargetActivity activity)
+        {
+            if (!activitiesByKey.TryGetValue(activityKey, out activity) || activity == null ||
+                activity.ActivityGeneration != generation || string.IsNullOrEmpty(operationToken))
+            {
+                return false;
+            }
+
+            return restoreOperation
+                ? string.Equals(activity.RestoreOperationToken, operationToken, StringComparison.Ordinal)
+                : string.Equals(activity.AlwaysCloseOperationToken, operationToken, StringComparison.Ordinal);
+        }
+
+        private static DoorTargetActivity CloneActivity(DoorTargetActivity source)
+        {
+            var clone = new DoorTargetActivity
+            {
+                TargetKey = source.TargetKey,
+                DoorDeviceId = source.DoorDeviceId,
+                DoorNo = source.DoorNo,
+                InterlockId = source.InterlockId,
+                ActivityGeneration = source.ActivityGeneration,
+                AlwaysCloseOperationToken = source.AlwaysCloseOperationToken,
+                RestoreOperationToken = source.RestoreOperationToken,
+                AlwaysCloseSubmittedAt = source.AlwaysCloseSubmittedAt,
+                PendingAlwaysCloseAttempt = source.PendingAlwaysCloseAttempt,
+                AlwaysCloseNextRetryAt = source.AlwaysCloseNextRetryAt,
+                RestoreSubmittedAt = source.RestoreSubmittedAt,
+                PendingRestoreAttempt = source.PendingRestoreAttempt,
+                RestoreNextRetryAt = source.RestoreNextRetryAt,
+                RestoreTerminalFailed = source.RestoreTerminalFailed
+            };
+            foreach (var cameraKey in source.ActiveCameraKeys)
+            {
+                clone.ActiveCameraKeys.Add(cameraKey);
+            }
+            return clone;
+        }
+
+        private static string NewOperationToken()
+        {
+            return Guid.NewGuid().ToString("N");
         }
     }
 

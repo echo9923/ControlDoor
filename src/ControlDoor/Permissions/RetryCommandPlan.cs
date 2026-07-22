@@ -13,6 +13,10 @@ namespace ControlDoor.Permissions
 
         public DeviceOperationRetryState State { get; }
 
+        public long IntentVersion => State == null ? 0 : State.IntentVersion;
+
+        public string ClaimToken => State == null ? null : State.ClaimToken;
+
         public IReadOnlyList<RetryOperationStep> Steps { get; }
 
         public bool HasSteps => Steps.Count > 0;

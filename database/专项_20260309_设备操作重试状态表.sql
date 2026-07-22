@@ -7,6 +7,9 @@ BEGIN
     CREATE TABLE [dbo].[device_operation_retry_states]
     (
         [id] BIGINT IDENTITY(1,1) NOT NULL,
+        [intent_version] BIGINT NOT NULL CONSTRAINT [DF_device_operation_retry_states_intent_version] DEFAULT ((1)),
+        [claim_token] NVARCHAR(64) NULL,
+        [claim_until] DATETIME2(0) NULL,
         [device_id] INT NOT NULL,
         [employee_id] NVARCHAR(64) NOT NULL,
         [permission_level] INT NULL,
@@ -44,6 +47,27 @@ BEGIN
     ALTER TABLE [dbo].[device_operation_retry_states]
         ADD [permission_sync_completion_blocked] BIT NOT NULL
             CONSTRAINT [DF_device_operation_retry_states_permission_sync_completion_blocked] DEFAULT ((1));
+END
+GO
+
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'intent_version') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [intent_version] BIGINT NOT NULL CONSTRAINT [DF_device_operation_retry_states_intent_version] DEFAULT ((1));
+END
+GO
+
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'claim_token') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [claim_token] NVARCHAR(64) NULL;
+END
+GO
+
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'claim_until') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [claim_until] DATETIME2(0) NULL;
 END
 GO
 

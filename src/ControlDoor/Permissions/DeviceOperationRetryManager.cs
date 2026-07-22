@@ -262,48 +262,74 @@ namespace ControlDoor.Permissions
         {
             if (!state.HasPending)
             {
-                store.DeleteEmptyState(state);
-                scan.EmptyDeleted++;
-                LogRetryState(scan.RequestId, state, "Empty retry state deleted.", "EMPTY_DELETED");
+                if (store.TryDeleteEmptyState(state))
+                {
+                    scan.EmptyDeleted++;
+                    LogRetryState(scan.RequestId, state, "Empty retry state deleted.", "EMPTY_DELETED");
+                }
+                else
+                {
+                    LogRetryState(scan.RequestId, state, "Empty retry state delete was stale.", "STALE");
+                }
+
                 return;
             }
 
             var lookup = registry.TryGetByDeviceId(state.DeviceId);
             if (!lookup.Found || lookup.Snapshot == null)
             {
-                store.MarkTerminalFailure(state, "DEVICE_NOT_FOUND", "设备运行时不存在。", now);
-                scan.Terminal++;
+                if (store.MarkTerminalFailure(state, "DEVICE_NOT_FOUND", "设备运行时不存在。", now))
+                {
+                    scan.Terminal++;
+                }
+
                 return;
             }
 
             var snapshot = lookup.Snapshot;
             if (!snapshot.Enabled || snapshot.Status == DeviceConnectionStatus.Disabled)
             {
-                store.MarkTerminalFailure(state, "DEVICE_DISABLED", "设备已停用。", now);
-                scan.Terminal++;
+                if (store.MarkTerminalFailure(state, "DEVICE_DISABLED", "设备已停用。", now))
+                {
+                    scan.Terminal++;
+                }
+
                 return;
             }
 
             if (snapshot.Status == DeviceConnectionStatus.InvalidConfig)
             {
-                store.MarkTerminalFailure(state, "DEVICE_CONFIG_INVALID", "设备配置非法。", now);
-                scan.Terminal++;
+                if (store.MarkTerminalFailure(state, "DEVICE_CONFIG_INVALID", "设备配置非法。", now))
+                {
+                    scan.Terminal++;
+                }
+
                 return;
             }
 
             if (!snapshot.IsConnected || !snapshot.SdkUserId.HasValue || snapshot.Status == DeviceConnectionStatus.ReconnectPending || snapshot.Status == DeviceConnectionStatus.Connecting)
             {
-                store.DeferOffline(state, "DEVICE_OFFLINE", "设备未在线，延后补偿。", now);
-                scan.OfflineDeferred++;
+                if (store.DeferOffline(state, "DEVICE_OFFLINE", "设备未在线，延后补偿。", now))
+                {
+                    scan.OfflineDeferred++;
+                }
+
                 return;
             }
 
             var plan = planner.Plan(state);
             if (!plan.HasSteps)
             {
-                store.DeleteEmptyState(state);
-                scan.EmptyDeleted++;
-                LogRetryState(scan.RequestId, state, "Retry state produced no executable steps and was deleted.", "NO_STEPS");
+                if (store.TryDeleteEmptyState(state))
+                {
+                    scan.EmptyDeleted++;
+                    LogRetryState(scan.RequestId, state, "Retry state produced no executable steps and was deleted.", "NO_STEPS");
+                }
+                else
+                {
+                    LogRetryState(scan.RequestId, state, "Retry state no-step delete was stale.", "STALE");
+                }
+
                 return;
             }
 
@@ -314,7 +340,11 @@ namespace ControlDoor.Permissions
             });
             var execution = await coordinator.ExecuteAsync(plan, scan.RequestId, cancellationToken).ConfigureAwait(false);
             store.ApplyExecutionResult(execution, DateTime.Now);
-            if (execution.AllSucceeded)
+            if (execution.IsStale)
+            {
+                LogRetryState(scan.RequestId, state, "Retry state execution result was stale and ignored.", "STALE");
+            }
+            else if (execution.AllSucceeded)
             {
                 scan.Succeeded++;
                 LogRetryState(scan.RequestId, state, "Retry state execution succeeded.", execution.Code ?? "OK");

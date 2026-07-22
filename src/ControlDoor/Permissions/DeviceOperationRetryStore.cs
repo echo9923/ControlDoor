@@ -93,53 +93,76 @@ namespace ControlDoor.Permissions
 
             var claimSeconds = Math.Max(60, Math.Max(options.InitialRetryDelaySeconds, options.ScanIntervalSeconds));
             var claimUntil = now.AddSeconds(claimSeconds);
+            var claimToken = Guid.NewGuid().ToString("N");
             var record = database.ExecuteNonQuery(
                 "DeviceOperationRetryStore.TryClaimDueState",
                 ClaimDueSql,
                 new DatabaseParameter("@id", state.Id),
+                new DatabaseParameter("@intentVersion", state.IntentVersion),
                 new DatabaseParameter("@now", now),
-                new DatabaseParameter("@claimUntil", claimUntil));
-            return record.Error == null && (!record.RowsAffected.HasValue || record.RowsAffected.Value > 0);
+                new DatabaseParameter("@claimUntil", claimUntil),
+                new DatabaseParameter("@newClaimToken", claimToken));
+            var claimed = record.Error == null && (!record.RowsAffected.HasValue || record.RowsAffected.Value > 0);
+            if (claimed)
+            {
+                state.ClaimToken = claimToken;
+                state.ClaimUntil = claimUntil;
+            }
+            return claimed;
         }
 
         public void DeleteEmptyState(DeviceOperationRetryState state)
         {
+            TryDeleteEmptyState(state);
+        }
+
+        public bool TryDeleteEmptyState(DeviceOperationRetryState state)
+        {
             if (state == null)
             {
-                return;
+                return false;
             }
 
-            database.ExecuteNonQuery(
+            var record = database.ExecuteNonQuery(
                 "DeviceOperationRetryStore.DeleteEmptyState",
                 @"DELETE FROM dbo.device_operation_retry_states
 WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @now
   AND permission_pending = 0
   AND person_pending = 0
   AND face_pending = 0
   AND delete_person_pending = 0
   AND delete_face_pending = 0;",
-                new DatabaseParameter("@id", state.Id));
+                new DatabaseParameter("@id", state.Id),
+                new DatabaseParameter("@intentVersion", state.IntentVersion),
+                new DatabaseParameter("@claimToken", (object)state.ClaimToken ?? DBNull.Value),
+                new DatabaseParameter("@now", DateTime.Now));
+            return WasApplied(record);
         }
 
-        public void MarkOperationSuccess(DeviceOperationRetryState state, RetryOperation operation)
+        public bool MarkOperationSuccess(DeviceOperationRetryState state, RetryOperation operation)
         {
             if (state == null)
             {
-                return;
+                return false;
             }
 
             var record = database.ExecuteNonQuery(
                 "DeviceOperationRetryStore.MarkOperationSuccess",
                 SuccessSql(operation),
                 SuccessParameters(state));
+            var applied = WasApplied(record);
             if (operation == RetryOperation.Permission &&
                 state.PermissionLevel.HasValue &&
-                record.Error == null &&
-                (!record.RowsAffected.HasValue || record.RowsAffected.Value > 0) &&
+                applied &&
                 !HasBlockingPermissionStateForEmployee(state))
             {
                 userSyncWriter.MarkPermissionSynced(state.EmployeeId, state.PermissionLevel.Value);
             }
+
+            return applied;
         }
 
         private bool HasBlockingPermissionStateForEmployee(DeviceOperationRetryState state)
@@ -159,21 +182,26 @@ WHERE employee_id = @employeeId
             return rows != null && rows.Count > 0;
         }
 
-        public void DeleteIfCompleted(DeviceOperationRetryState state)
+        public bool DeleteIfCompleted(DeviceOperationRetryState state)
         {
             if (state == null)
             {
-                return;
+                return false;
             }
 
             var record = database.ExecuteNonQuery(
                 "DeviceOperationRetryStore.DeleteIfCompleted",
                 DeleteIfCompletedSql,
-                new DatabaseParameter("@id", state.Id));
+                new DatabaseParameter("@id", state.Id),
+                new DatabaseParameter("@intentVersion", state.IntentVersion),
+                new DatabaseParameter("@claimToken", (object)state.ClaimToken ?? DBNull.Value),
+                new DatabaseParameter("@now", DateTime.Now));
+            var applied = WasApplied(record);
             LogStateChange("Retry state deleted if completed.", state, "COMPLETED_DELETE", fields =>
             {
                 fields.Extra["rowsAffected"] = record.RowsAffected.HasValue ? record.RowsAffected.Value.ToString() : string.Empty;
             });
+            return applied;
         }
 
         public void ApplyExecutionResult(RetryExecutionResult result, DateTime now)
@@ -185,34 +213,47 @@ WHERE employee_id = @employeeId
 
             foreach (var operation in result.SucceededOperations)
             {
-                MarkOperationSuccess(result.State, operation);
+                if (!MarkOperationSuccess(result.State, operation))
+                {
+                    result.IsStale = true;
+                    return;
+                }
             }
 
             if (result.AllSucceeded)
             {
-                DeleteIfCompleted(result.State);
+                if (!DeleteIfCompleted(result.State))
+                {
+                    result.IsStale = true;
+                }
                 return;
             }
 
+            bool applied;
             if (result.Retryable && HasReachedMaxAttempts(result.State.AttemptCount + 1))
             {
-                MarkTerminalFailure(result.State, "RETRY_EXHAUSTED", BuildError(result), now);
+                applied = MarkTerminalFailure(result.State, "RETRY_EXHAUSTED", BuildError(result), now);
             }
             else if (IsTerminal(result.Code, result.Retryable, result.State.AttemptCount + 1))
             {
-                MarkTerminalFailure(result.State, result.Code, BuildError(result), now);
+                applied = MarkTerminalFailure(result.State, result.Code, BuildError(result), now);
             }
             else
             {
-                ScheduleRetry(result.State, result.Code, BuildError(result), now);
+                applied = ScheduleRetry(result.State, result.Code, BuildError(result), now);
+            }
+
+            if (!applied)
+            {
+                result.IsStale = true;
             }
         }
 
-        public void ScheduleRetry(DeviceOperationRetryState state, string code, string message, DateTime now)
+        public bool ScheduleRetry(DeviceOperationRetryState state, string code, string message, DateTime now)
         {
             if (state == null)
             {
-                return;
+                return false;
             }
 
             var nextAttempt = Math.Max(0, state.AttemptCount) + 1;
@@ -224,10 +265,17 @@ SET attempt_count = @attemptCount,
     last_attempt_at = @now,
     next_retry_at = @nextRetryAt,
     last_error = @lastError,
-    updated_at = @now
+    updated_at = @now,
+    claim_token = NULL,
+    claim_until = NULL
 WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @now
   AND exhausted_at IS NULL;",
                 new DatabaseParameter("@id", state.Id),
+                new DatabaseParameter("@intentVersion", state.IntentVersion),
+                new DatabaseParameter("@claimToken", (object)state.ClaimToken ?? DBNull.Value),
                 new DatabaseParameter("@attemptCount", nextAttempt),
                 new DatabaseParameter("@now", now),
                 new DatabaseParameter("@nextRetryAt", nextRetryAt),
@@ -239,13 +287,14 @@ WHERE id = @id
                 fields.Extra["lastError"] = FormatError(code, message);
                 fields.Extra["rowsAffected"] = record.RowsAffected.HasValue ? record.RowsAffected.Value.ToString() : string.Empty;
             });
+            return WasApplied(record);
         }
 
-        public void DeferOffline(DeviceOperationRetryState state, string code, string message, DateTime now)
+        public bool DeferOffline(DeviceOperationRetryState state, string code, string message, DateTime now)
         {
             if (state == null)
             {
-                return;
+                return false;
             }
 
             var nextRetryAt = now.AddSeconds(Math.Max(1, options.InitialRetryDelaySeconds));
@@ -254,10 +303,17 @@ WHERE id = @id
                 @"UPDATE dbo.device_operation_retry_states
 SET next_retry_at = @nextRetryAt,
     last_error = @lastError,
-    updated_at = @now
+    updated_at = @now,
+    claim_token = NULL,
+    claim_until = NULL
 WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @now
   AND exhausted_at IS NULL;",
                 new DatabaseParameter("@id", state.Id),
+                new DatabaseParameter("@intentVersion", state.IntentVersion),
+                new DatabaseParameter("@claimToken", (object)state.ClaimToken ?? DBNull.Value),
                 new DatabaseParameter("@now", now),
                 new DatabaseParameter("@nextRetryAt", nextRetryAt),
                 new DatabaseParameter("@lastError", Trim(FormatError(code, message), MaxErrorLength)));
@@ -267,13 +323,14 @@ WHERE id = @id
                 fields.Extra["lastError"] = FormatError(code, message);
                 fields.Extra["rowsAffected"] = record.RowsAffected.HasValue ? record.RowsAffected.Value.ToString() : string.Empty;
             });
+            return WasApplied(record);
         }
 
-        public void MarkTerminalFailure(DeviceOperationRetryState state, string code, string message, DateTime now)
+        public bool MarkTerminalFailure(DeviceOperationRetryState state, string code, string message, DateTime now)
         {
             if (state == null)
             {
-                return;
+                return false;
             }
 
             var record = database.ExecuteNonQuery(
@@ -284,9 +341,17 @@ SET attempt_count = CASE WHEN attempt_count < @attemptCount THEN @attemptCount E
     next_retry_at = NULL,
     last_error = @lastError,
     exhausted_at = @now,
-    updated_at = @now
-WHERE id = @id;",
+    updated_at = @now,
+    claim_token = NULL,
+    claim_until = NULL
+WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @now
+  AND exhausted_at IS NULL;",
                 new DatabaseParameter("@id", state.Id),
+                new DatabaseParameter("@intentVersion", state.IntentVersion),
+                new DatabaseParameter("@claimToken", (object)state.ClaimToken ?? DBNull.Value),
                 new DatabaseParameter("@attemptCount", Math.Max(1, state.AttemptCount + 1)),
                 new DatabaseParameter("@now", now),
                 new DatabaseParameter("@lastError", Trim(FormatError(code, message), MaxErrorLength)));
@@ -297,6 +362,7 @@ WHERE id = @id;",
                 fields.Extra["lastError"] = FormatError(code, message);
                 fields.Extra["rowsAffected"] = record.RowsAffected.HasValue ? record.RowsAffected.Value.ToString() : string.Empty;
             });
+            return WasApplied(record);
         }
 
         public int CleanupExpiredFailures(DateTime now, int? batchSize = null)
@@ -390,6 +456,8 @@ WHERE id IN (
             {
                 new DatabaseParameter("@id", state.Id),
                 new DatabaseParameter("@updatedAt", DateTime.Now),
+                new DatabaseParameter("@intentVersion", state.IntentVersion),
+                new DatabaseParameter("@claimToken", (object)state.ClaimToken ?? DBNull.Value),
                 new DatabaseParameter("@permissionLevel", (object)state.PermissionLevel ?? DBNull.Value),
                 new DatabaseParameter("@permissionPayload", (object)state.PermissionPayloadJson ?? DBNull.Value),
                 new DatabaseParameter("@personPayload", (object)state.PersonPayloadJson ?? DBNull.Value),
@@ -529,6 +597,13 @@ WHERE id IN (
             return value.Substring(0, maxLength);
         }
 
+        private static bool WasApplied(DatabaseCommandRecord record)
+        {
+            return record != null &&
+                record.Error == null &&
+                (!record.RowsAffected.HasValue || record.RowsAffected.Value > 0);
+        }
+
         private static string SuccessSql(RetryOperation operation)
         {
             switch (operation)
@@ -540,6 +615,10 @@ SET permission_pending = 0,
     permission_payload = NULL,
     updated_at = @updatedAt
 WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @updatedAt
+  AND permission_pending = 1
   AND (
       (permission_level = @permissionLevel)
       OR (permission_level IS NULL AND @permissionLevel IS NULL)
@@ -554,6 +633,10 @@ SET person_pending = 0,
     person_payload = NULL,
     updated_at = @updatedAt
 WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @updatedAt
+  AND person_pending = 1
   AND (
       (person_payload = @personPayload)
       OR (person_payload IS NULL AND @personPayload IS NULL)
@@ -564,6 +647,10 @@ SET face_pending = 0,
     face_payload = NULL,
     updated_at = @updatedAt
 WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @updatedAt
+  AND face_pending = 1
   AND (
       (face_payload = @facePayload)
       OR (face_payload IS NULL AND @facePayload IS NULL)
@@ -572,7 +659,11 @@ WHERE id = @id
                     return @"UPDATE dbo.device_operation_retry_states
 SET delete_face_pending = 0,
     updated_at = @updatedAt
-WHERE id = @id;";
+WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @updatedAt
+  AND delete_face_pending = 1;";
                 case RetryOperation.DeletePerson:
                     // 仅在扫描时看到的 pending/payload 快照仍匹配时才清空；并发 upsert 新意图后整行清零会被拒绝。
                     return @"UPDATE dbo.device_operation_retry_states
@@ -587,6 +678,9 @@ SET permission_pending = 0,
     face_payload = NULL,
     updated_at = @updatedAt
 WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @updatedAt
   AND delete_person_pending = 1
   AND delete_person_pending = @deletePersonPending
   AND delete_face_pending = @deleteFacePending
@@ -614,6 +708,7 @@ WHERE id = @id
 SELECT TOP (@batchSize) *
 FROM dbo.device_operation_retry_states WITH (UPDLOCK, READPAST, ROWLOCK)
 WHERE exhausted_at IS NULL
+  AND (claim_until IS NULL OR claim_until <= @now)
   AND (next_retry_at IS NULL OR next_retry_at <= @now)
   AND (
       permission_pending = 1
@@ -626,11 +721,15 @@ ORDER BY next_retry_at ASC, updated_at ASC, id ASC;";
 
         private const string ClaimDueSql = @"
 UPDATE dbo.device_operation_retry_states
-SET next_retry_at = @claimUntil,
+SET claim_token = @newClaimToken,
+    claim_until = @claimUntil,
+    next_retry_at = @claimUntil,
     last_attempt_at = @now,
     updated_at = @now
 WHERE id = @id
+  AND intent_version = @intentVersion
   AND exhausted_at IS NULL
+  AND (claim_until IS NULL OR claim_until <= @now)
   AND (next_retry_at IS NULL OR next_retry_at <= @now)
   AND (
       permission_pending = 1
@@ -652,6 +751,7 @@ BEGIN TRY
     DECLARE @currentDeletePersonPending BIT = 0;
     DECLARE @currentDeleteFacePending BIT = 0;
     DECLARE @currentAttemptCount INT = 0;
+    DECLARE @currentIntentVersion BIGINT = 1;
     DECLARE @currentExhaustedAt DATETIME2(0);
     DECLARE @conflict BIT = 0;
 
@@ -663,6 +763,7 @@ BEGIN TRY
         @currentDeletePersonPending = delete_person_pending,
         @currentDeleteFacePending = delete_face_pending,
         @currentAttemptCount = attempt_count,
+        @currentIntentVersion = intent_version,
         @currentExhaustedAt = exhausted_at
     FROM dbo.device_operation_retry_states WITH (UPDLOCK, HOLDLOCK)
     WHERE device_id = @deviceId
@@ -671,6 +772,9 @@ BEGIN TRY
     IF @id IS NULL
     BEGIN
         INSERT INTO dbo.device_operation_retry_states (
+            intent_version,
+            claim_token,
+            claim_until,
             device_id,
             employee_id,
             permission_level,
@@ -691,6 +795,9 @@ BEGIN TRY
             created_at,
             updated_at)
         VALUES (
+            1,
+            NULL,
+            NULL,
             @deviceId,
             @employeeId,
             CASE WHEN @operation = N'SyncPermission' THEN @permissionLevel ELSE NULL END,
@@ -728,7 +835,10 @@ BEGIN TRY
         END;
 
         UPDATE dbo.device_operation_retry_states
-        SET permission_level = CASE
+        SET intent_version = @currentIntentVersion + 1,
+            claim_token = NULL,
+            claim_until = NULL,
+            permission_level = CASE
                 WHEN @operation = N'SyncPermission' THEN @permissionLevel
                 WHEN @operation = N'DeletePerson' THEN NULL
                 ELSE permission_level
@@ -803,6 +913,9 @@ END CATCH";
         private const string DeleteIfCompletedSql = @"
 DELETE FROM dbo.device_operation_retry_states
 WHERE id = @id
+  AND intent_version = @intentVersion
+  AND claim_token = @claimToken
+  AND claim_until > @now
   AND permission_pending = 0
   AND person_pending = 0
   AND face_pending = 0

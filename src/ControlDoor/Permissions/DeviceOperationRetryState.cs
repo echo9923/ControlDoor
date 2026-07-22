@@ -8,6 +8,12 @@ namespace ControlDoor.Permissions
     {
         public long Id { get; set; }
 
+        public long IntentVersion { get; set; }
+
+        public string ClaimToken { get; set; }
+
+        public DateTime? ClaimUntil { get; set; }
+
         public int DeviceId { get; set; }
 
         public string EmployeeId { get; set; } = string.Empty;
@@ -70,6 +76,9 @@ namespace ControlDoor.Permissions
             return new DeviceOperationRetryState
             {
                 Id = ToInt64(Get(row, "id")),
+                IntentVersion = ToInt64(Get(row, "intent_version")),
+                ClaimToken = ToNullableString(Get(row, "claim_token")),
+                ClaimUntil = ToNullableDateTime(Get(row, "claim_until")),
                 DeviceId = ToInt32(Get(row, "device_id")),
                 EmployeeId = Convert.ToString(Get(row, "employee_id")) ?? string.Empty,
                 PermissionLevel = ToNullableInt32(Get(row, "permission_level")),
@@ -156,6 +165,11 @@ namespace ControlDoor.Permissions
             }
 
             return Convert.ToInt32(value);
+        }
+
+        private static string ToNullableString(object value)
+        {
+            return value == null || value == DBNull.Value ? null : Convert.ToString(value);
         }
 
         private static DateTime ToDateTime(object value)

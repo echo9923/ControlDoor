@@ -28,6 +28,9 @@ namespace ControlDoor.Devices.Tasks
 
         public bool Retryable { get; set; }
 
+        // 等待层超时/取消不等同于设备执行终态；调用方可据此继续观察 Completion。
+        public bool IsWaitOutcome { get; set; }
+
         public object Data { get; set; }
 
         public List<string> Errors { get; set; } = new List<string>();
@@ -79,7 +82,9 @@ namespace ControlDoor.Devices.Tasks
         public static DeviceTaskResult Timeout(DeviceSdkTask task, string message = "Task wait timeout.")
         {
             var now = DateTime.Now;
-            return FromTask(task, false, "TIMEOUT", message, DeviceConnectionStatus.Unknown, now, now);
+            var result = FromTask(task, false, "TIMEOUT", message, DeviceConnectionStatus.Unknown, now, now);
+            result.IsWaitOutcome = true;
+            return result;
         }
 
         public static DeviceTaskResult Cancelled(DeviceSdkTask task, string message = "Task cancelled.")

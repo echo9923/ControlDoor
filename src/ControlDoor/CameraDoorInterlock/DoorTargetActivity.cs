@@ -22,6 +22,15 @@ namespace ControlDoor.CameraDoorInterlock
 
         public string InterlockId { get; set; } = string.Empty;
 
+        /// <summary>门目标活动周期。周期结束后仍单调递增，避免旧异步任务与新周期的数值碰撞。</summary>
+        public long ActivityGeneration { get; set; }
+
+        /// <summary>当前常闭设备任务的具体操作 token。</summary>
+        public string AlwaysCloseOperationToken { get; set; } = string.Empty;
+
+        /// <summary>当前恢复设备任务的具体操作 token。</summary>
+        public string RestoreOperationToken { get; set; } = string.Empty;
+
         public ISet<string> ActiveCameraKeys { get; private set; }
 
         public DateTime? AlwaysCloseSubmittedAt { get; set; }

@@ -330,9 +330,11 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains("/ISAPI/AccessControl/UserInfo/SetUp?format=json", native.LastStdXmlUrl);
             Assert.Contains(@"""UserInfo""", native.LastStdXmlInput);
             Assert.Contains(@"""employeeNo"":""10001""", native.LastStdXmlInput);
-            Assert.Contains(@"""doorRight"":""1""", native.LastStdXmlInput);
-            Assert.Contains(@"""RightPlan""", native.LastStdXmlInput);
             Assert.Contains(@"""userVerifyMode"":""face""", native.LastStdXmlInput);
+            Assert.False(native.LastStdXmlInput.Contains(@"""Valid"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""enable"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""doorRight"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""RightPlan"""));
         }
 
         [TestCase]
@@ -357,6 +359,33 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains(@"""RightPlan""", native.LastStdXmlInput);
             Assert.False(native.LastStdXmlInput.Contains(@"""userVerifyMode"""));
             Assert.False(native.LastStdXmlInput.Contains(@"""gender"""));
+        }
+
+        [TestCase]
+        public static void SdkWrapper_UpsertPerson_OmitsPermissionFieldsRegardlessOfPersonState()
+        {
+            var native = new Stage3FakeNativeClient { StdXmlOutput = @"{""statusCode"":1}" };
+            var gateway = new HikvisionSdkWrapper(native);
+            var login = Login(gateway);
+
+            var person = Person("10001");
+            person.Enabled = false;
+            person.ValidFrom = new DateTime(2026, 1, 1);
+            person.ValidTo = new DateTime(2030, 1, 1);
+            gateway.UpsertPersonAsync(new UpsertPersonRequest
+            {
+                UserId = login.UserId,
+                Person = person
+            }).GetAwaiter().GetResult();
+
+            Assert.Contains(@"""employeeNo"":""10001""", native.LastStdXmlInput);
+            Assert.Contains(@"""userVerifyMode"":""face""", native.LastStdXmlInput);
+            Assert.False(native.LastStdXmlInput.Contains(@"""Valid"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""enable"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""beginTime"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""endTime"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""doorRight"""));
+            Assert.False(native.LastStdXmlInput.Contains(@"""RightPlan"""));
         }
 
         [TestCase]

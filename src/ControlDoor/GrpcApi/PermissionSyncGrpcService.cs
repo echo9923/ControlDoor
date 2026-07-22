@@ -1100,7 +1100,12 @@ namespace ControlDoor.GrpcApi
                 return result;
             }
 
-            if (ex is TimeoutException || ex is OperationCanceledException)
+            if (ex is OperationCanceledException)
+            {
+                return DeviceTaskResult.FromTask(task, false, "CANCELLED", ex.Message, status, started, DateTime.Now);
+            }
+
+            if (ex is TimeoutException)
             {
                 var timeout = DeviceTaskResult.FromTask(task, false, "TIMEOUT", ex.Message, status, started, DateTime.Now);
                 timeout.Retryable = true;
@@ -1590,18 +1595,14 @@ namespace ControlDoor.GrpcApi
 
         private static bool ShouldQueueMutatingRetry(DeviceTaskResult result)
         {
-            if (result == null || result.Success)
+            if (result == null || result.Success || result.IsWaitOutcome)
             {
                 return false;
             }
 
-            return result.Retryable || IsMutatingWaitFailure(result.Code);
-        }
-
-        private static bool IsMutatingWaitFailure(string code)
-        {
-            return string.Equals(code, "CANCELLED", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(code, "TIMEOUT", StringComparison.OrdinalIgnoreCase);
+            // 只有设备任务已经给出可重试执行终态时才写补偿；等待层 TIMEOUT/CANCELLED
+            // 可能对应仍在运行的任务，不能据此重复下发。
+            return result.Retryable;
         }
 
         private static bool IsRetryableSdkError(int code)
