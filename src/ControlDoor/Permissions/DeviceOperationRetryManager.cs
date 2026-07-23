@@ -392,7 +392,8 @@ namespace ControlDoor.Permissions
                 fields.Extra["stepCount"] = plan.Steps.Count.ToString();
             });
             RetryExecutionResult execution = null;
-            using (var renewalStopSource = new CancellationTokenSource())
+            // 续租必须与扫描/管理器停止令牌联动；服务停止或扫描取消后禁止继续触碰数据库租约。
+            using (var renewalStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 var renewalTask = RenewClaimLoopAsync(state, renewalStopSource.Token);
                 try
@@ -401,6 +402,12 @@ namespace ControlDoor.Permissions
                     execution = await handle.WaitResult.ConfigureAwait(false);
                     if (execution.IsWaitOutcome)
                     {
+                        // 等待层超时/取消只代表调用方等待结束；已停止后不能继续等待最终任务再回写数据库。
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return;
+                        }
+
                         execution = await handle.FinalResult.ConfigureAwait(false);
                     }
                 }
@@ -582,7 +589,13 @@ namespace ControlDoor.Permissions
                 return false;
             }
 
-            switch ((execution.Code ?? string.Empty).Trim())
+            return IsTerminalExecutionCode(execution.Code);
+        }
+
+        // 与 DeviceOperationRetryStore.IsTerminal 保持一致：明确不可重试的未知 SDK 错误不得无限重试。
+        private static bool IsTerminalExecutionCode(string code)
+        {
+            switch ((code ?? string.Empty).Trim())
             {
                 case "DEVICE_NOT_FOUND":
                 case "DEVICE_DISABLED":
@@ -590,6 +603,7 @@ namespace ControlDoor.Permissions
                 case "DEVICE_UNSUPPORTED":
                 case "INVALID_PAYLOAD":
                 case "SDK_CONFIGURATION_ERROR":
+                case "SDK_ERROR":
                     return true;
                 default:
                     return false;

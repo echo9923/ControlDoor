@@ -176,6 +176,51 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SyncPermissions_LateFinalSuccess_MarksPermissionAfterWaitCancelled()
+        {
+            using (var fixture = new Stage5Fixture())
+            using (var cancellation = new CancellationTokenSource())
+            using (var entered = new ManualResetEventSlim(false))
+            using (var release = new ManualResetEventSlim(false))
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureResult<int>("UpsertPersonAsync", request =>
+                {
+                    entered.Set();
+                    release.Wait();
+                    return 0;
+                });
+
+                var context = fixture.Context("permission-late-success-mark");
+                context.CancellationToken = cancellation.Token;
+                var requestTask = Task.Run(() => fixture.Service.SyncPermissions(
+                    @"{""items"":[{""employee_id"":""10013"",""name"":""Late Mark"",""permission_code"":9}]}",
+                    context));
+                try
+                {
+                    Assert.True(entered.Wait(TimeSpan.FromSeconds(2)), "permission task did not reach the gateway.");
+                    cancellation.Cancel();
+                    Assert.True(requestTask.Wait(TimeSpan.FromSeconds(2)), "cancelled permission request did not return.");
+                    var response = fixture.Response(requestTask.GetAwaiter().GetResult());
+
+                    Assert.Equal("FAILED", response["code"]);
+                    Assert.False(fixture.UserWriter.PermissionLevels.ContainsKey("10013"));
+
+                    release.Set();
+                    WaitUntil(() => fixture.UserWriter.PermissionLevels.ContainsKey("10013"), "late permission success did not mark the user synced.");
+                    Assert.Equal(9, fixture.UserWriter.PermissionLevels["10013"]);
+                    Assert.Equal(0, fixture.RetryWriter.IntentCount);
+                    Assert.Equal("FAILED", response["code"]);
+                }
+                finally
+                {
+                    release.Set();
+                    requestTask.Wait(TimeSpan.FromSeconds(2));
+                }
+            }
+        }
+
+        [TestCase]
         public static void SyncPermissions_LateRetryableFailure_QueuesExactlyOneIntentAndDoesNotChangeResponse()
         {
             using (var fixture = new Stage5Fixture())
@@ -385,6 +430,96 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void SyncPersons_LatePersonSuccessWithFace_QueuesFaceButDoesNotMarkSyncedEarly()
+        {
+            using (var fixture = new Stage5Fixture())
+            using (var cancellation = new CancellationTokenSource())
+            using (var entered = new ManualResetEventSlim(false))
+            using (var release = new ManualResetEventSlim(false))
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureResult<int>("UpsertPersonAsync", request =>
+                {
+                    entered.Set();
+                    release.Wait();
+                    return 0;
+                });
+
+                var context = fixture.Context("person-late-success-face");
+                context.CancellationToken = cancellation.Token;
+                var requestTask = Task.Run(() => fixture.Service.SyncPersons(
+                    @"{""items"":[{""employee_id"":""10014"",""name"":""Late Person Face"",""face_image_base64"":""" + Stage5TestData.JpegBase64() + @"""}]}",
+                    context));
+                try
+                {
+                    Assert.True(entered.Wait(TimeSpan.FromSeconds(2)), "person task did not reach the gateway.");
+                    cancellation.Cancel();
+                    Assert.True(requestTask.Wait(TimeSpan.FromSeconds(2)), "cancelled person request did not return.");
+                    var response = fixture.Response(requestTask.GetAwaiter().GetResult());
+
+                    Assert.Equal("FAILED", response["code"]);
+                    Assert.False(fixture.UserWriter.PersonsSynced.Contains("10014"));
+
+                    release.Set();
+                    WaitUntil(() => fixture.RetryWriter.IntentCount == 1, "late person success did not queue the missing face intent.");
+                    var intents = fixture.RetryWriter.Snapshot();
+                    Assert.Equal("UploadFace", intents[0].Operation);
+                    Assert.False(fixture.UserWriter.PersonsSynced.Contains("10014"));
+                    Assert.Equal("FAILED", response["code"]);
+                }
+                finally
+                {
+                    release.Set();
+                    requestTask.Wait(TimeSpan.FromSeconds(2));
+                }
+            }
+        }
+
+        [TestCase]
+        public static void SyncPersons_LateFaceSuccessAfterPersonSuccess_MarksPersonSynced()
+        {
+            using (var fixture = new Stage5Fixture())
+            using (var cancellation = new CancellationTokenSource())
+            using (var entered = new ManualResetEventSlim(false))
+            using (var release = new ManualResetEventSlim(false))
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureResult<int>("UploadFaceAsync", request =>
+                {
+                    entered.Set();
+                    release.Wait();
+                    return 0;
+                });
+
+                var context = fixture.Context("face-late-success-mark");
+                context.CancellationToken = cancellation.Token;
+                var requestTask = Task.Run(() => fixture.Service.SyncPersons(
+                    @"{""items"":[{""employee_id"":""10015"",""name"":""Late Face Mark"",""face_image_base64"":""" + Stage5TestData.JpegBase64() + @"""}]}",
+                    context));
+                try
+                {
+                    Assert.True(entered.Wait(TimeSpan.FromSeconds(2)), "face task did not reach the gateway.");
+                    cancellation.Cancel();
+                    Assert.True(requestTask.Wait(TimeSpan.FromSeconds(2)), "cancelled person request did not return.");
+                    var response = fixture.Response(requestTask.GetAwaiter().GetResult());
+
+                    Assert.Equal("FAILED", response["code"]);
+                    Assert.False(fixture.UserWriter.PersonsSynced.Contains("10015"));
+
+                    release.Set();
+                    WaitUntil(() => fixture.UserWriter.PersonsSynced.Contains("10015"), "late face success did not mark the person synced.");
+                    Assert.Equal(0, fixture.RetryWriter.IntentCount);
+                    Assert.Equal("FAILED", response["code"]);
+                }
+                finally
+                {
+                    release.Set();
+                    requestTask.Wait(TimeSpan.FromSeconds(2));
+                }
+            }
+        }
+
+        [TestCase]
         public static void SyncPersons_DispatcherWaitTimeout_DoesNotQueueIntent()
         {
             using (var fixture = new Stage5Fixture(defaultFaceCaptureDeviceId: null, dispatcherTimeoutMilliseconds: 50))
@@ -403,6 +538,50 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
+
+        [TestCase]
+        public static void DeletePersons_LateFinalSuccess_MarksPersonDeletedAfterWaitCancelled()
+        {
+            using (var fixture = new Stage5Fixture())
+            using (var cancellation = new CancellationTokenSource())
+            using (var entered = new ManualResetEventSlim(false))
+            using (var release = new ManualResetEventSlim(false))
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureResult<int>("DeletePersonAsync", request =>
+                {
+                    entered.Set();
+                    release.Wait();
+                    return 0;
+                });
+
+                var context = fixture.Context("delete-late-success-mark");
+                context.CancellationToken = cancellation.Token;
+                var requestTask = Task.Run(() => fixture.Service.DeletePersons(
+                    @"{""items"":[{""employee_id"":""10016""}]}",
+                    context));
+                try
+                {
+                    Assert.True(entered.Wait(TimeSpan.FromSeconds(2)), "delete task did not reach the gateway.");
+                    cancellation.Cancel();
+                    Assert.True(requestTask.Wait(TimeSpan.FromSeconds(2)), "cancelled delete request did not return.");
+                    var response = fixture.Response(requestTask.GetAwaiter().GetResult());
+
+                    Assert.Equal("FAILED", response["code"]);
+                    Assert.False(fixture.UserWriter.PersonsDeleted.Contains("10016"));
+
+                    release.Set();
+                    WaitUntil(() => fixture.UserWriter.PersonsDeleted.Contains("10016"), "late delete success did not mark the person deleted.");
+                    Assert.Equal(0, fixture.RetryWriter.IntentCount);
+                    Assert.Equal("FAILED", response["code"]);
+                }
+                finally
+                {
+                    release.Set();
+                    requestTask.Wait(TimeSpan.FromSeconds(2));
+                }
+            }
+        }
 
         [TestCase]
         public static void SyncPersons_OmittedName_DefaultsToEmployeeId()

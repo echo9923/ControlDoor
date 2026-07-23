@@ -255,6 +255,57 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(2000, value.Length);
         }
 
+        [TestCase]
+        public static void DeviceOperationRetryStore_ApplyExecutionResult_NonRetryableSdkError_MarksTerminal()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database);
+            var result = new RetryExecutionResult(
+                NewState(),
+                Enumerable.Empty<RetryOperation>(),
+                RetryOperation.Face,
+                false,
+                "SDK_ERROR",
+                "未知 SDK 错误。",
+                999);
+
+            store.ApplyExecutionResult(result, new DateTime(2026, 1, 1, 10, 0, 0));
+
+            var terminal = database.Commands.Single(item => item.OperationName == "DeviceOperationRetryStore.MarkTerminalFailure");
+            Assert.Contains("@lastError=SDK_ERROR", terminal.CommandText);
+            Assert.False(database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.ScheduleRetry"));
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_LoadDueStates_SkipsBadRowAndContinuesBatch()
+        {
+            var database = new RecordingDatabaseClient();
+            database.QueryRows.Add(new System.Collections.Generic.Dictionary<string, object>(System.StringComparer.OrdinalIgnoreCase)
+            {
+                ["id"] = "bad-id",
+                ["device_id"] = 1,
+                ["employee_id"] = "10001",
+                ["permission_pending"] = true,
+                ["permission_sync_completion_blocked"] = true,
+                ["attempt_count"] = 0
+            });
+            database.QueryRows.Add(new System.Collections.Generic.Dictionary<string, object>(System.StringComparer.OrdinalIgnoreCase)
+            {
+                ["id"] = 2L,
+                ["device_id"] = 1,
+                ["employee_id"] = "10002",
+                ["permission_pending"] = true,
+                ["permission_sync_completion_blocked"] = true,
+                ["attempt_count"] = 0
+            });
+            var store = new DeviceOperationRetryStore(database);
+
+            var states = store.LoadDueStates(new DateTime(2026, 1, 1));
+
+            Assert.Equal(1, states.Count);
+            Assert.Equal("10002", states[0].EmployeeId);
+        }
+
         private static DeviceOperationRetryState NewState(long id = 1, int attemptCount = 0)
         {
             return new DeviceOperationRetryState

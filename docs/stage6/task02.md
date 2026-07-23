@@ -41,7 +41,7 @@
 
 | 意图 | 字段变化 |
 | --- | --- |
-| 权限同步 | `permission_level = 新值`，`permission_payload = 新 payload`，`permission_pending = 1`，`permission_sync_completion_blocked = 1`。 |
+| 权限同步 | `permission_level = 新值`，`permission_payload = 新 payload`，`permission_pending = 1`，`permission_sync_completion_blocked = 1`（显式写入，不依赖列默认值）。 |
 | 人员下发 | `person_payload = 新 payload`，`person_pending = 1`，`delete_person_pending = 0`。 |
 | 人脸下发 | `face_payload = 新 payload`，`face_pending = 1`，`delete_face_pending = 0`。 |
 | 删除人脸 | `delete_face_pending = 1`，`face_pending = 0`，`face_payload = NULL`。 |

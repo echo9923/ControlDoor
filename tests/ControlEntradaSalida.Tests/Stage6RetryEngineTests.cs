@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Configuration;
 using ControlDoor.Database;
@@ -380,6 +381,28 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains("AND (next_retry_at IS NULL OR next_retry_at <= @now)", sql);
             Assert.Contains("AND exhausted_at IS NULL", sql);
             Assert.Contains("@claimUntil=2026/1/1 10:01:00", sql);
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_CancelDuringWait_StopsRenewalAndSkipsFinalDatabaseWrite()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.AddOnlineDevice();
+                fixture.Gateway.ConfigureDelay("UpsertPersonAsync", TimeSpan.FromMilliseconds(500));
+                fixture.Database.QueryRows.Add(Row(id: 14, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+                var cancellation = new CancellationTokenSource();
+                cancellation.CancelAfter(100);
+
+                fixture.Manager.RunOnceAsync("stage6-cancel-final-write", cancellation.Token).GetAwaiter().GetResult();
+                var databaseWriteCount = fixture.Database.Commands.Count;
+                System.Threading.Thread.Sleep(700);
+
+                Assert.Equal(databaseWriteCount, fixture.Database.Commands.Count);
+                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.RenewClaim"));
+                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.ApplyExecutionResult"));
+                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
+            }
         }
 
         [TestCase]

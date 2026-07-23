@@ -62,6 +62,39 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void RetryExecutionCoordinator_NoWaitTimeout_PreservesFinalDeviceResult()
+        {
+            using (var inner = new Stage4Fixture())
+            {
+                inner.AddRecord(1);
+                inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                var login = inner.Lifecycle.SubmitLogin(1, wait: true, requestId: "stage6-final-login");
+                Assert.True(login.Success, login.Message);
+
+                var state = new DeviceOperationRetryState
+                {
+                    Id = 100,
+                    DeviceId = 1,
+                    EmployeeId = "10001",
+                    FacePending = true,
+                    FacePayloadJson = @"{""employee_id"":""10001"",""face_image_base64"":""" + Stage5TestData.JpegBase64() + @"""}"
+                };
+                var plan = new RetryCommandPlanner().Plan(state);
+                var handle = new RetryExecutionCoordinator(inner.Dispatcher, inner.Gateway)
+                    .Submit(plan, "stage6-final-no-timeout");
+
+                var waitResult = handle.WaitResult.GetAwaiter().GetResult();
+                var finalResult = handle.FinalResult.GetAwaiter().GetResult();
+
+                Assert.False(waitResult.IsWaitOutcome);
+                Assert.False(finalResult.IsWaitOutcome);
+                Assert.Equal("OK", waitResult.Code);
+                Assert.Equal("OK", finalResult.Code);
+                Assert.True(finalResult.TaskStarted);
+            }
+        }
+
+        [TestCase]
         public static void RetryExecutionCoordinator_UnsupportedDevice_MarksNonRetryableTerminal()
         {
             using (var fixture = new Stage6Fixture())

@@ -81,7 +81,25 @@ namespace ControlDoor.Permissions
                 LoadDueSql,
                 new DatabaseParameter("@now", now),
                 new DatabaseParameter("@batchSize", size));
-            return rows.Select(DeviceOperationRetryState.FromRow).ToList();
+            var states = new List<DeviceOperationRetryState>();
+            foreach (var row in rows)
+            {
+                try
+                {
+                    states.Add(DeviceOperationRetryState.FromRow(row));
+                }
+                catch (Exception ex)
+                {
+                    // 单条坏数据只记录并跳过，不能中止整轮补偿扫描，避免污染行长期阻塞其他设备。
+                    logger?.Error("DeviceOperationRetry", "补偿扫描存在无法解析的状态行，已跳过该行。", ex, new LogFields
+                    {
+                        OperationName = "LoadDueStates",
+                        ErrorCode = "INVALID_RETRY_STATE_ROW"
+                    });
+                }
+            }
+
+            return states;
         }
 
         public TimeSpan ClaimLeaseDuration
@@ -642,6 +660,7 @@ WHERE state.exhausted_at IS NOT NULL
                 case "DEVICE_UNSUPPORTED":
                 case "INVALID_PAYLOAD":
                 case "SDK_CONFIGURATION_ERROR":
+                case "SDK_ERROR":
                     return true;
                 default:
                     return false;

@@ -191,7 +191,9 @@ namespace ControlDoor.Host
 
             deviceLifecycle = new DeviceLifecycleService(deviceRegistry, deviceDispatcher, delayedScheduler, deviceRepository, hikvisionGateway, deviceOptions, logger);
             accessControlGrpcService = new AccessControlGrpcService(deviceLifecycle, deviceRepository, settings.Service.GrpcManagementApiKey, logger, logOptions);
-            retryStore = new DeviceOperationRetryStore(database, settings.DeviceOperationRetry, logger);
+            // 权限在线同步与离线补偿共享同一状态 writer；补偿成功后必须能回写 system_users。
+            var userSyncStatusWriter = new SystemUserSyncStatusWriter(database);
+            retryStore = new DeviceOperationRetryStore(database, settings.DeviceOperationRetry, logger, userSyncStatusWriter);
             retryManager = new DeviceOperationRetryManager(
                 retryStore,
                 deviceRegistry,
@@ -203,7 +205,7 @@ namespace ControlDoor.Host
                 deviceDispatcher,
                 hikvisionGateway,
                 retryStore,
-                new SystemUserSyncStatusWriter(database),
+                userSyncStatusWriter,
                 new EnrollmentTaskStore(),
                 logger,
                 settings.Devices.DefaultFaceCaptureDeviceId,

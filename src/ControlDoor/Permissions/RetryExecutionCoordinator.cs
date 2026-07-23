@@ -193,7 +193,9 @@ namespace ControlDoor.Permissions
 
                 if (deadlineTask == null && cancellationTask == null)
                 {
-                    handle.SetWaitResult(await handle.FinalResult.ConfigureAwait(false));
+                    // 等待层必须表达设备任务真实终态；FinalResult 与 Completion 同源，直接读取最终设备结果映射，
+                    // 避免最终 observer 回写 WaitResult 时抢占调用方 timeout/cancel 语义。
+                    handle.SetWaitResult(MapFinalResult(plan, handle.DeviceTask, await completion.ConfigureAwait(false)));
                     return;
                 }
 
@@ -215,7 +217,7 @@ namespace ControlDoor.Permissions
                 var completed = await Task.WhenAny(waiters).ConfigureAwait(false);
                 if (completed == completion)
                 {
-                    handle.SetWaitResult(await handle.FinalResult.ConfigureAwait(false));
+                    handle.SetWaitResult(MapFinalResult(plan, handle.DeviceTask, await completion.ConfigureAwait(false)));
                     return;
                 }
 

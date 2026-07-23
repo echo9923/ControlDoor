@@ -15,7 +15,7 @@ BEGIN
         [permission_level] INT NULL,
         [permission_payload] NVARCHAR(MAX) NULL,
         [permission_pending] BIT NOT NULL CONSTRAINT [DF_device_operation_retry_states_permission_pending] DEFAULT ((0)),
-        [permission_sync_completion_blocked] BIT NOT NULL CONSTRAINT [DF_device_operation_retry_states_permission_sync_completion_blocked] DEFAULT ((1)),
+        [permission_sync_completion_blocked] BIT NOT NULL CONSTRAINT [DF_device_operation_retry_states_permission_sync_completion_blocked] DEFAULT ((0)),
         [person_payload] NVARCHAR(MAX) NULL,
         [person_pending] BIT NOT NULL CONSTRAINT [DF_device_operation_retry_states_person_pending] DEFAULT ((0)),
         [face_payload] NVARCHAR(MAX) NULL,
@@ -42,11 +42,12 @@ BEGIN
 END
 GO
 
+-- 旧表升级必须保持历史行为：新增列默认 0；只有新的权限补偿意图会显式置 1。
 IF COL_LENGTH(N'dbo.device_operation_retry_states', N'permission_sync_completion_blocked') IS NULL
 BEGIN
     ALTER TABLE [dbo].[device_operation_retry_states]
         ADD [permission_sync_completion_blocked] BIT NOT NULL
-            CONSTRAINT [DF_device_operation_retry_states_permission_sync_completion_blocked] DEFAULT ((1));
+            CONSTRAINT [DF_device_operation_retry_states_permission_sync_completion_blocked] DEFAULT ((0));
 END
 GO
 

@@ -78,6 +78,7 @@ namespace ControlEntradaSalida.Tests
                 "intent_version",
                 "claim_token",
                 "claim_until",
+                "default ((0))",
                 "device_id",
                 "employee_id",
                 "permission_level",
@@ -120,6 +121,21 @@ namespace ControlEntradaSalida.Tests
                 Assert.Contains(token, special);
                 Assert.Contains("if col_length(n'dbo.device_operation_retry_states', n'" + token + "') is null", seed);
                 Assert.Contains("if col_length(n'dbo.device_operation_retry_states', n'" + token + "') is null", special);
+            }
+        }
+
+        [TestCase]
+        public static void Stage8DatabaseRetryStateScripts_KeepHistoricalRowsUnblockedByDefault()
+        {
+            foreach (var sql in new[]
+            {
+                ReadSqlFile("专项_20260309_设备操作重试状态表.sql"),
+                ReadSqlFile("stage1_4_integration_seed.sql")
+            })
+            {
+                Assert.Contains("permission_sync_completion_blocked", sql);
+                Assert.Contains("default ((0))", sql);
+                Assert.False(sql.Contains("permission_sync_completion_blocked] bit not null constraint [df_device_operation_retry_states_permission_sync_completion_blocked] default ((1))"));
             }
         }
 

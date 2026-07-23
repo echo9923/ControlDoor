@@ -106,14 +106,21 @@ namespace ControlDoor.GrpcApi
             var queuedDetails = new List<object>();
             var deviceErrors = new List<object>();
             var dbErrors = new List<object>();
+            var completionSettlements = CreateCompletionSettlements(parsed.Items.Select(command => command.EmployeeId));
 
             // PERM-07: 不同设备的 SubmitAndWait 可并行（dispatcher 已按 deviceId 路由到各自 worker）；
             // 同一设备内仍按员工顺序串行。聚合结构用单一锁串行化写入，保证响应一致性。
             var aggregateLock = new object();
             Action<DeviceRuntimeSnapshot, PermissionCommand> processOnlinePermission = (device, command) =>
             {
+                var settlement = completionSettlements[command.EmployeeId];
+                settlement.Expect(device.DeviceId, "SyncPermission");
                 var execution = ExecutePermissionTask(device, command, context);
                 var result = execution.Result;
+                if (!result.IsWaitOutcome)
+                {
+                    settlement.Record(device.DeviceId, "SyncPermission", result);
+                }
                 var detail = ToDeviceResult(device, result);
                 var shouldQueueRetry = ShouldQueueMutatingRetry(execution);
                 if (shouldQueueRetry)
@@ -133,6 +140,7 @@ namespace ControlDoor.GrpcApi
 
                 if (result.IsWaitOutcome)
                 {
+                    var completionContext = SnapshotContext(context);
                     RegisterMutationCompletionObserver(
                         execution,
                         device,
@@ -140,7 +148,12 @@ namespace ControlDoor.GrpcApi
                         "SyncPermission",
                         PermissionPayload(command),
                         command.PermissionCode,
-                        context);
+                        completionContext,
+                        finalResult =>
+                        {
+                            settlement.Record(device.DeviceId, "SyncPermission", finalResult);
+                            CompletePermissionMutation(execution, device, command, completionContext, finalResult, settlement);
+                        });
                 }
 
                 lock (aggregateLock)
@@ -200,7 +213,8 @@ namespace ControlDoor.GrpcApi
                     }
                 }
 
-                if (IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
+                if (IsEmployeeOperationComplete(employeeResults[command.EmployeeId]) &&
+                    TryCompleteSettlement(completionSettlements[command.EmployeeId]))
                 {
                     TryUpdateUser(dbErrors, () => userSyncWriter.MarkPermissionSynced(command.EmployeeId, command.PermissionCode), command.EmployeeId, "MarkPermissionSynced");
                 }
@@ -265,6 +279,7 @@ namespace ControlDoor.GrpcApi
             var queuedDetails = new List<object>();
             var deviceErrors = new List<object>();
             var dbErrors = new List<object>();
+            var completionSettlements = CreateCompletionSettlements(parsed.Items.Select(command => command.EmployeeId));
             var facesUploaded = 0;
 
             // PERM-07: 按设备并行（dispatcher 已按 deviceId 路由到各自 worker），
@@ -272,8 +287,19 @@ namespace ControlDoor.GrpcApi
             var aggregateLock = new object();
             Action<DeviceRuntimeSnapshot, PersonSyncCommand> processOnlinePerson = (device, command) =>
             {
+                var settlement = completionSettlements[command.EmployeeId];
+                settlement.Expect(device.DeviceId, "SyncPerson");
+                if (command.HasFace)
+                {
+                    settlement.Expect(device.DeviceId, "UploadFace");
+                }
+
                 var personExecution = ExecutePersonTask(device, command, context);
                 var personResult = personExecution.Result;
+                if (!personResult.IsWaitOutcome)
+                {
+                    settlement.Record(device.DeviceId, "SyncPerson", personResult);
+                }
                 var personDetail = ToDeviceResult(device, personResult, "SyncPerson");
                 var shouldQueuePersonRetry = ShouldQueueMutatingRetry(personExecution);
                 object personQueueDetail = null;
@@ -344,11 +370,16 @@ namespace ControlDoor.GrpcApi
                         completionContext,
                         finalResult =>
                         {
+                            settlement.Record(device.DeviceId, "SyncPerson", finalResult);
                             if (finalResult.Success)
                             {
                                 if (command.HasFace)
                                 {
                                     QueueCompletionRetry(personExecution, device, command.EmployeeId, "UploadFace", FacePayload(command), null, "人员同步最终成功，但人脸操作尚未开始。", completionContext);
+                                }
+                                else if (TryCompleteSettlement(settlement))
+                                {
+                                    CompleteFinalUserMutation(command.EmployeeId, "MarkPersonSynced", () => userSyncWriter.MarkPersonSynced(command.EmployeeId));
                                 }
                                 return;
                             }
@@ -369,6 +400,10 @@ namespace ControlDoor.GrpcApi
                 {
                     var faceExecution = ExecuteUploadFaceTask(device, command, context);
                     var faceResult = faceExecution.Result;
+                    if (!faceResult.IsWaitOutcome)
+                    {
+                        settlement.Record(device.DeviceId, "UploadFace", faceResult);
+                    }
                     var faceDetail = ToDeviceResult(device, faceResult, "UploadFace");
                     var shouldQueueFaceRetry = ShouldQueueMutatingRetry(faceExecution);
                     object faceQueueDetail = null;
@@ -388,6 +423,7 @@ namespace ControlDoor.GrpcApi
 
                     if (faceResult.IsWaitOutcome)
                     {
+                        var completionContext = SnapshotContext(context);
                         RegisterMutationCompletionObserver(
                             faceExecution,
                             device,
@@ -395,7 +431,12 @@ namespace ControlDoor.GrpcApi
                             "UploadFace",
                             FacePayload(command),
                             null,
-                            context);
+                            completionContext,
+                            finalResult =>
+                            {
+                                settlement.Record(device.DeviceId, "UploadFace", finalResult);
+                                CompleteFaceMutation(faceExecution, device, command, completionContext, finalResult, settlement);
+                            });
                     }
 
                     lock (aggregateLock)
@@ -488,7 +529,8 @@ namespace ControlDoor.GrpcApi
                     }
                 }
 
-                if (IsPersonSyncComplete(employeeResults[command.EmployeeId], command.HasFace))
+                if (IsPersonSyncComplete(employeeResults[command.EmployeeId], command.HasFace) &&
+                    TryCompleteSettlement(completionSettlements[command.EmployeeId]))
                 {
                     TryUpdateUser(dbErrors, () => userSyncWriter.MarkPersonSynced(command.EmployeeId), command.EmployeeId, "MarkPersonSynced");
                 }
@@ -859,15 +901,23 @@ namespace ControlDoor.GrpcApi
             var queuedDetails = new List<object>();
             var deviceErrors = new List<object>();
             var dbErrors = new List<object>();
+            var completionSettlements = CreateCompletionSettlements(parsed.Items.Select(command => command.EmployeeId));
 
             // PERM-07: 按设备并行；同设备内员工串行（DeletePerson 内部已 best-effort 删除人脸再删除人员）。
             var aggregateLock = new object();
             Action<DeviceRuntimeSnapshot, EmployeeCommand> processOnlineDelete = (device, command) =>
             {
+                var settlement = completionSettlements[command.EmployeeId];
+                settlement.Expect(device.DeviceId, operation);
                 var execution = operation == "DeleteFace"
                     ? ExecuteDeleteFaceTask(device, command.EmployeeId, context)
                     : ExecuteDeletePersonTask(device, command.EmployeeId, context);
                 var result = execution.Result;
+                if (!result.IsWaitOutcome)
+                {
+                    settlement.Record(device.DeviceId, operation, result);
+                }
+
                 var detail = ToDeviceResult(device, result, operation);
                 var shouldQueueRetry = ShouldQueueMutatingRetry(execution);
                 if (shouldQueueRetry)
@@ -887,6 +937,7 @@ namespace ControlDoor.GrpcApi
 
                 if (result.IsWaitOutcome)
                 {
+                    var completionContext = SnapshotContext(context);
                     RegisterMutationCompletionObserver(
                         execution,
                         device,
@@ -894,7 +945,12 @@ namespace ControlDoor.GrpcApi
                         operation,
                         EmployeePayload(command.EmployeeId),
                         null,
-                        context);
+                        completionContext,
+                        finalResult =>
+                        {
+                            settlement.Record(device.DeviceId, operation, finalResult);
+                            CompleteDeleteMutation(execution, device, command.EmployeeId, operation, completionContext, finalResult, settlement);
+                        });
                 }
 
                 lock (aggregateLock)
@@ -954,7 +1010,9 @@ namespace ControlDoor.GrpcApi
                     }
                 }
 
-                if (operation == "DeletePerson" && IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
+                if (operation == "DeletePerson" &&
+                    IsEmployeeOperationComplete(employeeResults[command.EmployeeId]) &&
+                    TryCompleteSettlement(completionSettlements[command.EmployeeId]))
                 {
                     TryUpdateUser(dbErrors, () => userSyncWriter.MarkPersonDeleted(command.EmployeeId), command.EmployeeId, "MarkPersonDeleted");
                 }
@@ -1251,6 +1309,95 @@ namespace ControlDoor.GrpcApi
             }
         }
 
+        private void CompletePermissionMutation(
+            MutationTaskExecution execution,
+            DeviceRuntimeSnapshot device,
+            PermissionCommand command,
+            GrpcRequestContext context,
+            DeviceTaskResult finalResult,
+            MutationCompletionSettlement settlement)
+        {
+            if (finalResult != null && finalResult.Success)
+            {
+                if (TryCompleteSettlement(settlement))
+                {
+                    CompleteFinalUserMutation(command.EmployeeId, "MarkPermissionSynced", () => userSyncWriter.MarkPermissionSynced(command.EmployeeId, command.PermissionCode));
+                }
+                return;
+            }
+
+            if (ShouldQueueCompletionRetry(execution, finalResult))
+            {
+                QueueCompletionRetry(execution, device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, finalResult == null ? "设备任务最终结果为 null。" : finalResult.Message, context);
+            }
+        }
+
+        private void CompleteFaceMutation(
+            MutationTaskExecution execution,
+            DeviceRuntimeSnapshot device,
+            PersonSyncCommand command,
+            GrpcRequestContext context,
+            DeviceTaskResult finalResult,
+            MutationCompletionSettlement settlement)
+        {
+            if (finalResult != null && finalResult.Success)
+            {
+                if (TryCompleteSettlement(settlement))
+                {
+                    CompleteFinalUserMutation(command.EmployeeId, "MarkPersonSynced", () => userSyncWriter.MarkPersonSynced(command.EmployeeId));
+                }
+                return;
+            }
+
+            if (ShouldQueueCompletionRetry(execution, finalResult))
+            {
+                QueueCompletionRetry(execution, device, command.EmployeeId, "UploadFace", FacePayload(command), null, finalResult == null ? "设备任务最终结果为 null。" : finalResult.Message, context);
+            }
+        }
+
+        private void CompleteDeleteMutation(
+            MutationTaskExecution execution,
+            DeviceRuntimeSnapshot device,
+            string employeeId,
+            string operation,
+            GrpcRequestContext context,
+            DeviceTaskResult finalResult,
+            MutationCompletionSettlement settlement)
+        {
+            if (finalResult != null && finalResult.Success)
+            {
+                if (string.Equals(operation, "DeletePerson", StringComparison.OrdinalIgnoreCase) &&
+                    TryCompleteSettlement(settlement))
+                {
+                    CompleteFinalUserMutation(employeeId, "MarkPersonDeleted", () => userSyncWriter.MarkPersonDeleted(employeeId));
+                }
+                return;
+            }
+
+            if (ShouldQueueCompletionRetry(execution, finalResult))
+            {
+                QueueCompletionRetry(execution, device, employeeId, operation, EmployeePayload(employeeId), null, finalResult == null ? "设备任务最终结果为 null。" : finalResult.Message, context);
+            }
+        }
+
+        // Completion observer 不能向已返回的 gRPC 响应追加 dbErrors；最终状态更新失败必须只暴露为日志错误。
+        private void CompleteFinalUserMutation(string employeeId, string operationName, Action update)
+        {
+            try
+            {
+                update();
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("PermissionSync", "在线 mutation 最终用户状态更新失败。", ex, new LogFields
+                {
+                    EmployeeId = employeeId,
+                    OperationName = operationName,
+                    ErrorCode = "DB_ERROR"
+                });
+            }
+        }
+
         private void QueueCompletionRetry(
             MutationTaskExecution execution,
             DeviceRuntimeSnapshot device,
@@ -1370,6 +1517,28 @@ namespace ControlDoor.GrpcApi
                 RequestId = context == null ? null : context.RequestId,
                 CorrelationId = context == null ? null : context.CorrelationId
             };
+        }
+
+        private static IDictionary<string, MutationCompletionSettlement> CreateCompletionSettlements(
+            IEnumerable<string> employeeIds)
+        {
+            var settlements = new Dictionary<string, MutationCompletionSettlement>(StringComparer.OrdinalIgnoreCase);
+            foreach (var employeeId in employeeIds ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(employeeId) || settlements.ContainsKey(employeeId))
+                {
+                    continue;
+                }
+
+                settlements[employeeId] = new MutationCompletionSettlement { Key = employeeId };
+            }
+
+            return settlements;
+        }
+
+        private static bool TryCompleteSettlement(MutationCompletionSettlement settlement)
+        {
+            return settlement == null || settlement.TryComplete();
         }
 
         private DeviceTaskResult MapGatewayException(DeviceSdkTask task, Exception ex, DeviceRuntimeSnapshot snapshot)
@@ -1986,6 +2155,79 @@ namespace ControlDoor.GrpcApi
                 {
                     return claimedRetryOperations.Add(operation);
                 }
+            }
+        }
+
+        // 同一请求内跨设备、跨人员/人脸子操作的最终成功必须在聚合层面结算，
+        // 防止单台设备 Completion 先返回时绕过其他设备仍 pending/queued 的状态。
+        private sealed class MutationCompletionSettlement
+        {
+            private readonly object gate = new object();
+            private readonly HashSet<string> expectedOperations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            private readonly HashSet<string> completedOperations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            private bool failed;
+            private bool finalized;
+
+            public string Key { get; set; }
+
+            public void Expect(int deviceId, string operation)
+            {
+                if (deviceId <= 0 || string.IsNullOrWhiteSpace(operation))
+                {
+                    return;
+                }
+
+                lock (gate)
+                {
+                    if (!finalized)
+                    {
+                        expectedOperations.Add(OperationKey(deviceId, operation));
+                    }
+                }
+            }
+
+            public void Record(int deviceId, string operation, DeviceTaskResult finalResult)
+            {
+                if (deviceId <= 0 || string.IsNullOrWhiteSpace(operation))
+                {
+                    return;
+                }
+
+                lock (gate)
+                {
+                    if (finalized)
+                    {
+                        return;
+                    }
+
+                    if (finalResult == null || !finalResult.Success)
+                    {
+                        failed = true;
+                        return;
+                    }
+
+                    // 即时成功可能发生在等待路径调用 Expect 之前；先记录，后续 Expect 不会覆盖。
+                    completedOperations.Add(OperationKey(deviceId, operation));
+                }
+            }
+
+            public bool TryComplete()
+            {
+                lock (gate)
+                {
+                    if (finalized)
+                    {
+                        return false;
+                    }
+
+                    finalized = true;
+                    return !failed && expectedOperations.Count > 0 && completedOperations.SetEquals(expectedOperations);
+                }
+            }
+
+            private static string OperationKey(int deviceId, string operation)
+            {
+                return deviceId.ToString(CultureInfo.InvariantCulture) + ":" + operation.Trim();
             }
         }
 
