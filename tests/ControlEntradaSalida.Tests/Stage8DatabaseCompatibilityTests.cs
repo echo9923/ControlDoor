@@ -70,11 +70,14 @@ namespace ControlEntradaSalida.Tests
         [TestCase]
         public static void Stage8DatabaseRetryStateScript_ContainsColumnsAndIndexesUsedByRetryEngine()
         {
-            var sql = ReadSqlFileContaining("20260309");
+            var sql = ReadSqlFile("专项_20260309_设备操作重试状态表.sql");
 
             foreach (var token in new[]
             {
                 "device_operation_retry_states",
+                "intent_version",
+                "claim_token",
+                "claim_until",
                 "device_id",
                 "employee_id",
                 "permission_level",
@@ -97,6 +100,26 @@ namespace ControlEntradaSalida.Tests
             })
             {
                 Assert.Contains(token.ToLowerInvariant(), sql);
+            }
+        }
+
+        [TestCase]
+        public static void Stage8DatabaseRetryStateSeed_MatchesSpecialScriptVersionAndLeaseColumns()
+        {
+            var seed = ReadSqlFile("stage1_4_integration_seed.sql");
+            var special = ReadSqlFile("专项_20260309_设备操作重试状态表.sql");
+
+            foreach (var token in new[]
+            {
+                "intent_version",
+                "claim_token",
+                "claim_until"
+            })
+            {
+                Assert.Contains(token, seed);
+                Assert.Contains(token, special);
+                Assert.Contains("if col_length(n'dbo.device_operation_retry_states', n'" + token + "') is null", seed);
+                Assert.Contains("if col_length(n'dbo.device_operation_retry_states', n'" + token + "') is null", special);
             }
         }
 
@@ -156,6 +179,11 @@ namespace ControlEntradaSalida.Tests
 
             Assert.NotNull(file, marker);
             return File.ReadAllText(file, Encoding.UTF8).ToLowerInvariant();
+        }
+
+        private static string ReadSqlFile(string fileName)
+        {
+            return File.ReadAllText(Path.Combine("database", fileName), Encoding.UTF8).ToLowerInvariant();
         }
 
         private static IEnumerable<string> CoreDocumentationFiles()

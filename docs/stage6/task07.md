@@ -2,7 +2,7 @@
 
 ## 目标
 
-定义阶段 6 的单元测试、数据库兼容测试、mock 设备集成测试和运维验收标准，证明离线补偿机制在不修改现有表结构的前提下可稳定运行。
+定义阶段 6 的单元测试、数据库兼容测试、mock 设备集成测试和运维验收标准，证明离线补偿机制在既有表上幂等补齐版本与租约列后可稳定运行。
 
 ## 单元测试
 
@@ -18,13 +18,15 @@
 
 | 测试 | 验证 |
 | --- | --- |
-| 表结构快照 | `device_operation_retry_states` 字段、索引、约束不变。 |
-| Upsert 插入 | 新补偿状态字段正确。 |
+| 表结构快照 | `device_operation_retry_states` 字段、索引、约束不变，并包含 `intent_version`、`claim_token`、`claim_until`。 |
+| Seed/专项兼容 | `stage1_4_integration_seed.sql` 与 `专项_20260309_设备操作重试状态表.sql` 均包含三列建表定义和幂等补列判断。 |
+| Upsert 插入 | 新补偿状态字段正确，初始 `intent_version = 1` 且无活动领取租约。 |
 | Upsert 更新 | 同设备同员工只有一行。 |
 | 终态重新激活 | 新业务意图可清空 `exhausted_at`。 |
-| 到期扫描 | 只扫描未终态、到期、有 pending 的状态。 |
-| 成功删除 | 所有 pending 清空后删除状态行。 |
-| 失败回写 | attempt、next_retry_at、last_error、last_attempt_at 正确。 |
+| 到期扫描 | 只扫描未终态、无活动租约、到期、有 pending 的状态。 |
+| 数据库领取 | 原子写入 `claim_token`、`claim_until`，并校验 `intent_version`；领取失败不投递任务。 |
+| 成功删除 | 所有 pending 清空后，携带版本和租约条件删除状态行。 |
+| 失败回写 | attempt、next_retry_at、last_error、last_attempt_at 正确，并清除领取租约。 |
 | 终态写入 | 达到上限写入 exhausted_at。 |
 | 清理终态 | 只删除超过保留天数的终态行。 |
 
@@ -80,7 +82,7 @@
 
 | 标准 | 说明 |
 | --- | --- |
-| 数据库零结构变更 | 未修改现有表结构，未新增阶段 6 表。 |
+| 数据库兼容变更 | 仅幂等补齐 `intent_version`、`claim_token`、`claim_until`，未新增阶段 6 表；旧表数据可继续读取。 |
 | 合并规则确定 | 最新业务意图覆盖旧意图，冲突动作有明确结果。 |
 | 扫描可恢复 | 服务重启后可继续扫描未完成状态。 |
 | 重试可退避 | 可重试失败不会高频占用设备通道。 |

@@ -331,10 +331,14 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains(@"""UserInfo""", native.LastStdXmlInput);
             Assert.Contains(@"""employeeNo"":""10001""", native.LastStdXmlInput);
             Assert.Contains(@"""userVerifyMode"":""face""", native.LastStdXmlInput);
-            Assert.False(native.LastStdXmlInput.Contains(@"""Valid"""));
-            Assert.False(native.LastStdXmlInput.Contains(@"""enable"""));
-            Assert.False(native.LastStdXmlInput.Contains(@"""doorRight"""));
-            Assert.False(native.LastStdXmlInput.Contains(@"""RightPlan"""));
+            Assert.Contains(@"""Valid""", native.LastStdXmlInput);
+            Assert.Contains(@"""enable"":true", native.LastStdXmlInput);
+            Assert.Contains(@"""beginTime"":""2022-01-01T00:00:00""", native.LastStdXmlInput);
+            Assert.Contains(@"""endTime"":""2035-12-31T23:59:59""", native.LastStdXmlInput);
+            Assert.Contains(@"""doorRight"":""1""", native.LastStdXmlInput);
+            Assert.Contains(@"""RightPlan""", native.LastStdXmlInput);
+            Assert.Contains(@"""doorNo"":1", native.LastStdXmlInput);
+            Assert.Contains(@"""planTemplateNo"":""1""", native.LastStdXmlInput);
         }
 
         [TestCase]
@@ -362,7 +366,7 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SdkWrapper_UpsertPerson_OmitsPermissionFieldsRegardlessOfPersonState()
+        public static void SdkWrapper_UpsertPerson_PreservesValidityAndDisabledPermissionFields()
         {
             var native = new Stage3FakeNativeClient { StdXmlOutput = @"{""statusCode"":1}" };
             var gateway = new HikvisionSdkWrapper(native);
@@ -370,8 +374,8 @@ namespace ControlEntradaSalida.Tests
 
             var person = Person("10001");
             person.Enabled = false;
-            person.ValidFrom = new DateTime(2026, 1, 1);
-            person.ValidTo = new DateTime(2030, 1, 1);
+            person.ValidFrom = new DateTime(2026, 1, 1, 8, 30, 0);
+            person.ValidTo = new DateTime(2030, 12, 31, 18, 45, 0);
             gateway.UpsertPersonAsync(new UpsertPersonRequest
             {
                 UserId = login.UserId,
@@ -380,12 +384,12 @@ namespace ControlEntradaSalida.Tests
 
             Assert.Contains(@"""employeeNo"":""10001""", native.LastStdXmlInput);
             Assert.Contains(@"""userVerifyMode"":""face""", native.LastStdXmlInput);
-            Assert.False(native.LastStdXmlInput.Contains(@"""Valid"""));
-            Assert.False(native.LastStdXmlInput.Contains(@"""enable"""));
-            Assert.False(native.LastStdXmlInput.Contains(@"""beginTime"""));
-            Assert.False(native.LastStdXmlInput.Contains(@"""endTime"""));
-            Assert.False(native.LastStdXmlInput.Contains(@"""doorRight"""));
-            Assert.False(native.LastStdXmlInput.Contains(@"""RightPlan"""));
+            Assert.Contains(@"""Valid""", native.LastStdXmlInput);
+            Assert.Contains(@"""enable"":false", native.LastStdXmlInput);
+            Assert.Contains(@"""beginTime"":""2026-01-01T08:30:00""", native.LastStdXmlInput);
+            Assert.Contains(@"""endTime"":""2030-12-31T18:45:00""", native.LastStdXmlInput);
+            Assert.Contains("\"doorRight\":\"\"", native.LastStdXmlInput);
+            Assert.Contains(@"""RightPlan"":[]", native.LastStdXmlInput);
         }
 
         [TestCase]

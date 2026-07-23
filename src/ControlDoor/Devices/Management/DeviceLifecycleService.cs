@@ -431,84 +431,135 @@ namespace ControlDoor.Devices.Management
                 };
             }
 
+            var leaseId = barrier.DeleteLeaseId;
+            var delayedTasks = delayedScheduler == null
+                ? new List<DelayedDeviceTask>()
+                : delayedScheduler.TakeByDevice(deviceId).ToList();
             var lookup = registry.TryGetByDeviceId(deviceId);
+            var snapshot = lookup.Snapshot;
+            var checkpoint = barrier.DeleteCheckpoint ?? snapshot;
+            var hasActiveAlarm = checkpoint != null &&
+                (checkpoint.AlarmHandle.HasValue ||
+                 checkpoint.StaleAlarmHandle.HasValue ||
+                 (checkpoint.PendingAlarmHandles != null && checkpoint.PendingAlarmHandles.Count > 0));
             if (lookup.Found && !disconnectFirst &&
-                (lookup.Snapshot.IsConnected ||
-                 lookup.Snapshot.Status == DeviceConnectionStatus.Connecting ||
-                 lookup.Snapshot.SdkUserId.HasValue ||
-                 lookup.Snapshot.AlarmHandle.HasValue))
+                (hasActiveAlarm ||
+                 (checkpoint != null &&
+                  (checkpoint.IsConnected ||
+                   checkpoint.Status == DeviceConnectionStatus.Connecting ||
+                   checkpoint.SdkUserId.HasValue))))
             {
-                registry.ClearDeleting(deviceId, DateTime.Now);
+                var restored = registry.ClearDeleting(deviceId, DateTime.Now, null, leaseId);
+                delayedScheduler?.RestoreTasks(delayedTasks);
                 return new DeviceOperationResult
                 {
                     Success = false,
                     Code = "DEVICE_CONNECTED",
                     DeviceId = deviceId,
-                    Message = "设备仍在线，disconnectFirst=false 时拒绝删除。",
-                    Snapshot = lookup.Snapshot
+                    Message = "设备仍在线或存在待清理布防句柄，disconnectFirst=false 时拒绝删除。",
+                    Snapshot = restored.Snapshot ?? registry.TryGetByDeviceId(deviceId).Snapshot
                 };
             }
 
-            if (lookup.Found && disconnectFirst)
+            try
             {
-                var cleanup = CreateDisconnectTask(deviceId, "DeleteDeviceCleanup", DeviceConnectionStatus.Offline, requestId);
-                cleanup.Priority = DeviceTaskPriority.Critical;
-                var cleanupResult = dispatcher.SubmitAndWaitAsync(cleanup).GetAwaiter().GetResult();
-                if (!cleanupResult.Success && cleanupResult.Code != "OK")
+                if (lookup.Found && disconnectFirst)
                 {
-                    registry.ClearDeleting(deviceId, DateTime.Now);
-                    return FromTaskResult(cleanupResult);
+                    var cleanup = CreateDisconnectTask(deviceId, "DeleteDeviceCleanup", DeviceConnectionStatus.Offline, requestId, leaseId);
+                    cleanup.Priority = DeviceTaskPriority.Critical;
+                    var cleanupResult = dispatcher.SubmitAndWaitAsync(cleanup).GetAwaiter().GetResult();
+                    if (!cleanupResult.Success && cleanupResult.Code != "OK")
+                    {
+                        var restored = registry.ClearDeleting(deviceId, DateTime.Now, null, leaseId);
+                        delayedScheduler?.RestoreTasks(delayedTasks);
+                        return new DeviceOperationResult
+                        {
+                            Success = false,
+                            Code = cleanupResult.Code,
+                            DeviceId = deviceId,
+                            Message = cleanupResult.Message,
+                            TaskResult = cleanupResult,
+                            Snapshot = restored.Snapshot ?? registry.TryGetByDeviceId(deviceId).Snapshot
+                        };
+                    }
                 }
-            }
 
-            CancelDelayedReconnect(deviceId);
-            CancelDelayedReArm(deviceId);
-            // 删除前 best-effort 排空历史遗留的待清理 SDK 会话（补偿登出失败留下的）。
-            // 仍有 pending 时拒绝删除，避免 RemoveDevice 丢失最后的会话清理记录。
-            if (!DrainPendingSdkLogoutsForDevice(deviceId))
+                CancelDelayedReconnect(deviceId);
+                CancelDelayedReArm(deviceId);
+                // 删除前 best-effort 排空历史遗留的待清理 SDK 会话（补偿登出失败留下的）。
+                // 仍有 pending 时拒绝删除，避免 RemoveDevice 丢失最后的会话清理记录。
+                if (!DrainPendingSdkLogoutsForDevice(deviceId, leaseId))
+                {
+                    var restored = registry.ClearDeleting(deviceId, DateTime.Now, null, leaseId);
+                    delayedScheduler?.RestoreTasks(delayedTasks);
+                    return new DeviceOperationResult
+                    {
+                        Success = false,
+                        Code = "PENDING_LOGOUT",
+                        DeviceId = deviceId,
+                        Message = "仍有 SDK 会话未成功登出，已保留 pending 清理记录。",
+                        Snapshot = restored.Snapshot ?? registry.TryGetByDeviceId(deviceId).Snapshot
+                    };
+                }
+
+                var delete = repository.DeleteDevice(deviceId);
+                if (!delete.Success)
+                {
+                    var restored = registry.ClearDeleting(deviceId, DateTime.Now, null, leaseId);
+                    delayedScheduler?.RestoreTasks(delayedTasks);
+                    return new DeviceOperationResult
+                    {
+                        Success = false,
+                        Code = delete.Code,
+                        DeviceId = deviceId,
+                        Message = delete.Message,
+                        Snapshot = restored.Snapshot ?? registry.TryGetByDeviceId(deviceId).Snapshot
+                    };
+                }
+
+                var removed = registry.RemoveDevice(deviceId, DateTime.Now, null, leaseId);
+                if (!removed.Success && removed.Code != "DEVICE_NOT_FOUND")
+                {
+                    var restored = registry.ClearDeleting(deviceId, DateTime.Now, null, leaseId);
+                    delayedScheduler?.RestoreTasks(delayedTasks);
+                    return new DeviceOperationResult
+                    {
+                        Success = false,
+                        Code = removed.Code,
+                        DeviceId = deviceId,
+                        Message = removed.Message,
+                        Snapshot = restored.Snapshot ?? registry.TryGetByDeviceId(deviceId).Snapshot
+                    };
+                }
+
+                delayedScheduler?.DiscardTasks(delayedTasks, "device deleted");
+                return new DeviceOperationResult
+                {
+                    Success = true,
+                    Code = "OK",
+                    DeviceId = deviceId,
+                    Message = "设备已删除。"
+                };
+            }
+            catch (Exception ex)
             {
-                registry.ClearDeleting(deviceId, DateTime.Now);
+                var restored = registry.ClearDeleting(deviceId, DateTime.Now, null, leaseId);
+                delayedScheduler?.RestoreTasks(delayedTasks);
                 return new DeviceOperationResult
                 {
                     Success = false,
-                    Code = "PENDING_LOGOUT",
+                    Code = "INTERNAL_ERROR",
                     DeviceId = deviceId,
-                    Message = "仍有 SDK 会话未成功登出，已保留 pending 清理记录。",
-                    Snapshot = registry.TryGetByDeviceId(deviceId).Snapshot
+                    Message = ex.Message,
+                    Snapshot = restored.Snapshot ?? registry.TryGetByDeviceId(deviceId).Snapshot
                 };
             }
-
-            var delete = repository.DeleteDevice(deviceId);
-            if (!delete.Success)
-            {
-                registry.ClearDeleting(deviceId, DateTime.Now);
-                return new DeviceOperationResult
-                {
-                    Success = false,
-                    Code = delete.Code,
-                    DeviceId = deviceId,
-                    Message = delete.Message
-                };
-            }
-
-            if (lookup.Found)
-            {
-                registry.RemoveDevice(deviceId, DateTime.Now);
-            }
-
-            return new DeviceOperationResult
-            {
-                Success = true,
-                Code = "OK",
-                DeviceId = deviceId,
-                Message = "设备已删除。"
-            };
         }
 
         // 删除/断开前同步排空历史遗留的待清理 SDK 会话；与 DrainPendingSdkLogoutsAsync（登录路径）保持一致的语义：
         // 登出成功或返回 17（设备端已无此会话）即清除；其余失败保留 pending，避免静默丢弃待清理记录。
         // 每次 SDK 登出都通过同设备 worker，避免删除线程绕过 SDK 串行化约束。
-        private bool DrainPendingSdkLogoutsForDevice(int deviceId)
+        private bool DrainPendingSdkLogoutsForDevice(int deviceId, string deletingLeaseId)
         {
             var pending = registry.GetPendingSdkLogouts(deviceId);
             if (pending.Count == 0)
@@ -518,11 +569,34 @@ namespace ControlDoor.Devices.Management
 
             foreach (var userId in pending)
             {
-                var task = CreatePendingLogoutTask(deviceId, userId, "DeleteDevicePendingLogout");
+                var task = CreatePendingLogoutTask(deviceId, userId, "DeleteDevicePendingLogout", deletingLeaseId);
                 var result = dispatcher.SubmitAndWaitAsync(task).GetAwaiter().GetResult();
                 if (result.Success || result.SdkErrorCode == 17)
                 {
-                    registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
+                    if (!string.IsNullOrWhiteSpace(deletingLeaseId))
+                    {
+                        var current = registry.TryGetByDeviceId(deviceId).Snapshot;
+                        if (current == null || !registry.RecordCleanedDuringDeleteSdkUser(
+                            deviceId,
+                            userId,
+                            DateTime.Now,
+                            current.SdkUserId,
+                            current.RuntimeVersion,
+                            deletingLeaseId).Success)
+                        {
+                            logger?.Warn("DeviceLifecycle", "删除前排空 SDK 会话成功，但运行时清理记录失败。", new LogFields
+                            {
+                                DeviceId = deviceId,
+                                OperationName = "DeviceLogout",
+                                ErrorCode = "DELETE_CLEANUP_STATE_REJECTED"
+                            });
+                        }
+                    }
+                    else
+                    {
+                        registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now, null, false, null, null, null);
+                    }
+
                     continue;
                 }
 
@@ -540,14 +614,25 @@ namespace ControlDoor.Devices.Management
         public void StopAllDevicesBestEffort()
         {
             var snapshots = registry.GetAllSnapshots()
-                .Where(item => item.SdkUserId.HasValue || item.AlarmHandle.HasValue || item.IsConnected)
+                .Where(item => item.IsDeleting ||
+                    item.SdkUserId.HasValue ||
+                    item.AlarmHandle.HasValue ||
+                    item.StaleAlarmHandle.HasValue ||
+                    (item.PendingAlarmHandles != null && item.PendingAlarmHandles.Count > 0) ||
+                    (item.PendingSdkLogoutUserIds != null && item.PendingSdkLogoutUserIds.Count > 0) ||
+                    item.IsConnected)
                 .ToList();
             foreach (var snapshot in snapshots)
             {
                 try
                 {
                     CancelDelayedReArm(snapshot.DeviceId);
-                    var task = CreateDisconnectTask(snapshot.DeviceId, "ServiceStopCleanup", DeviceConnectionStatus.Offline, string.Empty);
+                    var task = CreateDisconnectTask(
+                        snapshot.DeviceId,
+                        "ServiceStopCleanup",
+                        DeviceConnectionStatus.Offline,
+                        string.Empty,
+                        snapshot.IsDeleting ? snapshot.DeletingLeaseId : null);
                     task.Priority = DeviceTaskPriority.Critical;
                     dispatcher.SubmitAndWaitAsync(task).GetAwaiter().GetResult();
                 }
@@ -604,7 +689,10 @@ namespace ControlDoor.Devices.Management
                     return DeviceTaskResult.FromTask(context.Task, false, connecting.Code, connecting.Message, DeviceConnectionStatus.Disconnecting, started, DateTime.Now);
                 }
 
+                var connectingRuntimeVersion = connecting.Snapshot == null ? (long?)null : connecting.Snapshot.RuntimeVersion;
                 int? loggedInUserId = null;
+                int? registeredSdkUserId = null;
+                long? registeredRuntimeVersion = connectingRuntimeVersion;
                 var sessionRegistered = false;
 
                 try
@@ -619,7 +707,15 @@ namespace ControlDoor.Devices.Management
                     }, context.CancellationToken).ConfigureAwait(false);
                     var serial = login.DeviceInfo == null ? string.Empty : login.DeviceInfo.SerialNumber;
                     loggedInUserId = login.UserId;
-                    var register = context.Registry.RegisterSdkUserId(deviceId, login.UserId, serial, DateTime.Now, publishOnline: false);
+                    var register = context.Registry.RegisterSdkUserId(
+                        deviceId,
+                        login.UserId,
+                        serial,
+                        DateTime.Now,
+                        context: null,
+                        publishOnline: false,
+                        expectedSdkUserId: null,
+                        expectedRuntimeVersion: connectingRuntimeVersion);
                     sessionRegistered = register.Success;
                     if (!register.Success)
                     {
@@ -630,35 +726,130 @@ namespace ControlDoor.Devices.Management
                         }
                         catch (Exception logoutEx)
                         {
-                            RecordCompensationLogoutFailure(context, deviceId, login.UserId, logoutEx);
+                            var current = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                            var allowDeleting = current != null &&
+                                current.IsDeleting &&
+                                !string.IsNullOrWhiteSpace(current.DeletingLeaseId);
+                            RecordCompensationLogoutFailure(
+                                context,
+                                deviceId,
+                                login.UserId,
+                                logoutEx,
+                                expectedSdkUserId: current == null ? (int?)null : current.SdkUserId,
+                                expectedRuntimeVersion: current == null ? connectingRuntimeVersion : current.RuntimeVersion,
+                                allowDeleting: allowDeleting,
+                                expectedDeletingLeaseId: allowDeleting ? current.DeletingLeaseId : null);
+                        }
+
+                        var conflictError = DeviceRuntimeError.Create(
+                            "DeviceLogin",
+                            register.Code,
+                            register.Message,
+                            DateTime.Now,
+                            sdkErrorCode: null,
+                            retryable: true);
+                        var conflictFailed = context.Registry.MarkLoginFailed(
+                            deviceId,
+                            conflictError,
+                            DateTime.Now,
+                            faulted: false,
+                            context: null,
+                            expectedSdkUserId: null,
+                            expectedRuntimeVersion: connectingRuntimeVersion);
+                        if (conflictFailed.Success)
+                        {
+                            ScheduleReconnect(
+                                deviceId,
+                                conflictError.Message,
+                                conflictFailed.Snapshot == null ? (long?)null : conflictFailed.Snapshot.RuntimeVersion);
                         }
 
                         return DeviceTaskResult.FromTask(context.Task, false, register.Code, register.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
                     }
 
+                    registeredSdkUserId = login.UserId;
+                    registeredRuntimeVersion = register.Snapshot == null
+                        ? connectingRuntimeVersion
+                        : register.Snapshot.RuntimeVersion;
                     if (IsDeviceDeleting(deviceId))
                     {
                         return await AbortLoginAfterDeleteAsync(context, deviceId, login.UserId, started).ConfigureAwait(false);
                     }
 
                     // 设备此刻可达，先 best-effort 排空历史遗留的待清理 SDK 会话（补偿登出失败留下的）。
-                    await DrainPendingSdkLogoutsAsync(context, deviceId).ConfigureAwait(false);
+                    var drained = await DrainPendingSdkLogoutsAsync(
+                        context,
+                        deviceId,
+                        registeredSdkUserId,
+                        registeredRuntimeVersion).ConfigureAwait(false);
+                    if (drained == null)
+                    {
+                        if (IsDeviceDeleting(deviceId))
+                        {
+                            return await AbortLoginAfterDeleteAsync(context, deviceId, login.UserId, started).ConfigureAwait(false);
+                        }
 
-                    var staleCleanup = await CloseStaleAlarmBeforeRearmAsync(context, register.Snapshot, started).ConfigureAwait(false);
+                        await LogoutSupersededLoginSessionAsync(
+                            context,
+                            deviceId,
+                            login.UserId,
+                            registeredSdkUserId,
+                            registeredRuntimeVersion).ConfigureAwait(false);
+                        return DeviceTaskResult.FromTask(context.Task, false, "INVALID_ARGUMENT", "设备运行时已发生变化，忽略旧登录回调。", DeviceConnectionStatus.Offline, started, DateTime.Now);
+                    }
+
+                    registeredRuntimeVersion = drained.RuntimeVersion;
+                    if (drained.IsDeleting)
+                    {
+                        return await AbortLoginAfterDeleteAsync(context, deviceId, login.UserId, started).ConfigureAwait(false);
+                    }
+
+                    var staleCleanup = await CloseStaleAlarmBeforeRearmAsync(context, drained, started).ConfigureAwait(false);
                     if (staleCleanup != null)
                     {
                         return staleCleanup;
                     }
 
-                    if (IsDeviceDeleting(deviceId))
+                    var currentAfterStaleCleanup = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                    if (currentAfterStaleCleanup == null ||
+                        currentAfterStaleCleanup.IsDeleting ||
+                        currentAfterStaleCleanup.SdkUserId != registeredSdkUserId)
                     {
-                        return await AbortLoginAfterDeleteAsync(context, deviceId, login.UserId, started).ConfigureAwait(false);
+                        if (currentAfterStaleCleanup != null && currentAfterStaleCleanup.IsDeleting)
+                        {
+                            return await AbortLoginAfterDeleteAsync(context, deviceId, login.UserId, started).ConfigureAwait(false);
+                        }
+
+                        await LogoutSupersededLoginSessionAsync(
+                            context,
+                            deviceId,
+                            login.UserId,
+                            registeredSdkUserId,
+                            registeredRuntimeVersion).ConfigureAwait(false);
+                        return DeviceTaskResult.FromTask(context.Task, false, "INVALID_ARGUMENT", "设备运行时已发生变化，忽略旧登录回调。", DeviceConnectionStatus.Offline, started, DateTime.Now);
                     }
 
-                    var publish = context.Registry.PromoteRegisteredSdkSession(deviceId, DateTime.Now);
+                    registeredRuntimeVersion = currentAfterStaleCleanup.RuntimeVersion;
+                    var publish = context.Registry.PromoteRegisteredSdkSession(
+                        deviceId,
+                        DateTime.Now,
+                        context: null,
+                        expectedSdkUserId: registeredSdkUserId,
+                        expectedRuntimeVersion: registeredRuntimeVersion);
                     if (!publish.Success)
                     {
-                        return await AbortLoginAfterDeleteAsync(context, deviceId, login.UserId, started).ConfigureAwait(false);
+                        if (IsDeviceDeleting(deviceId))
+                        {
+                            return await AbortLoginAfterDeleteAsync(context, deviceId, login.UserId, started).ConfigureAwait(false);
+                        }
+
+                        await LogoutSupersededLoginSessionAsync(
+                            context,
+                            deviceId,
+                            login.UserId,
+                            registeredSdkUserId,
+                            registeredRuntimeVersion).ConfigureAwait(false);
+                        return DeviceTaskResult.FromTask(context.Task, false, publish.Code, publish.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
                     }
 
                     ClearHealthFailures(deviceId);
@@ -681,25 +872,42 @@ namespace ControlDoor.Devices.Management
                 catch (Exception ex)
                 {
                     var error = ToRuntimeError("DeviceLogin", ex, DateTime.Now, retryable: true);
-                    if (sessionRegistered && loggedInUserId.HasValue)
+                    if (loggedInUserId.HasValue && (!sessionRegistered || registeredSdkUserId == loggedInUserId.Value))
                     {
-                        var current = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
-                        if (current != null && current.SdkUserId == loggedInUserId.Value)
+                        if (!sessionRegistered || CanCleanupRegisteredLoginSession(deviceId, loggedInUserId.Value, registeredRuntimeVersion))
                         {
-                            try
-                            {
-                                await gateway.LogoutAsync(new LogoutRequest { UserId = loggedInUserId.Value }, CancellationToken.None).ConfigureAwait(false);
-                            }
-                            catch (Exception logoutEx)
-                            {
-                                RecordCompensationLogoutFailure(context, deviceId, loggedInUserId.Value, logoutEx);
-                            }
+                            await LogoutSupersededLoginSessionAsync(
+                                context,
+                                deviceId,
+                                loggedInUserId.Value,
+                                sessionRegistered ? registeredSdkUserId : null,
+                                sessionRegistered ? registeredRuntimeVersion : connectingRuntimeVersion).ConfigureAwait(false);
                         }
                     }
 
-                    context.Registry.MarkLoginFailed(deviceId, error, DateTime.Now);
-                    ScheduleReconnect(deviceId, error.Message);
-                    LogLifecycleFailure(context, "Device login failed and reconnect was scheduled.", started, error);
+                    var expectedUserId = sessionRegistered ? registeredSdkUserId : null;
+                    var expectedVersion = sessionRegistered ? registeredRuntimeVersion : connectingRuntimeVersion;
+                    var failed = context.Registry.MarkLoginFailed(
+                        deviceId,
+                        error,
+                        DateTime.Now,
+                        faulted: false,
+                        context: null,
+                        expectedSdkUserId: expectedUserId,
+                        expectedRuntimeVersion: expectedVersion);
+                    if (failed.Success)
+                    {
+                        ScheduleReconnect(
+                            deviceId,
+                            error.Message,
+                            failed.Snapshot == null ? (long?)null : failed.Snapshot.RuntimeVersion);
+                        LogLifecycleFailure(context, "Device login failed and reconnect was scheduled.", started, error);
+                    }
+                    else
+                    {
+                        LogLifecycleFailure(context, "Device login failed; stale runtime callback was ignored.", started, error);
+                    }
+
                     var result = DeviceTaskResult.FromTask(context.Task, false, error.Code, error.Message, DeviceConnectionStatus.Offline, started, DateTime.Now);
                     result.SdkErrorCode = error.SdkErrorCode;
                     result.Retryable = true;
@@ -720,23 +928,117 @@ namespace ControlDoor.Devices.Management
 
         private async System.Threading.Tasks.Task<DeviceTaskResult> AbortLoginAfterDeleteAsync(DeviceTaskContext context, int deviceId, int userId, DateTime started)
         {
+            var deleting = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+            var leaseId = deleting != null && deleting.IsDeleting ? deleting.DeletingLeaseId : null;
+            var canMutate = deleting != null &&
+                deleting.IsDeleting &&
+                !string.IsNullOrWhiteSpace(leaseId) &&
+                deleting.SdkUserId == userId;
+            var logoutGone = false;
+
             try
             {
                 await gateway.LogoutAsync(new LogoutRequest { UserId = userId }, CancellationToken.None).ConfigureAwait(false);
-                context.Registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
-                context.Registry.MarkLoggedOut(deviceId, DateTime.Now);
+                logoutGone = true;
             }
             catch (Exception ex)
             {
-                RecordCompensationLogoutFailure(context, deviceId, userId, ex);
-                context.Registry.MarkLoginFailed(deviceId, ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false), DateTime.Now);
+                var error = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
+                logoutGone = error.SdkErrorCode == 17;
+                if (!logoutGone && canMutate)
+                {
+                    var current = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                    if (current != null &&
+                        current.IsDeleting &&
+                        string.Equals(current.DeletingLeaseId, leaseId, StringComparison.Ordinal) &&
+                        current.SdkUserId == userId)
+                    {
+                        RecordCompensationLogoutFailure(
+                            context,
+                            deviceId,
+                            userId,
+                            ex,
+                            expectedSdkUserId: userId,
+                            expectedRuntimeVersion: current.RuntimeVersion,
+                            allowDeleting: true,
+                            expectedDeletingLeaseId: leaseId);
+                    }
+                }
+            }
+
+            if (logoutGone && canMutate)
+            {
+                var current = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                if (current != null &&
+                    current.IsDeleting &&
+                    string.Equals(current.DeletingLeaseId, leaseId, StringComparison.Ordinal) &&
+                    current.SdkUserId == userId)
+                {
+                    var cleaned = context.Registry.RecordCleanedDuringDeleteSdkUser(
+                        deviceId,
+                        userId,
+                        DateTime.Now,
+                        expectedSdkUserId: userId,
+                        expectedRuntimeVersion: current.RuntimeVersion,
+                        expectedDeletingLeaseId: leaseId);
+                    if (!cleaned.Success)
+                    {
+                        logger?.Warn("DeviceLifecycle", "删除流程终止登录后，SDK 会话已登出但运行时清理记录失败。", new LogFields
+                        {
+                            DeviceId = deviceId,
+                            OperationName = "DeviceLogout",
+                            ErrorCode = "DELETE_CLEANUP_STATE_REJECTED"
+                        });
+                    }
+                }
             }
 
             return DeviceTaskResult.FromTask(context.Task, false, "DEVICE_DELETING", "设备已进入删除流程，已终止本次登录。", DeviceConnectionStatus.Disconnecting, started, DateTime.Now);
         }
 
+        private bool CanCleanupRegisteredLoginSession(int deviceId, int userId, long? expectedRuntimeVersion)
+        {
+            var snapshot = registry.TryGetByDeviceId(deviceId).Snapshot;
+            return snapshot != null &&
+                !snapshot.IsDeleting &&
+                snapshot.SdkUserId == userId &&
+                (!expectedRuntimeVersion.HasValue || snapshot.RuntimeVersion == expectedRuntimeVersion.Value);
+        }
+
+        private async System.Threading.Tasks.Task<DeviceRuntimeMutationResult> LogoutSupersededLoginSessionAsync(
+            DeviceTaskContext context,
+            int deviceId,
+            int userId,
+            int? expectedSdkUserId,
+            long? expectedRuntimeVersion)
+        {
+            try
+            {
+                await gateway.LogoutAsync(new LogoutRequest { UserId = userId }, CancellationToken.None).ConfigureAwait(false);
+                return null;
+            }
+            catch (Exception logoutEx)
+            {
+                return RecordCompensationLogoutFailure(
+                    context,
+                    deviceId,
+                    userId,
+                    logoutEx,
+                    expectedSdkUserId,
+                    expectedRuntimeVersion);
+            }
+        }
+
         // 补偿登出失败：区分 17（设备端已无此会话）与真实失败；真实失败时保留待清理会话，供下次登录重试，避免泄漏设备端 SDK 会话。
-        private void RecordCompensationLogoutFailure(DeviceTaskContext context, int deviceId, int userId, Exception ex)
+        private DeviceRuntimeMutationResult RecordCompensationLogoutFailure(
+            DeviceTaskContext context,
+            int deviceId,
+            int userId,
+            Exception ex,
+            int? expectedSdkUserId = null,
+            long? expectedRuntimeVersion = null,
+            bool allowDeleting = false,
+            string expectedDeletingLeaseId = null)
         {
             var error = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
             if (error.SdkErrorCode == 17)
@@ -747,33 +1049,55 @@ namespace ControlDoor.Devices.Management
                     OperationName = "DeviceLogout",
                     ErrorCode = error.Code
                 });
-                return;
+                return null;
             }
 
-            context.Registry.RecordPendingSdkLogout(deviceId, userId, DateTime.Now);
+            if (allowDeleting && string.IsNullOrWhiteSpace(expectedDeletingLeaseId))
+            {
+                return null;
+            }
+
+            var recorded = context.Registry.RecordPendingSdkLogout(
+                deviceId,
+                userId,
+                DateTime.Now,
+                context: null,
+                allowDeleting: allowDeleting,
+                expectedSdkUserId: expectedSdkUserId,
+                expectedRuntimeVersion: expectedRuntimeVersion,
+                expectedDeletingLeaseId: expectedDeletingLeaseId);
             logger?.Warn("DeviceLifecycle", "Compensation logout failed; SDK session " + userId + " retained for retry on next login.", new LogFields
             {
                 DeviceId = deviceId,
                 OperationName = "DeviceLogout",
                 ErrorCode = error.Code
             });
+            return recorded;
         }
 
         // 登录成功且设备可达后，best-effort 排空历史遗留的待清理 SDK 会话；成功或 17 即清除，其余保留至下次。
-        private async System.Threading.Tasks.Task DrainPendingSdkLogoutsAsync(DeviceTaskContext context, int deviceId)
+        private async System.Threading.Tasks.Task<DeviceRuntimeSnapshot> DrainPendingSdkLogoutsAsync(
+            DeviceTaskContext context,
+            int deviceId,
+            int? expectedSdkUserId,
+            long? expectedRuntimeVersion)
         {
+            var expectedVersion = expectedRuntimeVersion;
             var pending = context.Registry.GetPendingSdkLogouts(deviceId);
-            if (pending.Count == 0)
-            {
-                return;
-            }
-
             foreach (var userId in pending)
             {
+                var before = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                if (before == null ||
+                    before.IsDeleting ||
+                    (expectedSdkUserId.HasValue && before.SdkUserId != expectedSdkUserId.Value) ||
+                    (expectedVersion.HasValue && before.RuntimeVersion != expectedVersion.Value))
+                {
+                    return null;
+                }
+
                 try
                 {
                     await gateway.LogoutAsync(new LogoutRequest { UserId = userId }, context.CancellationToken).ConfigureAwait(false);
-                    context.Registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
                 }
                 catch (OperationCanceledException)
                 {
@@ -782,11 +1106,7 @@ namespace ControlDoor.Devices.Management
                 catch (Exception ex)
                 {
                     var error = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
-                    if (error.SdkErrorCode == 17)
-                    {
-                        context.Registry.ClearPendingSdkLogout(deviceId, userId, DateTime.Now);
-                    }
-                    else
+                    if (error.SdkErrorCode != 17)
                     {
                         logger?.Warn("DeviceLifecycle", "Drain of pending SDK logout " + userId + " failed; retained for the next login attempt.", new LogFields
                         {
@@ -794,9 +1114,45 @@ namespace ControlDoor.Devices.Management
                             OperationName = "DeviceLogout",
                             ErrorCode = error.Code
                         });
+                        continue;
                     }
                 }
+
+                var cleared = context.Registry.ClearPendingSdkLogout(
+                    deviceId,
+                    userId,
+                    DateTime.Now,
+                    context: null,
+                    allowDeleting: false,
+                    expectedSdkUserId: expectedSdkUserId,
+                    expectedRuntimeVersion: expectedVersion);
+                var after = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                if (!cleared.Success)
+                {
+                    if (after == null ||
+                        after.IsDeleting ||
+                        (expectedSdkUserId.HasValue && after.SdkUserId != expectedSdkUserId.Value) ||
+                        (expectedVersion.HasValue && after.RuntimeVersion != expectedVersion.Value))
+                    {
+                        return null;
+                    }
+
+                    continue;
+                }
+
+                expectedVersion = cleared.Snapshot == null ? after == null ? expectedVersion : after.RuntimeVersion : cleared.Snapshot.RuntimeVersion;
             }
+
+            var current = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+            if (current == null ||
+                current.IsDeleting ||
+                (expectedSdkUserId.HasValue && current.SdkUserId != expectedSdkUserId.Value) ||
+                (expectedVersion.HasValue && current.RuntimeVersion != expectedVersion.Value))
+            {
+                return null;
+            }
+
+            return current;
         }
 
         private async System.Threading.Tasks.Task<DeviceTaskResult> CloseStaleAlarmBeforeRearmAsync(DeviceTaskContext context, DeviceRuntimeSnapshot snapshot, DateTime started)
@@ -808,10 +1164,27 @@ namespace ControlDoor.Devices.Management
 
             var deviceId = context.Task.DeviceId;
             var staleAlarmHandle = snapshot.StaleAlarmHandle.Value;
+            var allowDeleting = snapshot.IsDeleting && !string.IsNullOrWhiteSpace(snapshot.DeletingLeaseId);
+            var expectedUserId = snapshot.SdkUserId;
+            var expectedRuntimeVersion = snapshot.RuntimeVersion;
+            var expectedDeletingLeaseId = allowDeleting ? snapshot.DeletingLeaseId : null;
             try
             {
                 await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = staleAlarmHandle }, context.CancellationToken).ConfigureAwait(false);
-                context.Registry.ClearStaleAlarmHandle(deviceId, DateTime.Now);
+                var cleared = context.Registry.ClearStaleAlarmHandle(
+                    deviceId,
+                    staleAlarmHandle,
+                    DateTime.Now,
+                    context: null,
+                    allowDeleting: allowDeleting,
+                    expectedSdkUserId: expectedUserId,
+                    expectedRuntimeVersion: expectedRuntimeVersion,
+                    expectedDeletingLeaseId: expectedDeletingLeaseId);
+                if (!cleared.Success)
+                {
+                    return await HandleStaleAlarmMutationRejectedAsync(context, snapshot, started, staleAlarmHandle).ConfigureAwait(false);
+                }
+
                 LogLifecycleSuccess(context, "Stale alarm handle closed before rearm.", started, fields =>
                 {
                     fields.Extra["staleAlarmHandle"] = staleAlarmHandle.ToString();
@@ -823,7 +1196,20 @@ namespace ControlDoor.Devices.Management
                 var error = ToRuntimeError("DeviceCloseStaleAlarm", ex, DateTime.Now, retryable: true);
                 if (error.SdkErrorCode == 17)
                 {
-                    context.Registry.ClearStaleAlarmHandle(deviceId, DateTime.Now);
+                    var cleared = context.Registry.ClearStaleAlarmHandle(
+                        deviceId,
+                        staleAlarmHandle,
+                        DateTime.Now,
+                        context: null,
+                        allowDeleting: allowDeleting,
+                        expectedSdkUserId: expectedUserId,
+                        expectedRuntimeVersion: expectedRuntimeVersion,
+                        expectedDeletingLeaseId: expectedDeletingLeaseId);
+                    if (!cleared.Success)
+                    {
+                        return await HandleStaleAlarmMutationRejectedAsync(context, snapshot, started, staleAlarmHandle).ConfigureAwait(false);
+                    }
+
                     logger?.Warn("DeviceLifecycle", "Stale alarm handle was already unavailable; continuing rearm.", new LogFields
                     {
                         DeviceId = deviceId,
@@ -838,19 +1224,51 @@ namespace ControlDoor.Devices.Management
                 // Best-effort：旧布防关闭失败导致本次重连回滚前，先登出新登录会话，避免重复重连累积 SDK 会话。
                 if (snapshot.SdkUserId.HasValue)
                 {
-                    try
+                    var compensation = await LogoutSupersededLoginSessionAsync(
+                        context,
+                        deviceId,
+                        snapshot.SdkUserId.Value,
+                        expectedUserId,
+                        expectedRuntimeVersion).ConfigureAwait(false);
+                    if (compensation != null && compensation.Success)
                     {
-                        await gateway.LogoutAsync(new LogoutRequest { UserId = snapshot.SdkUserId.Value }, CancellationToken.None).ConfigureAwait(false);
-                    }
-                    catch (Exception logoutEx)
-                    {
-                        RecordCompensationLogoutFailure(context, deviceId, snapshot.SdkUserId.Value, logoutEx);
+                        expectedRuntimeVersion = compensation.Snapshot == null
+                            ? expectedRuntimeVersion
+                            : compensation.Snapshot.RuntimeVersion;
                     }
                 }
 
-                context.Registry.MarkDisconnected(deviceId, error, DateTime.Now, DeviceConnectionStatus.Offline);
-                ScheduleReconnect(deviceId, error.Message);
-                LogLifecycleFailure(context, "Stale alarm handle close failed before rearm.", started, error, fields =>
+                var currentBeforeDisconnect = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                if (currentBeforeDisconnect == null ||
+                    currentBeforeDisconnect.IsDeleting != allowDeleting ||
+                    currentBeforeDisconnect.SdkUserId != expectedUserId ||
+                    (allowDeleting && !string.Equals(currentBeforeDisconnect.DeletingLeaseId, expectedDeletingLeaseId, StringComparison.Ordinal)))
+                {
+                    return await HandleStaleAlarmMutationRejectedAsync(context, snapshot, started, staleAlarmHandle).ConfigureAwait(false);
+                }
+
+                expectedRuntimeVersion = currentBeforeDisconnect.RuntimeVersion;
+                var disconnected = context.Registry.MarkDisconnected(
+                    deviceId,
+                    error,
+                    DateTime.Now,
+                    DeviceConnectionStatus.Offline,
+                    context: null,
+                    allowDeleting: allowDeleting,
+                    expectedSdkUserId: expectedUserId,
+                    expectedRuntimeVersion: expectedRuntimeVersion,
+                    expectedDeletingLeaseId: expectedDeletingLeaseId);
+                if (disconnected.Success)
+                {
+                    ScheduleReconnect(
+                        deviceId,
+                        error.Message,
+                        disconnected.Snapshot == null ? (long?)null : disconnected.Snapshot.RuntimeVersion);
+                }
+
+                LogLifecycleFailure(context, disconnected.Success
+                    ? "Stale alarm handle close failed before rearm."
+                    : "Stale alarm handle close failed; stale runtime callback was ignored.", started, error, fields =>
                 {
                     fields.Extra["staleAlarmHandle"] = staleAlarmHandle.ToString();
                 });
@@ -859,6 +1277,48 @@ namespace ControlDoor.Devices.Management
                 result.Retryable = true;
                 return result;
             }
+        }
+
+        private async System.Threading.Tasks.Task<DeviceTaskResult> HandleStaleAlarmMutationRejectedAsync(
+            DeviceTaskContext context,
+            DeviceRuntimeSnapshot snapshot,
+            DateTime started,
+            int staleAlarmHandle)
+        {
+            if (snapshot.SdkUserId.HasValue)
+            {
+                await LogoutSupersededLoginSessionAsync(
+                    context,
+                    context.Task.DeviceId,
+                    snapshot.SdkUserId.Value,
+                    snapshot.SdkUserId,
+                    snapshot.RuntimeVersion).ConfigureAwait(false);
+            }
+
+            var current = context.Registry.TryGetByDeviceId(context.Task.DeviceId).Snapshot;
+            var deleting = current != null && current.IsDeleting;
+            var code = deleting ? "DEVICE_DELETING" : "INVALID_ARGUMENT";
+            var message = deleting
+                ? "设备已进入删除流程，忽略旧布防回调。"
+                : "设备运行时已发生变化，忽略旧布防回调。";
+            var result = DeviceTaskResult.FromTask(
+                context.Task,
+                false,
+                code,
+                message,
+                deleting ? DeviceConnectionStatus.Disconnecting : DeviceConnectionStatus.Offline,
+                started,
+                DateTime.Now);
+            LogLifecycleFailure(context, "Stale alarm handle cleanup was rejected by the runtime fence.", started, DeviceRuntimeError.Create(
+                "DeviceCloseStaleAlarm",
+                code,
+                message,
+                DateTime.Now,
+                retryable: true), fields =>
+            {
+                fields.Extra["staleAlarmHandle"] = staleAlarmHandle.ToString();
+            });
+            return result;
         }
 
         private DeviceSdkTask CreateHealthCheckTask(int deviceId, string requestId)
@@ -1058,10 +1518,43 @@ namespace ControlDoor.Devices.Management
                         UserId = snapshot.SdkUserId.Value,
                         DeployType = options.AlarmDeployType
                     }, context.CancellationToken).ConfigureAwait(false);
-                    var register = context.Registry.RegisterAlarmHandle(deviceId, alarm.AlarmHandle, DateTime.Now);
+                    var register = context.Registry.RegisterAlarmHandle(
+                        deviceId,
+                        alarm.AlarmHandle,
+                        DateTime.Now,
+                        context: null,
+                        expectedSdkUserId: snapshot.SdkUserId,
+                        expectedRuntimeVersion: snapshot.RuntimeVersion);
                     if (!register.Success)
                     {
-                        await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = alarm.AlarmHandle }, CancellationToken.None).ConfigureAwait(false);
+                        try
+                        {
+                            await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = alarm.AlarmHandle }, CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (Exception closeEx)
+                        {
+                            var closeError = ToRuntimeError("DeviceCloseAlarm", closeEx, DateTime.Now, retryable: false);
+                            var current = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                            if (current != null &&
+                                current.IsDeleting &&
+                                !string.IsNullOrWhiteSpace(current.DeletingLeaseId))
+                            {
+                                context.Registry.RecordPendingAlarmHandle(
+                                    deviceId,
+                                    alarm.AlarmHandle,
+                                    DateTime.Now,
+                                    context: null,
+                                    allowDeleting: true,
+                                    expectedSdkUserId: current.SdkUserId,
+                                    expectedRuntimeVersion: current.RuntimeVersion,
+                                    expectedDeletingLeaseId: current.DeletingLeaseId);
+                            }
+
+                            var failedClose = DeviceTaskResult.FromTask(context.Task, false, closeError.Code, closeError.Message, DeviceConnectionStatus.Degraded, started, DateTime.Now);
+                            failedClose.SdkErrorCode = closeError.SdkErrorCode;
+                            return failedClose;
+                        }
+
                         return DeviceTaskResult.FromTask(context.Task, false, register.Code, register.Message, DeviceConnectionStatus.Online, started, DateTime.Now);
                     }
 
@@ -1078,13 +1571,26 @@ namespace ControlDoor.Devices.Management
                 catch (Exception ex)
                 {
                     var error = ToRuntimeError("DeviceArmAlarm", ex, DateTime.Now, retryable: true);
-                    context.Registry.RecordError(deviceId, error, DateTime.Now, DeviceConnectionStatus.Degraded);
+                    var recorded = context.Registry.RecordError(
+                        deviceId,
+                        error,
+                        DateTime.Now,
+                        DeviceConnectionStatus.Degraded,
+                        context: null,
+                        allowDeleting: false,
+                        expectedSdkUserId: snapshot.SdkUserId,
+                        expectedRuntimeVersion: snapshot.RuntimeVersion);
                     // 布防失败后按指数退避无限重试，直到成功或设备被手动断开/删除/服务停止。
-                    if (options.AlarmEnabled)
+                    if (options.AlarmEnabled && recorded.Success)
                     {
-                        ScheduleReArm(deviceId, error.Message);
+                        ScheduleReArm(
+                            deviceId,
+                            error.Message,
+                            recorded.Snapshot == null ? (long?)null : recorded.Snapshot.RuntimeVersion);
                     }
-                    LogLifecycleFailure(context, "Device alarm deployment failed.", started, error);
+                    LogLifecycleFailure(context, recorded.Success
+                        ? "Device alarm deployment failed."
+                        : "Device alarm deployment failed; stale runtime callback was ignored.", started, error);
                     var result = DeviceTaskResult.FromTask(context.Task, false, error.Code, error.Message, DeviceConnectionStatus.Degraded, started, DateTime.Now);
                     result.SdkErrorCode = error.SdkErrorCode;
                     result.Retryable = true;
@@ -1121,24 +1627,44 @@ namespace ControlDoor.Devices.Management
                 try
                 {
                     await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = snapshot.AlarmHandle.Value }, context.CancellationToken).ConfigureAwait(false);
-                    if (manuallyDisarmed)
+                    var cleared = context.Registry.ClearAlarmHandle(
+                        deviceId,
+                        DateTime.Now,
+                        manuallyDisarmed: manuallyDisarmed,
+                        context: null,
+                        expectedAlarmHandle: snapshot.AlarmHandle,
+                        allowDeleting: false,
+                        expectedSdkUserId: snapshot.SdkUserId,
+                        expectedRuntimeVersion: snapshot.RuntimeVersion);
+                    if (!cleared.Success)
                     {
-                        context.Registry.MarkAlarmManuallyDisarmed(deviceId, DateTime.Now);
+                        lastError = DeviceRuntimeError.Create(
+                            "DeviceCloseAlarm",
+                            "INVALID_ARGUMENT",
+                            "设备运行时已发生变化，忽略旧撤防回调。",
+                            DateTime.Now,
+                            retryable: false);
                     }
                     else
                     {
-                        context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
+                        LogLifecycleSuccess(context, "设备撤防成功。", started, fields =>
+                        {
+                            fields.Extra["alarmHandle"] = snapshot.AlarmHandle.Value.ToString();
+                        });
                     }
-
-                    LogLifecycleSuccess(context, "设备撤防成功。", started, fields =>
-                    {
-                        fields.Extra["alarmHandle"] = snapshot.AlarmHandle.Value.ToString();
-                    });
                 }
                 catch (Exception ex)
                 {
                     lastError = ToRuntimeError("DeviceCloseAlarm", ex, DateTime.Now, retryable: false);
-                    context.Registry.RecordError(deviceId, lastError, DateTime.Now, snapshot.Status);
+                    context.Registry.RecordError(
+                        deviceId,
+                        lastError,
+                        DateTime.Now,
+                        snapshot.Status,
+                        context: null,
+                        allowDeleting: false,
+                        expectedSdkUserId: snapshot.SdkUserId,
+                        expectedRuntimeVersion: snapshot.RuntimeVersion);
                     LogLifecycleFailure(context, "Device alarm close failed.", started, lastError);
                 }
 
@@ -1153,16 +1679,25 @@ namespace ControlDoor.Devices.Management
             });
             task.Priority = DeviceTaskPriority.Critical;
             task.TimeoutMilliseconds = options.LogoutTimeoutMs;
-            task.AllowWhenDeleting = true;
+            task.AllowWhenDeleting = false;
             task.RequestId = requestId ?? string.Empty;
             return task;
         }
 
-        private DeviceSdkTask CreatePendingLogoutTask(int deviceId, int userId, string requestId)
+        private DeviceSdkTask CreatePendingLogoutTask(int deviceId, int userId, string requestId, string deletingLeaseId = null)
         {
             var task = new DeviceSdkTask(deviceId, DeviceTaskType.Logout, "PendingSdkLogout", async context =>
             {
                 var started = DateTime.Now;
+                var deleteCleanup = !string.IsNullOrWhiteSpace(deletingLeaseId);
+                if (deleteCleanup &&
+                    (context.SnapshotBeforeExecution == null ||
+                     !context.SnapshotBeforeExecution.IsDeleting ||
+                     !string.Equals(context.SnapshotBeforeExecution.DeletingLeaseId, deletingLeaseId, StringComparison.Ordinal)))
+                {
+                    return DeviceTaskResult.FromTask(context.Task, false, "DEVICE_DELETING", "设备删除 lease 已失效，忽略待清理登出任务。", DeviceConnectionStatus.Disconnecting, started, DateTime.Now);
+                }
+
                 try
                 {
                     await gateway.LogoutAsync(new LogoutRequest { UserId = userId }, context.CancellationToken).ConfigureAwait(false);
@@ -1178,13 +1713,17 @@ namespace ControlDoor.Devices.Management
             });
             task.Priority = DeviceTaskPriority.Critical;
             task.TimeoutMilliseconds = options.LogoutTimeoutMs;
-            task.AllowWhenDeleting = true;
+            var pendingLogoutLeaseValid = !string.IsNullOrWhiteSpace(deletingLeaseId) &&
+                registry.TryGetByDeviceId(deviceId).Snapshot != null &&
+                registry.TryGetByDeviceId(deviceId).Snapshot.IsDeleting &&
+                string.Equals(registry.TryGetByDeviceId(deviceId).Snapshot.DeletingLeaseId, deletingLeaseId, StringComparison.Ordinal);
+            task.AllowWhenDeleting = pendingLogoutLeaseValid;
             task.AllowWhenManualDisconnected = true;
             task.RequestId = requestId ?? string.Empty;
             return task;
         }
 
-        private DeviceSdkTask CreateDisconnectTask(int deviceId, string operationName, DeviceConnectionStatus finalStatus, string requestId)
+        private DeviceSdkTask CreateDisconnectTask(int deviceId, string operationName, DeviceConnectionStatus finalStatus, string requestId, string deletingLeaseId = null)
         {
             var task = new DeviceSdkTask(deviceId, DeviceTaskType.Logout, operationName, async context =>
             {
@@ -1195,126 +1734,354 @@ namespace ControlDoor.Devices.Management
                     return DeviceTaskResult.FromTask(context.Task, true, "OK", "设备不存在，清理视为成功。", DeviceConnectionStatus.Deleted, started, DateTime.Now);
                 }
 
-                DeviceRuntimeError lastError = null;
-                if (snapshot.AlarmHandle.HasValue)
+                var deleteCleanup = !string.IsNullOrWhiteSpace(deletingLeaseId);
+                if (deleteCleanup &&
+                    (!snapshot.IsDeleting || !string.Equals(snapshot.DeletingLeaseId, deletingLeaseId, StringComparison.Ordinal)))
                 {
-                    var alarmClosed = false;
+                    return DeviceTaskResult.FromTask(context.Task, false, "DEVICE_DELETING", "设备删除 lease 已失效，忽略旧清理任务。", DeviceConnectionStatus.Disconnecting, started, DateTime.Now);
+                }
+
+                var allowDeleting = deleteCleanup;
+                var expectedDeletingLeaseId = allowDeleting ? deletingLeaseId : null;
+                DeviceRuntimeError lastError = null;
+                var mutationRejected = false;
+                var currentAlarmCleanupFailed = false;
+                var alarmHandles = new List<int>();
+                var seenAlarmHandles = new HashSet<int>();
+                Action<int?> addAlarmHandle = handle =>
+                {
+                    if (handle.HasValue && seenAlarmHandles.Add(handle.Value))
+                    {
+                        alarmHandles.Add(handle.Value);
+                    }
+                };
+                addAlarmHandle(snapshot.AlarmHandle);
+                addAlarmHandle(snapshot.StaleAlarmHandle);
+                foreach (var handle in snapshot.PendingAlarmHandles ?? new List<int>())
+                {
+                    addAlarmHandle(handle);
+                }
+
+                foreach (var alarmHandle in alarmHandles)
+                {
+                    var before = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                    if (before == null)
+                    {
+                        mutationRejected = true;
+                        lastError = DeviceRuntimeError.Create("DeviceCloseAlarm", "DEVICE_NOT_FOUND", "设备运行时不存在，忽略旧撤防回调。", DateTime.Now, retryable: false);
+                        break;
+                    }
+
+                    var expectedSdkUserId = before.SdkUserId;
+                    var expectedRuntimeVersion = before.RuntimeVersion;
+                    var isCurrentAlarm = before.AlarmHandle == alarmHandle;
+                    var closeSucceeded = false;
+                    DeviceRuntimeError closeError = null;
                     try
                     {
-                        await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = snapshot.AlarmHandle.Value }, context.CancellationToken).ConfigureAwait(false);
-                        alarmClosed = true;
-                        LogLifecycleSuccess(context, "设备撤防成功。", started, fields =>
-                        {
-                            fields.Extra["alarmHandle"] = snapshot.AlarmHandle.Value.ToString();
-                        });
+                        await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = alarmHandle }, context.CancellationToken).ConfigureAwait(false);
+                        closeSucceeded = true;
                     }
                     catch (Exception ex)
                     {
-                        lastError = ToRuntimeError("DeviceCloseAlarm", ex, DateTime.Now, retryable: false);
-                        LogLifecycleFailure(context, "Device alarm close failed during disconnect.", started, lastError);
+                        closeError = ToRuntimeError("DeviceCloseAlarm", ex, DateTime.Now, retryable: false);
+                        closeSucceeded = allowDeleting && closeError.SdkErrorCode == 17;
                     }
 
-                    if (alarmClosed)
+                    if (!closeSucceeded)
                     {
-                        context.Registry.ClearAlarmHandle(deviceId, DateTime.Now);
+                        if (isCurrentAlarm)
+                        {
+                            currentAlarmCleanupFailed = true;
+                        }
+
+                        lastError = closeError;
+                        var recorded = context.Registry.RecordError(
+                            deviceId,
+                            closeError,
+                            DateTime.Now,
+                            before.Status,
+                            context: null,
+                            allowDeleting: allowDeleting,
+                            expectedSdkUserId: expectedSdkUserId,
+                            expectedRuntimeVersion: expectedRuntimeVersion,
+                            expectedDeletingLeaseId: expectedDeletingLeaseId);
+                        if (!recorded.Success)
+                        {
+                            mutationRejected = true;
+                        }
+
+                        LogLifecycleFailure(context, "Device alarm close failed during disconnect.", started, closeError, fields =>
+                        {
+                            fields.Extra["alarmHandle"] = alarmHandle.ToString();
+                        });
+                        continue;
+                    }
+
+                    DeviceRuntimeMutationResult cleared;
+                    if (allowDeleting)
+                    {
+                        cleared = context.Registry.RecordCleanedDuringDeleteAlarmHandle(
+                            deviceId,
+                            alarmHandle,
+                            DateTime.Now,
+                            expectedSdkUserId,
+                            expectedRuntimeVersion,
+                            expectedDeletingLeaseId);
+                    }
+                    else if (isCurrentAlarm)
+                    {
+                        cleared = context.Registry.ClearAlarmHandle(
+                            deviceId,
+                            DateTime.Now,
+                            manuallyDisarmed: false,
+                            context: null,
+                            expectedAlarmHandle: alarmHandle,
+                            allowDeleting: false,
+                            expectedSdkUserId: expectedSdkUserId,
+                            expectedRuntimeVersion: expectedRuntimeVersion);
                     }
                     else
                     {
-                        context.Registry.RecordError(deviceId, lastError, DateTime.Now, snapshot.Status);
-                        return DeviceTaskResult.FromTask(context.Task, false, lastError.Code, lastError.Message, snapshot.Status, started, DateTime.Now);
+                        cleared = context.Registry.ClearStaleAlarmHandle(
+                            deviceId,
+                            alarmHandle,
+                            DateTime.Now,
+                            context: null,
+                            allowDeleting: false,
+                            expectedSdkUserId: expectedSdkUserId,
+                            expectedRuntimeVersion: expectedRuntimeVersion);
                     }
+
+                    if (!cleared.Success)
+                    {
+                        mutationRejected = true;
+                        if (lastError == null)
+                        {
+                            lastError = DeviceRuntimeError.Create(
+                                "DeviceCloseAlarm",
+                                "INVALID_ARGUMENT",
+                                "设备运行时已发生变化，忽略旧撤防回调。",
+                                DateTime.Now,
+                                retryable: false);
+                        }
+                        continue;
+                    }
+
+                    LogLifecycleSuccess(context, closeError == null ? "设备撤防成功。" : "设备已不存在，撤防视为成功。", started, fields =>
+                    {
+                        fields.Extra["alarmHandle"] = alarmHandle.ToString();
+                    });
                 }
 
-                // Best-effort：被动离线遗留的旧布防句柄一并尝试关闭，避免设备端残留布防；失败不中断断开流程。
-                if (snapshot.StaleAlarmHandle.HasValue)
+                var sdkUsers = new List<int>();
+                var seenSdkUsers = new HashSet<int>();
+                Action<int?> addSdkUser = userId =>
                 {
+                    if (userId.HasValue && seenSdkUsers.Add(userId.Value))
+                    {
+                        sdkUsers.Add(userId.Value);
+                    }
+                };
+                addSdkUser(snapshot.SdkUserId);
+                foreach (var userId in snapshot.PendingSdkLogoutUserIds ?? new List<int>())
+                {
+                    addSdkUser(userId);
+                }
+
+                foreach (var userId in sdkUsers)
+                {
+                    var before = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                    if (before == null)
+                    {
+                        mutationRejected = true;
+                        lastError = DeviceRuntimeError.Create("DeviceLogout", "DEVICE_NOT_FOUND", "设备运行时不存在，忽略旧登出回调。", DateTime.Now, retryable: false);
+                        break;
+                    }
+
+                    var isCurrentUser = before.SdkUserId == userId;
+                    var expectedSdkUserId = isCurrentUser ? (int?)userId : null;
+                    var expectedRuntimeVersion = before.RuntimeVersion;
+                    var logoutSucceeded = false;
+                    DeviceRuntimeError logoutError = null;
                     try
                     {
-                        await gateway.CloseAlarmAsync(new AlarmCloseRequest { AlarmHandle = snapshot.StaleAlarmHandle.Value }, context.CancellationToken).ConfigureAwait(false);
-                        context.Registry.ClearStaleAlarmHandle(deviceId, DateTime.Now);
-                        LogLifecycleSuccess(context, "旧布防句柄撤防成功。", started, fields =>
-                        {
-                            fields.Extra["staleAlarmHandle"] = snapshot.StaleAlarmHandle.Value.ToString();
-                        });
+                        await gateway.LogoutAsync(new LogoutRequest { UserId = userId }, context.CancellationToken).ConfigureAwait(false);
+                        logoutSucceeded = true;
                     }
                     catch (Exception ex)
                     {
-                        var staleError = ToRuntimeError("DeviceCloseStaleAlarm", ex, DateTime.Now, retryable: false);
-                        if (staleError.SdkErrorCode == 17)
-                        {
-                            context.Registry.ClearStaleAlarmHandle(deviceId, DateTime.Now);
-                        }
-                        else
-                        {
-                            // 保留 StaleAlarmHandle，后续人工重连登录时会再次尝试撤防。
-                            // 与常规布防关闭（路径 A）一致：失败视为断开失败，避免接口谎报成功，
-                            // 也避免 DeleteDevice 据此删除运行时记录、孤儿化设备端布防。
-                            context.Registry.RecordError(deviceId, staleError, DateTime.Now, snapshot.Status);
-                            lastError = staleError;
-                        }
-
-                        logger?.Warn("DeviceLifecycle", "Stale alarm handle close failed during disconnect.", new LogFields
-                        {
-                            DeviceId = deviceId,
-                            OperationName = context.Task.OperationName,
-                            ErrorCode = staleError.Code
-                        });
+                        logoutError = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
+                        logoutSucceeded = logoutError.SdkErrorCode == 17;
                     }
-                }
 
-                if (snapshot.SdkUserId.HasValue)
-                {
-                    try
+                    if (!logoutSucceeded)
                     {
-                        await gateway.LogoutAsync(new LogoutRequest { UserId = snapshot.SdkUserId.Value }, context.CancellationToken).ConfigureAwait(false);
-                        context.Registry.ClearPendingSdkLogout(deviceId, snapshot.SdkUserId.Value, DateTime.Now);
-                        LogLifecycleSuccess(context, "设备登出成功。", started, fields =>
+                        lastError = logoutError;
+                        var recorded = context.Registry.RecordPendingSdkLogout(
+                            deviceId,
+                            userId,
+                            DateTime.Now,
+                            context: null,
+                            allowDeleting: allowDeleting,
+                            expectedSdkUserId: expectedSdkUserId,
+                            expectedRuntimeVersion: expectedRuntimeVersion,
+                            expectedDeletingLeaseId: expectedDeletingLeaseId);
+                        if (!recorded.Success)
                         {
-                            fields.Extra["userId"] = snapshot.SdkUserId.Value.ToString();
-                            fields.Extra["finalStatus"] = finalStatus.ToString();
+                            mutationRejected = true;
+                        }
+
+                        LogLifecycleFailure(context, "Device logout failed.", started, logoutError, fields =>
+                        {
+                            fields.Extra["userId"] = userId.ToString();
                         });
+                        continue;
                     }
-                    catch (Exception ex)
+
+                    DeviceRuntimeMutationResult cleared;
+                    if (allowDeleting)
                     {
-                        lastError = ToRuntimeError("DeviceLogout", ex, DateTime.Now, retryable: false);
-                        if (lastError.SdkErrorCode == 17)
-                        {
-                            context.Registry.ClearPendingSdkLogout(deviceId, snapshot.SdkUserId.Value, DateTime.Now);
-                            lastError = null;
-                        }
-                        else
-                        {
-                            context.Registry.RecordPendingSdkLogout(deviceId, snapshot.SdkUserId.Value, DateTime.Now);
-                        }
+                        cleared = context.Registry.RecordCleanedDuringDeleteSdkUser(
+                            deviceId,
+                            userId,
+                            DateTime.Now,
+                            expectedSdkUserId,
+                            expectedRuntimeVersion,
+                            expectedDeletingLeaseId);
+                    }
+                    else if (isCurrentUser)
+                    {
+                        cleared = context.Registry.MarkLoggedOut(
+                            deviceId,
+                            DateTime.Now,
+                            context: null,
+                            expectedSdkUserId: expectedSdkUserId,
+                            allowDeleting: false,
+                            expectedDeletingLeaseId: null,
+                            expectedRuntimeVersion: expectedRuntimeVersion,
+                            preserveCurrentAlarmHandle: currentAlarmCleanupFailed);
+                    }
+                    else
+                    {
+                        cleared = context.Registry.ClearPendingSdkLogout(
+                            deviceId,
+                            userId,
+                            DateTime.Now,
+                            context: null,
+                            allowDeleting: false,
+                            expectedSdkUserId: null,
+                            expectedRuntimeVersion: expectedRuntimeVersion);
+                    }
 
-                        if (lastError != null)
+                    if (!cleared.Success)
+                    {
+                        mutationRejected = true;
+                        if (lastError == null)
                         {
-                            LogLifecycleFailure(context, "Device logout failed.", started, lastError);
+                            lastError = DeviceRuntimeError.Create(
+                                "DeviceLogout",
+                                "INVALID_ARGUMENT",
+                                "设备运行时已发生变化，忽略旧登出回调。",
+                                DateTime.Now,
+                                retryable: false);
                         }
+                        continue;
+                    }
+
+                    LogLifecycleSuccess(context, logoutError == null ? "设备登出成功。" : "设备会话已不存在，登出视为成功。", started, fields =>
+                    {
+                        fields.Extra["userId"] = userId.ToString();
+                    });
+                }
+
+                var current = context.Registry.TryGetByDeviceId(deviceId).Snapshot;
+                var stateMatches = current != null;
+                if (stateMatches && allowDeleting)
+                {
+                    stateMatches = current.IsDeleting &&
+                        string.Equals(current.DeletingLeaseId, expectedDeletingLeaseId, StringComparison.Ordinal);
+                }
+                else if (stateMatches)
+                {
+                    stateMatches = !current.IsDeleting;
+                }
+
+                if (!stateMatches)
+                {
+                    mutationRejected = true;
+                }
+                else if (!mutationRejected)
+                {
+                    DeviceRuntimeMutationResult finalMutation;
+                    if (finalStatus == DeviceConnectionStatus.Disconnected)
+                    {
+                        finalMutation = context.Registry.MarkManualDisconnected(
+                            deviceId,
+                            lastError,
+                            DateTime.Now,
+                            context: null,
+                            allowDeleting: allowDeleting,
+                            expectedDeletingLeaseId: expectedDeletingLeaseId,
+                            preserveCurrentAlarmHandle: currentAlarmCleanupFailed);
+                    }
+                    else
+                    {
+                        finalMutation = context.Registry.MarkDisconnected(
+                            deviceId,
+                            lastError,
+                            DateTime.Now,
+                            finalStatus,
+                            context: null,
+                            allowDeleting: allowDeleting,
+                            expectedSdkUserId: current.SdkUserId,
+                            expectedRuntimeVersion: current.RuntimeVersion,
+                            expectedDeletingLeaseId: expectedDeletingLeaseId,
+                            preserveCurrentAlarmHandle: currentAlarmCleanupFailed);
+                    }
+
+                    if (!finalMutation.Success)
+                    {
+                        mutationRejected = true;
                     }
                 }
 
-                if (finalStatus == DeviceConnectionStatus.Disconnected)
+                if (mutationRejected && lastError == null)
                 {
-                    context.Registry.MarkManualDisconnected(deviceId, lastError, DateTime.Now);
-                }
-                else
-                {
-                    context.Registry.MarkDisconnected(deviceId, lastError, DateTime.Now, finalStatus);
+                    lastError = DeviceRuntimeError.Create(
+                        "DeviceDisconnect",
+                        "INVALID_ARGUMENT",
+                        "设备运行时已发生变化，忽略旧断开回调。",
+                        DateTime.Now,
+                        retryable: false);
                 }
 
-                var success = lastError == null;
-                return DeviceTaskResult.FromTask(context.Task, success, success ? "OK" : lastError.Code, success ? "登出清理成功。" : lastError.Message, finalStatus, started, DateTime.Now);
+                var success = lastError == null && !mutationRejected;
+                var result = DeviceTaskResult.FromTask(
+                    context.Task,
+                    success,
+                    success ? "OK" : lastError.Code,
+                    success ? "登出清理成功。" : lastError.Message,
+                    finalStatus,
+                    started,
+                    DateTime.Now);
+                if (lastError != null)
+                {
+                    result.SdkErrorCode = lastError.SdkErrorCode;
+                }
+
+                return result;
             });
             task.Priority = DeviceTaskPriority.Critical;
             task.TimeoutMilliseconds = options.LogoutTimeoutMs;
-            task.AllowWhenDeleting = true;
+            task.AllowWhenDeleting = !string.IsNullOrWhiteSpace(deletingLeaseId);
             task.AllowWhenManualDisconnected = true;
             task.RequestId = requestId ?? string.Empty;
             return task;
         }
 
-        private void ScheduleReconnect(int deviceId, string reason)
+
+        private void ScheduleReconnect(int deviceId, string reason, long? expectedRuntimeVersion = null)
         {
             var snapshot = registry.TryGetByDeviceId(deviceId).Snapshot;
             if (snapshot == null ||
@@ -1322,7 +2089,8 @@ namespace ControlDoor.Devices.Management
                 snapshot.Status == DeviceConnectionStatus.Disconnected ||
                 snapshot.Status == DeviceConnectionStatus.InvalidConfig ||
                 snapshot.Status == DeviceConnectionStatus.Disabled ||
-                snapshot.Reconnect.ManualDisconnected)
+                snapshot.Reconnect.ManualDisconnected ||
+                (expectedRuntimeVersion.HasValue && snapshot.RuntimeVersion != expectedRuntimeVersion.Value))
             {
                 return;
             }
@@ -1335,7 +2103,11 @@ namespace ControlDoor.Devices.Management
                     deviceId,
                     DeviceRuntimeError.Create("Reconnect", "FAILED", "重连次数已耗尽。", DateTime.Now, retryable: false),
                     DateTime.Now,
-                    DeviceConnectionStatus.Failed);
+                    DeviceConnectionStatus.Failed,
+                    context: null,
+                    allowDeleting: false,
+                    expectedSdkUserId: snapshot.SdkUserId,
+                    expectedRuntimeVersion: snapshot.RuntimeVersion);
                 return;
             }
 
@@ -1344,7 +2116,12 @@ namespace ControlDoor.Devices.Management
                 TimeSpan.FromMilliseconds(options.ReconnectMaxDelayMs));
             var delay = policy.CalculateDelay(snapshot.Reconnect.AttemptCount);
             var dueAt = DateTime.Now.Add(delay);
-            registry.MarkReconnectPending(deviceId, dueAt, reason, DateTime.Now);
+            var pending = registry.MarkReconnectPending(deviceId, dueAt, reason, DateTime.Now, context: null, expectedRuntimeVersion: snapshot.RuntimeVersion);
+            if (!pending.Success)
+            {
+                return;
+            }
+
             var scheduled = delayedScheduler?.Schedule(new DelayedDeviceTask(
                 deviceId,
                 DeviceTaskType.Login,
@@ -1367,7 +2144,11 @@ namespace ControlDoor.Devices.Management
                     deviceId,
                     DeviceRuntimeError.Create("Reconnect", "RECONNECT_SCHEDULE_FAILED", "重连任务调度失败。", DateTime.Now, retryable: false),
                     DateTime.Now,
-                    DeviceConnectionStatus.Faulted);
+                    DeviceConnectionStatus.Faulted,
+                    context: null,
+                    allowDeleting: false,
+                    expectedSdkUserId: snapshot.SdkUserId,
+                    expectedRuntimeVersion: pending.Snapshot == null ? (long?)null : pending.Snapshot.RuntimeVersion);
                 return;
             }
 
@@ -1385,7 +2166,7 @@ namespace ControlDoor.Devices.Management
         }
 
         // 布防失败后无限重试，直到成功或设备被手动断开/删除/服务停止。门控与重连一致。
-        private void ScheduleReArm(int deviceId, string reason)
+        private void ScheduleReArm(int deviceId, string reason, long? expectedRuntimeVersion = null)
         {
             var snapshot = registry.TryGetByDeviceId(deviceId).Snapshot;
             if (snapshot == null ||
@@ -1393,7 +2174,8 @@ namespace ControlDoor.Devices.Management
                 snapshot.Status == DeviceConnectionStatus.Disconnected ||
                 snapshot.Status == DeviceConnectionStatus.InvalidConfig ||
                 snapshot.Status == DeviceConnectionStatus.Disabled ||
-                snapshot.Reconnect.ManualDisconnected)
+                snapshot.Reconnect.ManualDisconnected ||
+                (expectedRuntimeVersion.HasValue && snapshot.RuntimeVersion != expectedRuntimeVersion.Value))
             {
                 return;
             }

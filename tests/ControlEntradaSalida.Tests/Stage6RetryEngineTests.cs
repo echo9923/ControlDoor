@@ -620,6 +620,8 @@ namespace ControlEntradaSalida.Tests
             Assert.Contains("exhausted_at IS NOT NULL", sql);
             Assert.Contains("exhausted_at < @cutoff", sql);
             Assert.Contains("TOP (@batchSize)", sql);
+            Assert.Contains("intent_version", sql);
+            Assert.Contains("candidates.intent_version = state.intent_version", sql);
             Assert.Contains("@batchSize=12", sql);
         }
 

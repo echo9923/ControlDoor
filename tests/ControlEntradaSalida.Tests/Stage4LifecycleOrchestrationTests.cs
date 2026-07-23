@@ -102,7 +102,7 @@ namespace ControlEntradaSalida.Tests
                 fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
                 WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
                 var originalHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
-                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(17, "close failed")));
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(7, "close failed")));
 
                 var disconnect = fixture.Lifecycle.DisconnectDevice(1, "req-disconnect-fail");
                 var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
@@ -123,7 +123,7 @@ namespace ControlEntradaSalida.Tests
                 fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
                 WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
                 var originalHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
-                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(17, "close failed")));
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(7, "close failed")));
 
                 var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: true, requestId: "req-delete-fail");
                 var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
@@ -145,7 +145,7 @@ namespace ControlEntradaSalida.Tests
                 WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
                 var originalHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
                 var loginCount = fixture.Gateway.Calls.Count(call => call.MethodName == "LoginAsync");
-                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(17, "close failed")));
+                fixture.Gateway.ConfigureException("CloseAlarmAsync", new DeviceGatewayException("CloseAlarm", SdkError.FromCode(7, "close failed")));
 
                 var reconnect = fixture.Lifecycle.ReconnectDevice(1, force: true, requestId: "req-reconnect-fail");
                 var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
@@ -371,6 +371,193 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("INVALID_ARGUMENT", result.Code);
                 Assert.False(fixture.Repository.ExistsDeviceId(2));
                 Assert.False(fixture.Repository.Operations.Any(item => item == "InsertDevice:2"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_DeleteDevice_DisconnectFirstFalse_WithStaleAlarm_RejectsAndPreservesHandle()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Registry.RegisterSdkUserId(1, 100, "serial-1", System.DateTime.Now);
+                fixture.Registry.RegisterAlarmHandle(1, 900, System.DateTime.Now);
+                var disconnected = fixture.Registry.MarkDisconnected(
+                    1,
+                    DeviceRuntimeError.Create("HealthCheck", "SDK_ERROR", "设备离线。", System.DateTime.Now, retryable: true),
+                    System.DateTime.Now);
+
+                var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: false, requestId: "req-delete-stale");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(disconnected.Success);
+                Assert.False(deleted.Success);
+                Assert.Equal("DEVICE_CONNECTED", deleted.Code);
+                Assert.Equal(900, snapshot.StaleAlarmHandle.Value);
+                Assert.False(snapshot.IsDeleting);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_DeleteDevice_DisconnectFirstFalse_WhileConnecting_RejectsDeletion()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                var connecting = fixture.Registry.MarkConnecting(1, System.DateTime.Now);
+
+                var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: false, requestId: "req-delete-connecting");
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(connecting.Success);
+                Assert.False(deleted.Success);
+                Assert.Equal("DEVICE_CONNECTED", deleted.Code);
+                Assert.Equal(DeviceConnectionStatus.Connecting, snapshot.Status);
+                Assert.False(snapshot.IsDeleting);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_DeleteDevice_RepositoryFailure_RestoresReconnectStateAndDelayedTask()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord(password: "wrong");
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                var login = fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login-fail");
+                var before = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+                var delayedBefore = fixture.DelayedScheduler.GetSnapshot();
+
+                fixture.Repository.FailWrites = true;
+                var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: false, requestId: "req-delete-repository-fail");
+                var after = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+                var delayedAfter = fixture.DelayedScheduler.GetSnapshot();
+
+                Assert.False(login.Success);
+                Assert.False(deleted.Success);
+                Assert.Equal("WRITE_FAILED", deleted.Code);
+                Assert.Equal(DeviceConnectionStatus.ReconnectPending, after.Status);
+                Assert.Equal(before.LastErrorCode, after.LastErrorCode);
+                Assert.Equal(before.Reconnect.AttemptCount, after.Reconnect.AttemptCount);
+                Assert.Equal(before.Reconnect.InCooldown, after.Reconnect.InCooldown);
+                Assert.Equal(before.Reconnect.CooldownReason, after.Reconnect.CooldownReason);
+                Assert.Equal(delayedBefore.DelayedTaskCount, delayedAfter.DelayedTaskCount);
+                Assert.Equal(delayedBefore.GetSourceCount("Stage4Reconnect"), delayedAfter.GetSourceCount("Stage4Reconnect"));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_DeleteDevice_RepositoryFailure_DoesNotRestoreCleanedSdkSession()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Registry.RegisterSdkUserId(1, 70, "serial-1", System.DateTime.Now);
+                var before = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+                fixture.Repository.FailWrites = true;
+
+                var deleted = fixture.Lifecycle.DeleteDevice(1, disconnectFirst: true, requestId: "req-delete-cleanup-repository-fail");
+                var after = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.False(deleted.Success);
+                Assert.Equal("WRITE_FAILED", deleted.Code);
+                Assert.False(after.SdkUserId.HasValue, "SDK user should not be restored after successful delete cleanup.");
+                Assert.Equal(DeviceConnectionStatus.Offline, after.Status);
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" &&
+                    (call.Request as LogoutRequest) != null &&
+                    ((LogoutRequest)call.Request).UserId == before.SdkUserId.Value));
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_Disconnect_ClosesCurrentStaleAndPendingAlarms()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login");
+                WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
+                var userId = fixture.Registry.TryGetByDeviceId(1).Snapshot.SdkUserId.Value;
+                var currentHandle = fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.Value;
+                fixture.Registry.RecordPendingAlarmHandle(1, 2001, System.DateTime.Now);
+                fixture.Registry.RecordPendingAlarmHandle(1, 2002, System.DateTime.Now);
+                fixture.Registry.ClearAlarmHandle(1, System.DateTime.Now);
+                fixture.Registry.RegisterAlarmHandle(1, currentHandle, System.DateTime.Now);
+                fixture.Gateway.ConfigureResult("CloseAlarmAsync", request => 0);
+
+                var disconnect = fixture.Lifecycle.DisconnectDevice(1, "req-disconnect-all-alarms");
+                var closedHandles = fixture.Gateway.Calls
+                    .Where(call => call.MethodName == "CloseAlarmAsync")
+                    .Select(call => ((AlarmCloseRequest)call.Request).AlarmHandle)
+                    .ToList();
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(disconnect.Success);
+                Assert.True(closedHandles.Contains(currentHandle));
+                Assert.True(closedHandles.Contains(2001));
+                Assert.True(closedHandles.Contains(2002));
+                Assert.Equal(3, closedHandles.Distinct().Count());
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" &&
+                    ((LogoutRequest)call.Request).UserId == userId));
+                Assert.False(snapshot.AlarmHandle.HasValue);
+                Assert.False(snapshot.StaleAlarmHandle.HasValue);
+                Assert.Equal(0, snapshot.PendingAlarmHandles.Count);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_StopAllDevicesBestEffort_CleansPendingOnlyResources()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord();
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Registry.RecordPendingAlarmHandle(1, 3001, System.DateTime.Now);
+                fixture.Registry.RecordPendingSdkLogout(1, 3002, System.DateTime.Now);
+                fixture.Gateway.ConfigureResult("CloseAlarmAsync", request => 0);
+
+                fixture.Lifecycle.StopAllDevicesBestEffort();
+                var snapshot = fixture.Registry.TryGetByDeviceId(1).Snapshot;
+
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "CloseAlarmAsync" &&
+                    ((AlarmCloseRequest)call.Request).AlarmHandle == 3001));
+                Assert.True(fixture.Gateway.Calls.Any(call => call.MethodName == "LogoutAsync" &&
+                    ((LogoutRequest)call.Request).UserId == 3002));
+                Assert.Equal(0, snapshot.PendingAlarmHandles.Count);
+                Assert.Equal(0, snapshot.PendingSdkLogoutUserIds.Count);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceLifecycle_LoginConflict_MarksOfflineAndSchedulesReconnect()
+        {
+            using (var fixture = new Stage4Fixture())
+            {
+                fixture.AddRecord(1, "192.168.1.64");
+                fixture.AddRecord(2, "192.168.1.65");
+                fixture.Options.AlarmEnabled = false;
+                fixture.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                fixture.Gateway.ConfigureResult("LoginAsync", request => new LoginResponse
+                {
+                    UserId = 99,
+                    DeviceInfo = fixture.Gateway.DeviceInfo
+                });
+
+                var first = fixture.Lifecycle.SubmitLogin(1, wait: true, requestId: "req-login-1");
+                var second = fixture.Lifecycle.SubmitLogin(2, wait: true, requestId: "req-login-2");
+                var snapshot = fixture.Registry.TryGetByDeviceId(2).Snapshot;
+
+                Assert.True(first.Success);
+                Assert.False(second.Success);
+                Assert.Equal("SDK_USER_ID_CONFLICT", second.Code);
+                Assert.Equal(DeviceConnectionStatus.ReconnectPending, snapshot.Status);
+                Assert.False(snapshot.SdkUserId.HasValue);
+                Assert.True(fixture.Gateway.Calls.Count(call => call.MethodName == "LogoutAsync" &&
+                    ((LogoutRequest)call.Request).UserId == 99) >= 1);
             }
         }
 

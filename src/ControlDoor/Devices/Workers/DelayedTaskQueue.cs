@@ -113,6 +113,53 @@ namespace ControlDoor.Devices.Workers
             return due;
         }
 
+        public IReadOnlyList<DelayedDeviceTask> TakeByDevice(int deviceId)
+        {
+            var selected = tasks.Where(task => task.DeviceId == deviceId).ToList();
+            foreach (var task in selected)
+            {
+                tasks.Remove(task);
+            }
+
+            return selected;
+        }
+
+        public DelayedTaskScheduleResult Restore(DelayedDeviceTask task, bool coalesceByTaskKey)
+        {
+            if (task == null)
+            {
+                throw new ArgumentNullException(nameof(task));
+            }
+
+            if (!string.IsNullOrWhiteSpace(task.TaskKey))
+            {
+                var existing = tasks.FirstOrDefault(item => string.Equals(item.TaskKey, task.TaskKey, StringComparison.OrdinalIgnoreCase));
+                if (existing != null)
+                {
+                    if (coalesceByTaskKey && task.MergeMode != DelayedTaskMergeMode.None)
+                    {
+                        if (task.MergeMode == DelayedTaskMergeMode.Replace || task.DueAt < existing.DueAt)
+                        {
+                            tasks.Remove(existing);
+                            tasks.Add(task);
+                            Sort();
+                            return DelayedTaskScheduleResult.CoalescedResult(task, existing, "Delayed task was restored and replaced the existing task.");
+                        }
+
+                        return DelayedTaskScheduleResult.CoalescedResult(existing, task, "Delayed task was restored and the existing task was retained.");
+                    }
+
+                    return DelayedTaskScheduleResult.Rejected(task, "DUPLICATE_DELAYED_TASK_KEY", "Delayed task key already exists.");
+                }
+            }
+
+            // Restoration is part of a previously accepted checkpoint. Do not drop it because
+            // unrelated work filled the queue while the device was being deleted.
+            tasks.Add(task);
+            Sort();
+            return DelayedTaskScheduleResult.AcceptedResult(task);
+        }
+
         public DateTime? GetEarliestDueAt()
         {
             return tasks.Count == 0 ? (DateTime?)null : tasks.Min(task => task.DueAt);

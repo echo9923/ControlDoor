@@ -35,7 +35,10 @@ namespace ControlEntradaSalida.Tests
                 var queuedFinal = WaitForCompletion(queued);
 
                 Assert.Equal("TIMEOUT", timeout.Code);
+                Assert.True(timeout.IsWaitOutcome);
                 Assert.Equal("CANCELLED", queuedFinal.Code);
+                Assert.False(queuedFinal.IsWaitOutcome);
+                Assert.True(queuedFinal.TaskCompleted);
                 Assert.Equal(DeviceTaskExecutionState.Cancelled, queued.ExecutionState);
             }
             finally
@@ -167,6 +170,9 @@ namespace ControlEntradaSalida.Tests
             var result = WaitForTask(dispatcher.SubmitAndWaitAsync(task, cancellation.Token), "pre-cancelled wait did not complete.");
 
             Assert.Equal("CANCELLED", result.Code);
+            Assert.Equal(result.Code, WaitForCompletion(task).Code);
+            Assert.Equal(result.Message, task.Completion.Task.GetAwaiter().GetResult().Message);
+            Assert.True(result.TaskCompleted);
             Assert.Equal(DeviceTaskExecutionState.Cancelled, task.ExecutionState);
             Assert.Equal(0, dispatcher.GetWorkerSnapshots()[0].CompletedTaskCount);
         }

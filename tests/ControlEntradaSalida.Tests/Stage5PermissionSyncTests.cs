@@ -701,6 +701,8 @@ namespace ControlEntradaSalida.Tests
 
         public ControlDoor.Devices.Runtime.DeviceRuntimeRegistry Registry => inner.Registry;
 
+        public ControlDoor.Devices.Workers.DeviceSdkDispatcher Dispatcher => inner.Dispatcher;
+
         public RecordingRetryWriter RetryWriter { get; }
 
         public RecordingUserSyncStatusWriter UserWriter { get; }
@@ -788,20 +790,71 @@ namespace ControlEntradaSalida.Tests
 
     internal sealed class RecordingRetryWriter : IDeviceOperationRetryWriter
     {
-        public IList<DeviceOperationRetryIntent> Intents { get; } = new List<DeviceOperationRetryIntent>();
+        private readonly object gate = new object();
+        private readonly IList<DeviceOperationRetryIntent> intents = new List<DeviceOperationRetryIntent>();
+        private bool failNext;
 
-        public bool FailNext { get; set; }
+        public IList<DeviceOperationRetryIntent> Intents
+        {
+            get
+            {
+                lock (gate)
+                {
+                    return intents.ToList();
+                }
+            }
+        }
+
+        public bool FailNext
+        {
+            get
+            {
+                lock (gate)
+                {
+                    return failNext;
+                }
+            }
+            set
+            {
+                lock (gate)
+                {
+                    failNext = value;
+                }
+            }
+        }
+
+        public int IntentCount
+        {
+            get
+            {
+                lock (gate)
+                {
+                    return intents.Count;
+                }
+            }
+        }
+
+        public IList<DeviceOperationRetryIntent> Snapshot()
+        {
+            lock (gate)
+            {
+                return intents.ToList();
+            }
+        }
 
         public DeviceOperationRetryWriteResult UpsertIntent(DeviceOperationRetryIntent intent)
         {
-            if (FailNext)
+            lock (gate)
             {
-                FailNext = false;
-                return DeviceOperationRetryWriteResult.Failed(intent, "DB_ERROR", "补偿意图写入失败。");
-            }
+                if (failNext)
+                {
+                    failNext = false;
+                    return DeviceOperationRetryWriteResult.Failed(intent, "DB_ERROR", "补偿意图写入失败。");
+                }
 
-            Intents.Add(intent);
-            return DeviceOperationRetryWriteResult.Ok(intent);
+                intents.Add(intent);
+                return DeviceOperationRetryWriteResult.Ok(intent);
+            }
         }
     }
 

@@ -23,6 +23,45 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void RetryExecutionCoordinator_Submit_SeparatesWaitOutcomeFromFinalCompletion()
+        {
+            using (var inner = new Stage4Fixture(defaultTaskTimeoutMilliseconds: 200))
+            {
+                inner.AddRecord(1);
+                inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
+                var login = inner.Lifecycle.SubmitLogin(1, wait: true, requestId: "stage6-wait-login");
+                Assert.True(login.Success, login.Message);
+                inner.Gateway.ConfigureDelay("UploadFaceAsync", TimeSpan.FromMilliseconds(500));
+
+                var state = new DeviceOperationRetryState
+                {
+                    Id = 99,
+                    DeviceId = 1,
+                    EmployeeId = "10001",
+                    FacePending = true,
+                    FacePayloadJson = @"{""employee_id"":""10001"",""face_image_base64"":""" + Stage5TestData.JpegBase64() + @"""}"
+                };
+                var plan = new RetryCommandPlanner().Plan(state);
+                var handle = new RetryExecutionCoordinator(inner.Dispatcher, inner.Gateway)
+                    .Submit(plan, "stage6-wait-outcome");
+                var deadline = DateTime.UtcNow.AddSeconds(2);
+                while (DateTime.UtcNow < deadline && !inner.Gateway.Calls.Any(call => call.MethodName == "UploadFaceAsync"))
+                {
+                    Thread.Sleep(10);
+                }
+
+                Assert.True(inner.Gateway.Calls.Any(call => call.MethodName == "UploadFaceAsync"), "retry operation did not start.");
+                var waitResult = handle.WaitResult.GetAwaiter().GetResult();
+                var finalResult = handle.FinalResult.GetAwaiter().GetResult();
+
+                Assert.True(waitResult.IsWaitOutcome);
+                Assert.False(finalResult.IsWaitOutcome);
+                Assert.True(finalResult.TaskStarted);
+                Assert.Equal("TIMEOUT", finalResult.Code);
+            }
+        }
+
+        [TestCase]
         public static void RetryExecutionCoordinator_UnsupportedDevice_MarksNonRetryableTerminal()
         {
             using (var fixture = new Stage6Fixture())

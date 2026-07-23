@@ -28,15 +28,248 @@ namespace ControlDoor.Permissions
             resultMapper = new RetryExecutionResultMapper();
         }
 
+        public sealed class RetryExecutionHandle
+        {
+            private readonly TaskCompletionSource<RetryExecutionResult> waitResultSource =
+                new TaskCompletionSource<RetryExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            private readonly TaskCompletionSource<RetryExecutionResult> finalResultSource =
+                new TaskCompletionSource<RetryExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            internal RetryExecutionHandle(DeviceSdkTask deviceTask, DeviceTaskSubmissionResult submission)
+            {
+                DeviceTask = deviceTask ?? throw new ArgumentNullException(nameof(deviceTask));
+                Submission = submission ?? throw new ArgumentNullException(nameof(submission));
+            }
+
+            public DeviceSdkTask DeviceTask { get; }
+
+            public DeviceTaskSubmissionResult Submission { get; }
+
+            public bool Accepted => Submission.Accepted;
+
+            public bool HasStarted => DeviceTask.StartedAt.HasValue;
+
+            public Task<DeviceTaskResult> DeviceTaskCompletion => DeviceTask.Completion.Task;
+
+            public Task<DeviceTaskResult> FinalDeviceTaskCompletion => DeviceTaskCompletion;
+
+            // WaitResult may represent a caller timeout/cancellation; it is never used for state mutation.
+            public Task<RetryExecutionResult> WaitResult => waitResultSource.Task;
+
+            public Task<RetryExecutionResult> InitialResult => waitResultSource.Task;
+
+            public Task<RetryExecutionResult> Completion => finalResultSource.Task;
+
+            public Task<RetryExecutionResult> FinalResult => finalResultSource.Task;
+
+            public DeviceTaskResult FinalDeviceTaskResult { get; internal set; }
+
+            internal void SetWaitResult(RetryExecutionResult result)
+            {
+                waitResultSource.TrySetResult(result);
+            }
+
+            internal void SetWaitException(Exception exception)
+            {
+                waitResultSource.TrySetException(exception);
+            }
+
+            internal void SetFinalResult(RetryExecutionResult result)
+            {
+                finalResultSource.TrySetResult(result);
+            }
+
+            internal void SetFinalException(Exception exception)
+            {
+                finalResultSource.TrySetException(exception);
+            }
+        }
+
+        public RetryExecutionHandle Submit(RetryCommandPlan plan, string requestId)
+        {
+            return Submit(plan, requestId, CancellationToken.None);
+        }
+
+        public RetryExecutionHandle Submit(RetryCommandPlan plan, string requestId, CancellationToken cancellationToken)
+        {
+            ValidatePlan(plan);
+            var task = CreateTask(plan, requestId);
+            task.AttachCallerCancellationToken(cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                var cancelled = DeviceTaskResult.Cancelled(task, "Caller cancelled before task submission.");
+                task.TryComplete(cancelled);
+                return CreateCompletedHandle(plan, task, cancelled);
+            }
+
+            DeviceTaskSubmissionResult submission;
+            try
+            {
+                submission = dispatcher.Submit(task);
+            }
+            catch (Exception ex)
+            {
+                var failed = DeviceTaskResult.FromException(task, ex, DateTime.Now, DateTime.Now);
+                task.TryComplete(failed);
+                submission = DeviceTaskSubmissionResult.Rejected(task, failed);
+            }
+
+            var handle = new RetryExecutionHandle(task, submission);
+            var cancellationRegistration = default(CancellationTokenRegistration);
+            if (cancellationToken.CanBeCanceled)
+            {
+                cancellationRegistration = cancellationToken.Register(() =>
+                {
+                    if (!task.StartedAt.HasValue)
+                    {
+                        dispatcher.TryCancelQueuedTask(task.TaskId, "Caller cancelled before task started.");
+                    }
+                });
+            }
+
+            _ = ObserveFinalCompletionAsync(plan, handle, cancellationRegistration);
+            _ = ObserveWaitOutcomeAsync(plan, handle, cancellationToken);
+            return handle;
+        }
+
         public async Task<RetryExecutionResult> ExecuteAsync(RetryCommandPlan plan, string requestId, CancellationToken cancellationToken)
+        {
+            var handle = Submit(plan, requestId, cancellationToken);
+            return await handle.Completion.ConfigureAwait(false);
+        }
+
+        private RetryExecutionHandle CreateCompletedHandle(RetryCommandPlan plan, DeviceSdkTask task, DeviceTaskResult finalTaskResult)
+        {
+            var submission = DeviceTaskSubmissionResult.Rejected(task, finalTaskResult);
+            var handle = new RetryExecutionHandle(task, submission)
+            {
+                FinalDeviceTaskResult = finalTaskResult
+            };
+            var mapped = MapFinalResult(plan, task, finalTaskResult);
+            handle.SetWaitResult(mapped);
+            handle.SetFinalResult(mapped);
+            return handle;
+        }
+
+        private async Task ObserveFinalCompletionAsync(
+            RetryCommandPlan plan,
+            RetryExecutionHandle handle,
+            CancellationTokenRegistration cancellationRegistration)
+        {
+            try
+            {
+                var finalTaskResult = await handle.DeviceTaskCompletion.ConfigureAwait(false);
+                handle.FinalDeviceTaskResult = finalTaskResult;
+                var mapped = MapFinalResult(plan, handle.DeviceTask, finalTaskResult);
+                handle.SetFinalResult(mapped);
+            }
+            catch (Exception ex)
+            {
+                handle.SetFinalException(ex);
+            }
+            finally
+            {
+                cancellationRegistration.Dispose();
+            }
+        }
+
+        private async Task ObserveWaitOutcomeAsync(RetryCommandPlan plan, RetryExecutionHandle handle, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var completion = handle.DeviceTaskCompletion;
+                Task deadlineTask = null;
+                if (handle.DeviceTask.DeadlineAt.HasValue)
+                {
+                    var remaining = handle.DeviceTask.DeadlineAt.Value - DateTime.Now;
+                    deadlineTask = remaining <= TimeSpan.Zero ? Task.CompletedTask : Task.Delay(remaining);
+                }
+
+                Task cancellationTask = null;
+                if (cancellationToken.CanBeCanceled)
+                {
+                    cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+
+                if (deadlineTask == null && cancellationTask == null)
+                {
+                    handle.SetWaitResult(await handle.FinalResult.ConfigureAwait(false));
+                    return;
+                }
+
+                // Timer/cancellation tasks precede Completion deliberately. If a final device
+                // result lands on the same boundary, the caller's wait outcome remains visible
+                // through WaitResult while FinalResult is still completed by the final observer.
+                var waiters = new List<Task>();
+                if (cancellationTask != null)
+                {
+                    waiters.Add(cancellationTask);
+                }
+
+                if (deadlineTask != null)
+                {
+                    waiters.Add(deadlineTask);
+                }
+
+                waiters.Add(completion);
+                var completed = await Task.WhenAny(waiters).ConfigureAwait(false);
+                if (completed == completion)
+                {
+                    handle.SetWaitResult(await handle.FinalResult.ConfigureAwait(false));
+                    return;
+                }
+
+                if (completed == cancellationTask)
+                {
+                    var removed = !handle.DeviceTask.StartedAt.HasValue &&
+                        dispatcher.TryCancelQueuedTask(handle.DeviceTask.TaskId, "Caller cancelled before task started.");
+                    var waitResult = DeviceTaskResult.Cancelled(
+                        handle.DeviceTask,
+                        removed ? "Caller cancelled before task started." : "Caller cancelled while waiting for task result.",
+                        isWaitOutcome: !removed);
+                    handle.SetWaitResult(MapFinalResult(plan, handle.DeviceTask, waitResult));
+                    return;
+                }
+
+                var removedBeforeExecution = !handle.DeviceTask.StartedAt.HasValue &&
+                    dispatcher.TryCancelQueuedTask(handle.DeviceTask.TaskId, "Caller wait timed out before task started.");
+                var timeoutResult = DeviceTaskResult.Timeout(
+                    handle.DeviceTask,
+                    removedBeforeExecution ? "Caller wait timed out before task started." : "Caller wait timed out before task completed.",
+                    isWaitOutcome: !removedBeforeExecution);
+                handle.SetWaitResult(MapFinalResult(plan, handle.DeviceTask, timeoutResult));
+            }
+            catch (Exception ex)
+            {
+                handle.SetWaitException(ex);
+            }
+        }
+
+        private RetryExecutionResult MapFinalResult(RetryCommandPlan plan, DeviceSdkTask task, DeviceTaskResult finalTaskResult)
+        {
+            var executionResult = finalTaskResult?.Data as RetryExecutionResult;
+            if (executionResult == null)
+            {
+                executionResult = resultMapper.Map(plan.State, plan, new[] { finalTaskResult });
+                executionResult.TaskStarted = task.StartedAt.HasValue;
+            }
+
+            executionResult.FinalDeviceTaskResult = finalTaskResult;
+            return executionResult;
+        }
+
+        private static void ValidatePlan(RetryCommandPlan plan)
         {
             if (plan == null || plan.State == null)
             {
                 throw new ArgumentNullException(nameof(plan));
             }
+        }
 
+        private DeviceSdkTask CreateTask(RetryCommandPlan plan, string requestId)
+        {
             var state = plan.State;
-            var task = new DeviceSdkTask(state.DeviceId, DeviceTaskType.RetryDeviceOperation, "RetryDeviceOperation", context => ExecutePlanInsideWorkerAsync(plan, context))
+            return new DeviceSdkTask(state.DeviceId, DeviceTaskType.RetryDeviceOperation, "RetryDeviceOperation", context => ExecutePlanInsideWorkerAsync(plan, context))
             {
                 RequiresOnline = true,
                 Priority = DeviceTaskPriority.Retry,
@@ -60,22 +293,23 @@ namespace ControlDoor.Permissions
                     AllowFullPayloadLogging = false
                 }
             };
-
-            var result = await dispatcher.SubmitAndWaitAsync(task, cancellationToken).ConfigureAwait(false);
-            var executionResult = result?.Data as RetryExecutionResult;
-            if (executionResult != null)
-            {
-                return executionResult;
-            }
-
-            return resultMapper.Map(state, plan, new[] { result });
         }
 
         private async Task<DeviceTaskResult> ExecutePlanInsideWorkerAsync(RetryCommandPlan plan, DeviceTaskContext context)
         {
             var taskResults = new List<DeviceTaskResult>();
+            var operationStarted = false;
             foreach (var step in plan.Steps)
             {
+                if (!operationStarted && context.CancellationToken.IsCancellationRequested)
+                {
+                    var cancelled = DeviceTaskResult.Cancelled(context.Task, "补偿任务在设备操作开始前取消。");
+                    cancelled.OperationName = RetryOperationNames.ToStage5OperationName(step.Operation);
+                    taskResults.Add(cancelled);
+                    break;
+                }
+
+                operationStarted = true;
                 var result = await ExecuteStepAsync(plan.State, step.Operation, context).ConfigureAwait(false);
                 taskResults.Add(result);
                 if (!result.Success || step.Operation == RetryOperation.DeletePerson)
@@ -85,6 +319,7 @@ namespace ControlDoor.Permissions
             }
 
             var mapped = resultMapper.Map(plan.State, plan, taskResults);
+            mapped.TaskStarted = operationStarted;
             var started = context.Task.StartedAt ?? DateTime.Now;
             var completed = DateTime.Now;
             var outer = DeviceTaskResult.FromTask(

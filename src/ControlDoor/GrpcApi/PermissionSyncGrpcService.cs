@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using ControlDoor.Devices.Management;
@@ -111,22 +112,35 @@ namespace ControlDoor.GrpcApi
             var aggregateLock = new object();
             Action<DeviceRuntimeSnapshot, PermissionCommand> processOnlinePermission = (device, command) =>
             {
-                var result = ExecutePermissionTask(device, command, context);
+                var execution = ExecutePermissionTask(device, command, context);
+                var result = execution.Result;
                 var detail = ToDeviceResult(device, result);
-                var shouldQueueRetry = ShouldQueueMutatingRetry(result);
+                var shouldQueueRetry = ShouldQueueMutatingRetry(execution);
                 if (shouldQueueRetry)
                 {
                     object queuedDetail;
                     bool queued;
                     lock (aggregateLock)
                     {
-                        queued = TryQueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context, out queuedDetail, dbErrors);
+                        queued = TryQueueMutationRetry(execution, device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context, out queuedDetail, dbErrors);
                     }
                     if (queued)
                     {
                         detail.Queued = true;
                         lock (aggregateLock) queuedDetails.Add(queuedDetail);
                     }
+                }
+
+                if (result.IsWaitOutcome)
+                {
+                    RegisterMutationCompletionObserver(
+                        execution,
+                        device,
+                        command.EmployeeId,
+                        "SyncPermission",
+                        PermissionPayload(command),
+                        command.PermissionCode,
+                        context);
                 }
 
                 lock (aggregateLock)
@@ -159,6 +173,12 @@ namespace ControlDoor.GrpcApi
             {
                 foreach (var device in offlineDevices)
                 {
+                    if (context.CancellationToken.IsCancellationRequested)
+                    {
+                        employeeResults[command.EmployeeId].DeviceResults.Add(ToCancelledDeviceResult(device, "SyncPermission"));
+                        continue;
+                    }
+
                     object queuedDetail;
                     if (TryQueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, "设备离线，已生成补偿意图。", context, out queuedDetail, dbErrors))
                     {
@@ -252,16 +272,17 @@ namespace ControlDoor.GrpcApi
             var aggregateLock = new object();
             Action<DeviceRuntimeSnapshot, PersonSyncCommand> processOnlinePerson = (device, command) =>
             {
-                var personResult = ExecutePersonTask(device, command, context);
+                var personExecution = ExecutePersonTask(device, command, context);
+                var personResult = personExecution.Result;
                 var personDetail = ToDeviceResult(device, personResult, "SyncPerson");
-                var shouldQueuePersonRetry = ShouldQueueMutatingRetry(personResult);
+                var shouldQueuePersonRetry = ShouldQueueMutatingRetry(personExecution);
                 object personQueueDetail = null;
                 var personQueued = false;
                 if (shouldQueuePersonRetry)
                 {
                     lock (aggregateLock)
                     {
-                        personQueued = TryQueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context, out personQueueDetail, dbErrors);
+                        personQueued = TryQueueMutationRetry(personExecution, device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context, out personQueueDetail, dbErrors);
                     }
                     if (personQueued)
                     {
@@ -281,7 +302,7 @@ namespace ControlDoor.GrpcApi
                         bool faceQueued;
                         lock (aggregateLock)
                         {
-                            faceQueued = TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, personResult.Message, context, out faceQueueDetail, dbErrors);
+                            faceQueued = TryQueueMutationRetry(personExecution, device, command.EmployeeId, "UploadFace", FacePayload(command), null, personResult.Message, context, out faceQueueDetail, dbErrors);
                         }
                         if (faceQueued)
                         {
@@ -308,28 +329,73 @@ namespace ControlDoor.GrpcApi
                             }
                         }
                     }
-
-                    return;
                 }
 
-                if (command.HasFace)
+                if (personResult.IsWaitOutcome)
                 {
-                    var faceResult = ExecuteUploadFaceTask(device, command, context);
+                    var completionContext = SnapshotContext(context);
+                    RegisterMutationCompletionObserver(
+                        personExecution,
+                        device,
+                        command.EmployeeId,
+                        "SyncPerson",
+                        PersonPayload(command),
+                        null,
+                        completionContext,
+                        finalResult =>
+                        {
+                            if (finalResult.Success)
+                            {
+                                if (command.HasFace)
+                                {
+                                    QueueCompletionRetry(personExecution, device, command.EmployeeId, "UploadFace", FacePayload(command), null, "人员同步最终成功，但人脸操作尚未开始。", completionContext);
+                                }
+                                return;
+                            }
+
+                            if (ShouldQueueCompletionRetry(personExecution, finalResult))
+                            {
+                                QueueCompletionRetry(personExecution, device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, finalResult.Message, completionContext);
+                                if (command.HasFace)
+                                {
+                                    // 人员可重试失败时同步保留人脸意图，避免补偿只恢复人员后丢失人脸下发。
+                                    QueueCompletionRetry(personExecution, device, command.EmployeeId, "UploadFace", FacePayload(command), null, finalResult.Message, completionContext);
+                                }
+                            }
+                        });
+                }
+
+                if (personResult.Success && command.HasFace)
+                {
+                    var faceExecution = ExecuteUploadFaceTask(device, command, context);
+                    var faceResult = faceExecution.Result;
                     var faceDetail = ToDeviceResult(device, faceResult, "UploadFace");
-                    var shouldQueueFaceRetry = ShouldQueueMutatingRetry(faceResult);
+                    var shouldQueueFaceRetry = ShouldQueueMutatingRetry(faceExecution);
+                    object faceQueueDetail = null;
+                    var faceQueued = false;
                     if (shouldQueueFaceRetry)
                     {
-                        object faceQueueDetail;
-                        bool faceQueued;
                         lock (aggregateLock)
                         {
-                            faceQueued = TryQueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context, out faceQueueDetail, dbErrors);
+                            faceQueued = TryQueueMutationRetry(faceExecution, device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context, out faceQueueDetail, dbErrors);
                         }
                         if (faceQueued)
                         {
                             faceDetail.Queued = true;
                             lock (aggregateLock) queuedDetails.Add(faceQueueDetail);
                         }
+                    }
+
+                    if (faceResult.IsWaitOutcome)
+                    {
+                        RegisterMutationCompletionObserver(
+                            faceExecution,
+                            device,
+                            command.EmployeeId,
+                            "UploadFace",
+                            FacePayload(command),
+                            null,
+                            context);
                     }
 
                     lock (aggregateLock)
@@ -367,6 +433,17 @@ namespace ControlDoor.GrpcApi
             {
                 foreach (var device in offlineDevices)
                 {
+                    if (context.CancellationToken.IsCancellationRequested)
+                    {
+                        employeeResults[command.EmployeeId].DeviceResults.Add(ToCancelledDeviceResult(device, "SyncPerson"));
+                        if (command.HasFace)
+                        {
+                            employeeResults[command.EmployeeId].DeviceResults.Add(ToCancelledDeviceResult(device, "UploadFace"));
+                        }
+
+                        continue;
+                    }
+
                     object personQueueDetail;
                     if (TryQueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, "设备离线，已生成补偿意图。", context, out personQueueDetail, dbErrors))
                     {
@@ -787,24 +864,37 @@ namespace ControlDoor.GrpcApi
             var aggregateLock = new object();
             Action<DeviceRuntimeSnapshot, EmployeeCommand> processOnlineDelete = (device, command) =>
             {
-                var result = operation == "DeleteFace"
+                var execution = operation == "DeleteFace"
                     ? ExecuteDeleteFaceTask(device, command.EmployeeId, context)
                     : ExecuteDeletePersonTask(device, command.EmployeeId, context);
+                var result = execution.Result;
                 var detail = ToDeviceResult(device, result, operation);
-                var shouldQueueRetry = ShouldQueueMutatingRetry(result);
+                var shouldQueueRetry = ShouldQueueMutatingRetry(execution);
                 if (shouldQueueRetry)
                 {
                     object queueDetail;
                     bool queued;
                     lock (aggregateLock)
                     {
-                        queued = TryQueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context, out queueDetail, dbErrors);
+                        queued = TryQueueMutationRetry(execution, device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context, out queueDetail, dbErrors);
                     }
                     if (queued)
                     {
                         detail.Queued = true;
                         lock (aggregateLock) queuedDetails.Add(queueDetail);
                     }
+                }
+
+                if (result.IsWaitOutcome)
+                {
+                    RegisterMutationCompletionObserver(
+                        execution,
+                        device,
+                        command.EmployeeId,
+                        operation,
+                        EmployeePayload(command.EmployeeId),
+                        null,
+                        context);
                 }
 
                 lock (aggregateLock)
@@ -837,6 +927,12 @@ namespace ControlDoor.GrpcApi
             {
                 foreach (var device in offlineDevices)
                 {
+                    if (context.CancellationToken.IsCancellationRequested)
+                    {
+                        employeeResults[command.EmployeeId].DeviceResults.Add(ToCancelledDeviceResult(device, operation));
+                        continue;
+                    }
+
                     object queueDetail;
                     if (TryQueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, "设备离线，已生成补偿意图。", context, out queueDetail, dbErrors))
                     {
@@ -882,9 +978,9 @@ namespace ControlDoor.GrpcApi
             });
         }
 
-        private DeviceTaskResult ExecutePermissionTask(DeviceRuntimeSnapshot device, PermissionCommand command, GrpcRequestContext context)
+        private MutationTaskExecution ExecutePermissionTask(DeviceRuntimeSnapshot device, PermissionCommand command, GrpcRequestContext context)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.SyncPermission, "SyncPermission", context, async taskContext =>
+            return SubmitMutationGatewayTask(device, DeviceTaskType.SyncPermission, "SyncPermission", context, async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -905,9 +1001,9 @@ namespace ControlDoor.GrpcApi
             });
         }
 
-        private DeviceTaskResult ExecutePersonTask(DeviceRuntimeSnapshot device, PersonSyncCommand command, GrpcRequestContext context)
+        private MutationTaskExecution ExecutePersonTask(DeviceRuntimeSnapshot device, PersonSyncCommand command, GrpcRequestContext context)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.SyncPerson, "SyncPerson", context, async taskContext =>
+            return SubmitMutationGatewayTask(device, DeviceTaskType.SyncPerson, "SyncPerson", context, async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -927,9 +1023,9 @@ namespace ControlDoor.GrpcApi
             });
         }
 
-        private DeviceTaskResult ExecuteUploadFaceTask(DeviceRuntimeSnapshot device, PersonSyncCommand command, GrpcRequestContext context)
+        private MutationTaskExecution ExecuteUploadFaceTask(DeviceRuntimeSnapshot device, PersonSyncCommand command, GrpcRequestContext context)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.UploadFace, "UploadFace", context, async taskContext =>
+            return SubmitMutationGatewayTask(device, DeviceTaskType.UploadFace, "UploadFace", context, async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -950,9 +1046,9 @@ namespace ControlDoor.GrpcApi
             });
         }
 
-        private DeviceTaskResult ExecuteDeleteFaceTask(DeviceRuntimeSnapshot device, string employeeId, GrpcRequestContext context)
+        private MutationTaskExecution ExecuteDeleteFaceTask(DeviceRuntimeSnapshot device, string employeeId, GrpcRequestContext context)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.DeleteFace, "DeleteFace", context, async taskContext =>
+            return SubmitMutationGatewayTask(device, DeviceTaskType.DeleteFace, "DeleteFace", context, async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -968,9 +1064,9 @@ namespace ControlDoor.GrpcApi
             });
         }
 
-        private DeviceTaskResult ExecuteDeletePersonTask(DeviceRuntimeSnapshot device, string employeeId, GrpcRequestContext context)
+        private MutationTaskExecution ExecuteDeletePersonTask(DeviceRuntimeSnapshot device, string employeeId, GrpcRequestContext context)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.DeletePerson, "DeletePerson", context, async taskContext =>
+            return SubmitMutationGatewayTask(device, DeviceTaskType.DeletePerson, "DeletePerson", context, async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -1068,6 +1164,19 @@ namespace ControlDoor.GrpcApi
 
         private DeviceTaskResult SubmitGatewayTask(DeviceRuntimeSnapshot device, DeviceTaskType taskType, string operationName, GrpcRequestContext context, Func<DeviceTaskContext, System.Threading.Tasks.Task<DeviceTaskResult>> executeAsync)
         {
+            var task = CreateGatewayTask(device, taskType, operationName, context, executeAsync);
+            return dispatcher.SubmitAndWaitAsync(task, context.CancellationToken).GetAwaiter().GetResult();
+        }
+
+        private MutationTaskExecution SubmitMutationGatewayTask(DeviceRuntimeSnapshot device, DeviceTaskType taskType, string operationName, GrpcRequestContext context, Func<DeviceTaskContext, System.Threading.Tasks.Task<DeviceTaskResult>> executeAsync)
+        {
+            var task = CreateGatewayTask(device, taskType, operationName, context, executeAsync);
+            var result = dispatcher.SubmitAndWaitAsync(task, context.CancellationToken).GetAwaiter().GetResult();
+            return new MutationTaskExecution(task, result);
+        }
+
+        private DeviceSdkTask CreateGatewayTask(DeviceRuntimeSnapshot device, DeviceTaskType taskType, string operationName, GrpcRequestContext context, Func<DeviceTaskContext, System.Threading.Tasks.Task<DeviceTaskResult>> executeAsync)
+        {
             var task = new DeviceSdkTask(device.DeviceId, taskType, operationName, async taskContext =>
             {
                 try
@@ -1084,7 +1193,183 @@ namespace ControlDoor.GrpcApi
             task.WaitMode = DeviceTaskWaitMode.WaitForResult;
             task.RequestId = context.RequestId ?? string.Empty;
             task.CorrelationId = context.CorrelationId ?? context.RequestId ?? string.Empty;
-            return dispatcher.SubmitAndWaitAsync(task, context.CancellationToken).GetAwaiter().GetResult();
+            return task;
+        }
+
+        private void RegisterMutationCompletionObserver(
+            MutationTaskExecution execution,
+            DeviceRuntimeSnapshot device,
+            string employeeId,
+            string operation,
+            IDictionary<string, object> payload,
+            int? permissionLevel,
+            GrpcRequestContext context,
+            Action<DeviceTaskResult> completedCallback = null)
+        {
+            if (execution == null || execution.Task == null || !execution.TryRegisterCompletionObserver())
+            {
+                return;
+            }
+
+            var payloadSnapshot = ClonePayload(payload);
+            var contextSnapshot = SnapshotContext(context);
+            try
+            {
+                execution.Task.Completion.Task.ContinueWith(completedTask =>
+                {
+                    try
+                    {
+                        if (completedTask.IsCanceled)
+                        {
+                            throw new InvalidOperationException("设备任务 Completion 被取消，无法取得最终结果。");
+                        }
+
+                        if (completedTask.IsFaulted)
+                        {
+                            throw new InvalidOperationException("设备任务 Completion 失败。", completedTask.Exception);
+                        }
+
+                        var finalResult = completedTask.GetAwaiter().GetResult();
+                        if (completedCallback != null)
+                        {
+                            completedCallback(finalResult);
+                        }
+                        else if (ShouldQueueCompletionRetry(execution, finalResult))
+                        {
+                            QueueCompletionRetry(execution, device, employeeId, operation, payloadSnapshot, permissionLevel, finalResult.Message, contextSnapshot);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMutationCompletionObserverException(execution, device, employeeId, operation, ex, contextSnapshot);
+                    }
+                }, CancellationToken.None, System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously, System.Threading.Tasks.TaskScheduler.Default);
+            }
+            catch (Exception ex)
+            {
+                LogMutationCompletionObserverException(execution, device, employeeId, operation, ex, contextSnapshot);
+            }
+        }
+
+        private void QueueCompletionRetry(
+            MutationTaskExecution execution,
+            DeviceRuntimeSnapshot device,
+            string employeeId,
+            string operation,
+            IDictionary<string, object> payload,
+            int? permissionLevel,
+            string message,
+            GrpcRequestContext context)
+        {
+            try
+            {
+                object detail;
+                TryQueueMutationRetry(execution, device, employeeId, operation, ClonePayload(payload), permissionLevel, message, context, out detail);
+            }
+            catch (Exception ex)
+            {
+                LogMutationCompletionObserverException(execution, device, employeeId, operation, ex, context);
+            }
+        }
+
+        private void LogMutationCompletionObserverException(
+            MutationTaskExecution execution,
+            DeviceRuntimeSnapshot device,
+            string employeeId,
+            string operation,
+            Exception exception,
+            GrpcRequestContext context)
+        {
+            var fields = new LogFields
+            {
+                RequestId = context == null ? null : context.RequestId,
+                DeviceId = device == null ? (int?)null : device.DeviceId,
+                EmployeeId = employeeId,
+                OperationName = operation,
+                ErrorCode = "COMPLETION_OBSERVER_ERROR",
+                Exception = exception == null ? string.Empty : exception.GetType().Name + ": " + exception.Message
+            };
+            if (execution != null && execution.Task != null)
+            {
+                fields.Extra["taskId"] = execution.Task.TaskId;
+                fields.Extra["taskState"] = execution.Task.ExecutionState.ToString();
+            }
+
+            try
+            {
+                logger?.Error("PermissionSync", "在线 mutation Completion observer 执行失败。", exception, fields);
+            }
+            catch (Exception)
+            {
+                // observer 的日志路径也不能反向影响设备任务或请求线程。
+            }
+        }
+
+        private static bool ShouldQueueCompletionRetry(MutationTaskExecution execution, DeviceTaskResult finalResult)
+        {
+            if (execution == null || execution.Task == null || finalResult == null || finalResult.Success)
+            {
+                return false;
+            }
+
+            if (finalResult.Retryable && !finalResult.IsWaitOutcome)
+            {
+                return true;
+            }
+
+            return IsQueuedMutationCancellation(execution.Task, finalResult);
+        }
+
+        private static bool ShouldQueueMutatingRetry(MutationTaskExecution execution)
+        {
+            if (execution == null || execution.Result == null || execution.Result.Success)
+            {
+                return false;
+            }
+
+            if (execution.Result.IsWaitOutcome && !IsQueuedMutationCancellation(execution.Task, execution.Result))
+            {
+                return false;
+            }
+
+            if (execution.Result.Retryable)
+            {
+                return true;
+            }
+
+            return IsQueuedMutationCancellation(execution.Task, execution.Result);
+        }
+
+        private static bool IsQueuedMutationCancellation(DeviceSdkTask task, DeviceTaskResult result)
+        {
+            if (task == null || !task.EnqueuedAt.HasValue)
+            {
+                return false;
+            }
+
+            // 仅使用任务发布的最终结果判断是否为“入队后、未开始即取消”。
+            // 等待层返回的 CANCELLED 可能只是调用方停止等待，不能读取多个独立属性拼成伪终态。
+            var terminalResult = task.TerminalResult;
+            return terminalResult != null &&
+                string.Equals(terminalResult.Code, "CANCELLED", StringComparison.OrdinalIgnoreCase) &&
+                terminalResult.TaskCompleted &&
+                !terminalResult.TaskStarted;
+        }
+
+        private static IDictionary<string, object> ClonePayload(IDictionary<string, object> payload)
+        {
+            return payload == null
+                ? null
+                : new Dictionary<string, object>(payload, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static GrpcRequestContext SnapshotContext(GrpcRequestContext context)
+        {
+            return new GrpcRequestContext
+            {
+                RequestId = context == null ? null : context.RequestId,
+                CorrelationId = context == null ? null : context.CorrelationId
+            };
         }
 
         private DeviceTaskResult MapGatewayException(DeviceSdkTask task, Exception ex, DeviceRuntimeSnapshot snapshot)
@@ -1113,6 +1398,27 @@ namespace ControlDoor.GrpcApi
             }
 
             return DeviceTaskResult.FromTask(task, false, "DEVICE_ERROR", ex == null ? "设备操作失败。" : ex.Message, status, started, DateTime.Now);
+        }
+
+        private bool TryQueueMutationRetry(
+            MutationTaskExecution execution,
+            DeviceRuntimeSnapshot device,
+            string employeeId,
+            string operation,
+            IDictionary<string, object> payload,
+            int? permissionLevel,
+            string message,
+            GrpcRequestContext context,
+            out object detail,
+            IList<object> dbErrors = null)
+        {
+            detail = null;
+            if (execution == null || !execution.TryClaimRetry(operation))
+            {
+                return false;
+            }
+
+            return TryQueueRetry(device, employeeId, operation, payload, permissionLevel, message, context, out detail, dbErrors);
         }
 
         private bool TryQueueRetry(
@@ -1437,6 +1743,20 @@ namespace ControlDoor.GrpcApi
             };
         }
 
+        private static DeviceOperationDetail ToCancelledDeviceResult(DeviceRuntimeSnapshot device, string operation)
+        {
+            return new DeviceOperationDetail
+            {
+                DeviceId = device.DeviceId,
+                DeviceName = device.DeviceName,
+                Operation = operation,
+                Success = false,
+                Queued = false,
+                Code = "CANCELLED",
+                Message = "请求已取消，未提交设备操作或补偿意图。"
+            };
+        }
+
         private static bool IsEmployeeOperationComplete(EmployeeOperationSummary summary)
         {
             return summary != null &&
@@ -1520,8 +1840,8 @@ namespace ControlDoor.GrpcApi
                 ["name"] = command.Name,
                 ["gender"] = command.Gender,
                 ["enabled"] = command.Enabled,
-                ["valid_from"] = command.ValidFrom.HasValue ? command.ValidFrom.Value.ToString("yyyy-MM-ddTHH:mm:ss") : null,
-                ["valid_to"] = command.ValidTo.HasValue ? command.ValidTo.Value.ToString("yyyy-MM-ddTHH:mm:ss") : null
+                ["valid_from"] = command.ValidFrom.HasValue ? command.ValidFrom.Value.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture) : null,
+                ["valid_to"] = command.ValidTo.HasValue ? command.ValidTo.Value.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture) : null
             };
         }
 
@@ -1593,18 +1913,6 @@ namespace ControlDoor.GrpcApi
             }
         }
 
-        private static bool ShouldQueueMutatingRetry(DeviceTaskResult result)
-        {
-            if (result == null || result.Success || result.IsWaitOutcome)
-            {
-                return false;
-            }
-
-            // 只有设备任务已经给出可重试执行终态时才写补偿；等待层 TIMEOUT/CANCELLED
-            // 可能对应仍在运行的任务，不能据此重复下发。
-            return result.Retryable;
-        }
-
         private static bool IsRetryableSdkError(int code)
         {
             return code == 7 || code == 41 || code == 43 || code == 52 || code == 408 || code == 500;
@@ -1644,6 +1952,41 @@ namespace ControlDoor.GrpcApi
         private static string Error(GrpcRequestContext context, string code, string message)
         {
             return JsonResponse.Create(context.RequestId, false, code, message, null, new List<string> { message ?? string.Empty });
+        }
+
+        private sealed class MutationTaskExecution
+        {
+            private readonly object retryClaimLock = new object();
+            private readonly HashSet<string> claimedRetryOperations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            private int observerRegistered;
+
+            public MutationTaskExecution(DeviceSdkTask task, DeviceTaskResult result)
+            {
+                Task = task;
+                Result = result;
+            }
+
+            public DeviceSdkTask Task { get; }
+
+            public DeviceTaskResult Result { get; }
+
+            public bool TryRegisterCompletionObserver()
+            {
+                return Interlocked.Exchange(ref observerRegistered, 1) == 0;
+            }
+
+            public bool TryClaimRetry(string operation)
+            {
+                if (string.IsNullOrWhiteSpace(operation))
+                {
+                    return false;
+                }
+
+                lock (retryClaimLock)
+                {
+                    return claimedRetryOperations.Add(operation);
+                }
+            }
         }
 
         private sealed class ParseResult<T>

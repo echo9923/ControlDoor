@@ -183,6 +183,47 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceSdkWorker_LowPriorityDrop_ImmediateResultMatchesCompletion()
+        {
+            var registry = NewRegistry(workerCount: 1);
+            Register(registry, 1);
+            var dispatcher = NewDispatcher(registry, workerCount: 1, queueCapacity: 1);
+            var release = NewSignal();
+            var started = NewSignal();
+            var running = NewAsyncTask(1, DeviceTaskType.HealthCheck, async context =>
+            {
+                started.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return Success(context.Task);
+            });
+            var queued = NewAsyncTask(1, DeviceTaskType.SyncPerson, context => Task.FromResult(Success(context.Task)));
+            var dropped = NewAsyncTask(1, DeviceTaskType.ProbeCapabilities, context => Task.FromResult(Success(context.Task)));
+            dropped.Priority = DeviceTaskPriority.Low;
+
+            DeviceTaskSubmissionResult result = null;
+            try
+            {
+                dispatcher.Submit(running);
+                WaitForSignal(started, "running task did not start.");
+                Assert.True(dispatcher.Submit(queued).Accepted);
+                result = dispatcher.Submit(dropped);
+                release.SetResult(true);
+                WaitForCompletion(running);
+                WaitForCompletion(queued);
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+
+            Assert.False(result.Accepted);
+            Assert.Equal("LOW_PRIORITY_DROPPED", result.ImmediateResult.Code);
+            Assert.Equal("LOW_PRIORITY_DROPPED", WaitForCompletion(dropped).Code);
+            Assert.Equal(DeviceTaskExecutionState.Rejected, dropped.ExecutionState);
+        }
+
+        [TestCase]
         public static void DeviceSdkDispatcher_SubmitAndWaitReturnsTimeoutButTaskCanFinishLater()
         {
             var registry = NewRegistry(workerCount: 1);
@@ -213,7 +254,10 @@ namespace ControlEntradaSalida.Tests
 
             Assert.False(waitResult.Success);
             Assert.Equal("TIMEOUT", waitResult.Code);
+            Assert.True(waitResult.IsWaitOutcome);
             Assert.True(finalResult.Success);
+            Assert.True(finalResult.TaskStarted);
+            Assert.True(finalResult.TaskCompleted);
             Assert.Equal(DeviceTaskExecutionState.Succeeded, task.ExecutionState);
         }
 

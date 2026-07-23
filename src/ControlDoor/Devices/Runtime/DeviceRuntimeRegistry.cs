@@ -182,6 +182,11 @@ namespace ControlDoor.Devices.Runtime
 
         public DeviceRuntimeMutationResult RegisterSdkUserId(int deviceId, int sdkUserId, string serialNumber, DateTime now, DeviceIndexUpdateContext context = null, bool publishOnline = true)
         {
+            return RegisterSdkUserId(deviceId, sdkUserId, serialNumber, now, context, publishOnline, null, null);
+        }
+
+        public DeviceRuntimeMutationResult RegisterSdkUserId(int deviceId, int sdkUserId, string serialNumber, DateTime now, DeviceIndexUpdateContext context, bool publishOnline, int? expectedSdkUserId, long? expectedRuntimeVersion)
+        {
             if (sdkUserId < 0)
             {
                 return DeviceRuntimeMutationResult.Invalid("SDK user id must be non-negative.");
@@ -199,47 +204,39 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.Invalid("设备正在删除，拒绝注册新的 SDK 会话。");
                 }
 
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (expectedSdkUserId.HasValue && current.SdkUserId != expectedSdkUserId.Value ||
+                    expectedRuntimeVersion.HasValue && current.RuntimeVersion != expectedRuntimeVersion.Value)
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备运行时已发生变化，拒绝覆盖新的 SDK 会话。");
+                }
+
                 if (sdkUserIdIndex.TryGetValue(sdkUserId, out var ownerDeviceId) && ownerDeviceId != deviceId)
                 {
                     conflictCount++;
                     return DeviceRuntimeMutationResult.Conflict(ownerDeviceId, "SDK_USER_ID_CONFLICT", "SDK user id is already registered to another device.");
                 }
 
-                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
-                sdkUserIdIndex[sdkUserId] = deviceId;
-                if (publishOnline)
+                var accepted = publishOnline
+                    ? state.MarkLoginSucceeded(sdkUserId, serialNumber, now)
+                    : state.MarkSdkSessionRegistered(sdkUserId, serialNumber, now);
+                if (!accepted)
                 {
-                    state.MarkLoginSucceeded(sdkUserId, serialNumber, now);
-                }
-                else
-                {
-                    state.MarkSdkSessionRegistered(sdkUserId, serialNumber, now);
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化。");
                 }
 
+                RemoveSdkUserIndexLocked(deviceId, current.SdkUserId);
+                sdkUserIdIndex[sdkUserId] = deviceId;
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "SDK_USER_REGISTERED", "SDK user id was registered.");
             }
         }
 
         public DeviceRuntimeMutationResult PromoteRegisteredSdkSession(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
-            lock (gate)
-            {
-                if (!devices.TryGetValue(deviceId, out var state))
-                {
-                    return DeviceRuntimeMutationResult.NotFound();
-                }
-
-                if (state.IsDeleting)
-                {
-                    return DeviceRuntimeMutationResult.Invalid("设备正在删除，拒绝发布新的 SDK 会话。");
-                }
-
-                state.PromoteRegisteredSdkSession(now);
-                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "SDK_SESSION_ONLINE", "SDK session was published online.");
-            }
+            return PromoteRegisteredSdkSession(deviceId, now, context, null, null);
         }
 
-        public DeviceRuntimeMutationResult MarkLoginFailed(int deviceId, DeviceRuntimeError error, DateTime now, bool faulted = false, DeviceIndexUpdateContext context = null)
+        public DeviceRuntimeMutationResult PromoteRegisteredSdkSession(int deviceId, DateTime now, DeviceIndexUpdateContext context, int? expectedSdkUserId, long? expectedRuntimeVersion)
         {
             lock (gate)
             {
@@ -248,14 +245,52 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
-                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
-                state.MarkLoginFailed(error, now, faulted);
+                if (!state.PromoteRegisteredSdkSession(now, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化。");
+                }
+
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "SDK_SESSION_ONLINE", "SDK session was published online.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult MarkLoginFailed(int deviceId, DeviceRuntimeError error, DateTime now, bool faulted = false, DeviceIndexUpdateContext context = null)
+        {
+            return MarkLoginFailed(deviceId, error, now, faulted, context, null, null);
+        }
+
+        public DeviceRuntimeMutationResult MarkLoginFailed(int deviceId, DeviceRuntimeError error, DateTime now, bool faulted, DeviceIndexUpdateContext context, int? expectedSdkUserId)
+        {
+            return MarkLoginFailed(deviceId, error, now, faulted, context, expectedSdkUserId, null);
+        }
+
+        public DeviceRuntimeMutationResult MarkLoginFailed(int deviceId, DeviceRuntimeError error, DateTime now, bool faulted, DeviceIndexUpdateContext context, int? expectedSdkUserId, long? expectedRuntimeVersion)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (!state.MarkLoginFailed(error, now, faulted, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，忽略旧登录回调。");
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, current.SdkUserId);
+                RemoveAlarmHandleIndexLocked(deviceId, current.AlarmHandle);
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "LOGIN_FAILED", "Device login failure was recorded.");
             }
         }
 
         public DeviceRuntimeMutationResult MarkConnecting(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            return MarkConnecting(deviceId, now, context, null);
+        }
+
+        public DeviceRuntimeMutationResult MarkConnecting(int deviceId, DateTime now, DeviceIndexUpdateContext context, long? expectedRuntimeVersion)
         {
             lock (gate)
             {
@@ -269,12 +304,21 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.Invalid("设备正在删除，拒绝开始新的登录。");
                 }
 
-                state.MarkConnecting(now);
+                if (!state.MarkConnecting(now, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或运行时已发生变化，拒绝开始新的登录。");
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "CONNECTING", "Device runtime is connecting.");
             }
         }
 
         public DeviceRuntimeMutationResult RegisterAlarmHandle(int deviceId, int alarmHandle, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            return RegisterAlarmHandle(deviceId, alarmHandle, now, context, null, null);
+        }
+
+        public DeviceRuntimeMutationResult RegisterAlarmHandle(int deviceId, int alarmHandle, DateTime now, DeviceIndexUpdateContext context, int? expectedSdkUserId, long? expectedRuntimeVersion)
         {
             if (alarmHandle < 0)
             {
@@ -288,28 +332,139 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (state.IsDeleting ||
+                    (expectedSdkUserId.HasValue && current.SdkUserId != expectedSdkUserId.Value) ||
+                    (expectedRuntimeVersion.HasValue && current.RuntimeVersion != expectedRuntimeVersion.Value))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，拒绝注册新的布防句柄。");
+                }
+
                 if (alarmHandleIndex.TryGetValue(alarmHandle, out var ownerDeviceId) && ownerDeviceId != deviceId)
                 {
                     conflictCount++;
                     return DeviceRuntimeMutationResult.Conflict(ownerDeviceId, "ALARM_HANDLE_CONFLICT", "Alarm handle is already registered to another device.");
                 }
 
-                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
-                alarmHandleIndex[alarmHandle] = deviceId;
-                state.MarkAlarmArmed(alarmHandle, now);
+                if (!state.MarkAlarmArmed(alarmHandle, now, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，拒绝注册新的布防句柄。");
+                }
 
+                RemoveAlarmHandleIndexLocked(deviceId, current.AlarmHandle);
+                alarmHandleIndex[alarmHandle] = deviceId;
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "ALARM_HANDLE_REGISTERED", "Alarm handle was registered.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult RecordPendingAlarmHandle(int deviceId, int alarmHandle, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            return RecordPendingAlarmHandle(deviceId, alarmHandle, now, context, false, null, null);
+        }
+
+        public DeviceRuntimeMutationResult RecordPendingAlarmHandle(int deviceId, int alarmHandle, DateTime now, DeviceIndexUpdateContext context, bool allowDeleting, int? expectedSdkUserId, long? expectedRuntimeVersion, string expectedDeletingLeaseId = null)
+        {
+            if (alarmHandle < 0)
+            {
+                return DeviceRuntimeMutationResult.Invalid("Alarm handle must be non-negative.");
+            }
+
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if ((!allowDeleting && current.IsDeleting) ||
+                    (allowDeleting && !state.IsDeleteLeaseValid(expectedDeletingLeaseId)) ||
+                    (expectedSdkUserId.HasValue && current.SdkUserId != expectedSdkUserId.Value) ||
+                    (expectedRuntimeVersion.HasValue && current.RuntimeVersion != expectedRuntimeVersion.Value))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，拒绝记录旧布防句柄。");
+                }
+
+                if (!state.RecordPendingAlarmHandle(alarmHandle, now, allowDeleting, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，拒绝记录旧布防句柄。");
+                }
+
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "PENDING_ALARM_RECORDED", "Pending alarm cleanup was recorded.");
+            }
+        }
+
+        public IReadOnlyList<int> GetPendingAlarmHandles(int deviceId)
+        {
+            lock (gate)
+            {
+                return devices.TryGetValue(deviceId, out var state) ? state.GetPendingAlarmHandles() : new List<int>();
             }
         }
 
         public DeviceRuntimeMutationResult ClearAlarmHandle(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
-            return ClearAlarmHandle(deviceId, now, false, context);
+            return ClearAlarmHandle(deviceId, now, false, context, null, false, null, null, null);
+        }
+
+        public DeviceRuntimeMutationResult ClearAlarmHandle(int deviceId, DateTime now, bool manuallyDisarmed, DeviceIndexUpdateContext context = null, int? expectedAlarmHandle = null, bool allowDeleting = false, int? expectedSdkUserId = null, long? expectedRuntimeVersion = null, string expectedDeletingLeaseId = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if ((allowDeleting && !state.IsDeleteLeaseValid(expectedDeletingLeaseId)) ||
+                    !state.MarkAlarmClosed(now, manuallyDisarmed, expectedAlarmHandle, allowDeleting, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或布防会话已发生变化，拒绝清理旧布防句柄。");
+                }
+
+                RemoveAlarmHandleIndexLocked(deviceId, current.AlarmHandle);
+                if (allowDeleting && expectedAlarmHandle.HasValue)
+                {
+                    var after = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                    if (!state.RecordCleanedDuringDeleteAlarmHandle(
+                        expectedAlarmHandle.Value,
+                        now,
+                        expectedSdkUserId,
+                        after.RuntimeVersion,
+                        expectedDeletingLeaseId))
+                    {
+                        return DeviceRuntimeMutationResult.Invalid("设备删除 lease 或运行时已发生变化，拒绝记录已清理布防句柄。");
+                    }
+                }
+
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "ALARM_HANDLE_CLEARED", "Alarm handle was cleared.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult RecordCleanedDuringDeleteAlarmHandle(int deviceId, int alarmHandle, DateTime now, int? expectedSdkUserId, long? expectedRuntimeVersion, string expectedDeletingLeaseId)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (!state.RecordCleanedDuringDeleteAlarmHandle(alarmHandle, now, expectedSdkUserId, expectedRuntimeVersion, expectedDeletingLeaseId))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备删除 lease 或运行时已发生变化，拒绝记录已清理布防句柄。");
+                }
+
+                RemoveAlarmHandleIndexLocked(deviceId, current.AlarmHandle == alarmHandle ? current.AlarmHandle : alarmHandle);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "DELETE_ALARM_CLEANED", "Delete alarm cleanup was recorded.");
+            }
         }
 
         public DeviceRuntimeMutationResult MarkAlarmManuallyDisarmed(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
-            return ClearAlarmHandle(deviceId, now, true, context);
+            return ClearAlarmHandle(deviceId, now, true, context, null, false, null, null);
         }
 
         public DeviceRuntimeMutationResult ClearManualAlarmDisarm(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
@@ -321,28 +476,23 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
+                if (state.IsDeleting)
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除，拒绝清除手动撤防标记。");
+                }
+
                 state.ClearManualAlarmDisarm(now);
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "MANUAL_ALARM_DISARM_CLEARED", "Manual alarm disarm marker was cleared.");
             }
         }
 
-        private DeviceRuntimeMutationResult ClearAlarmHandle(int deviceId, DateTime now, bool manuallyDisarmed, DeviceIndexUpdateContext context = null)
-        {
-            lock (gate)
-            {
-                if (!devices.TryGetValue(deviceId, out var state))
-                {
-                    return DeviceRuntimeMutationResult.NotFound();
-                }
-
-                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
-                state.MarkAlarmClosed(now, manuallyDisarmed);
-                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "ALARM_HANDLE_CLEARED", "Alarm handle was cleared.");
-            }
-        }
-
         public DeviceRuntimeMutationResult ClearStaleAlarmHandle(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
+            return ClearStaleAlarmHandle(deviceId, null, now, context, false, null, null, null);
+        }
+
+        public DeviceRuntimeMutationResult ClearStaleAlarmHandle(int deviceId, int? handle, DateTime now, DeviceIndexUpdateContext context = null, bool allowDeleting = false, int? expectedSdkUserId = null, long? expectedRuntimeVersion = null, string expectedDeletingLeaseId = null)
+        {
             lock (gate)
             {
                 if (!devices.TryGetValue(deviceId, out var state))
@@ -350,26 +500,23 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                state.ClearStaleAlarmHandle(now);
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if ((allowDeleting && !state.IsDeleteLeaseValid(expectedDeletingLeaseId)) ||
+                    !state.ClearStaleAlarmHandle(handle, now, allowDeleting, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或旧布防句柄已发生变化，拒绝清理旧布防句柄。");
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "STALE_ALARM_HANDLE_CLEARED", "Stale alarm handle was cleared.");
             }
         }
 
         public DeviceRuntimeMutationResult RecordPendingSdkLogout(int deviceId, int userId, DateTime now, DeviceIndexUpdateContext context = null)
         {
-            lock (gate)
-            {
-                if (!devices.TryGetValue(deviceId, out var state))
-                {
-                    return DeviceRuntimeMutationResult.NotFound();
-                }
-
-                state.RecordPendingSdkLogout(userId, now);
-                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "PENDING_SDK_LOGOUT_RECORDED", "Pending SDK logout was recorded.");
-            }
+            return RecordPendingSdkLogout(deviceId, userId, now, context, false, null, null, null);
         }
 
-        public DeviceRuntimeMutationResult ClearPendingSdkLogout(int deviceId, int userId, DateTime now, DeviceIndexUpdateContext context = null)
+        public DeviceRuntimeMutationResult RecordPendingSdkLogout(int deviceId, int userId, DateTime now, DeviceIndexUpdateContext context, bool allowDeleting, int? expectedSdkUserId, long? expectedRuntimeVersion, string expectedDeletingLeaseId = null)
         {
             lock (gate)
             {
@@ -378,7 +525,58 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                state.ClearPendingSdkLogout(userId, now);
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if ((allowDeleting && !state.IsDeleteLeaseValid(expectedDeletingLeaseId)) ||
+                    !state.RecordPendingSdkLogout(userId, now, allowDeleting, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，拒绝记录旧 SDK 会话。");
+                }
+
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "PENDING_SDK_LOGOUT_RECORDED", "Pending SDK logout was recorded.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult RecordCleanedDuringDeleteSdkUser(int deviceId, int userId, DateTime now, int? expectedSdkUserId, long? expectedRuntimeVersion, string expectedDeletingLeaseId)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (!state.RecordCleanedDuringDeleteSdkUser(userId, now, expectedSdkUserId, expectedRuntimeVersion, expectedDeletingLeaseId))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备删除 lease 或运行时已发生变化，拒绝记录已清理 SDK 会话。");
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, current.SdkUserId == userId ? current.SdkUserId : userId);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "DELETE_SDK_USER_CLEANED", "Delete SDK logout was recorded.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult ClearPendingSdkLogout(int deviceId, int userId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            return ClearPendingSdkLogout(deviceId, userId, now, context, false, null, null, null);
+        }
+
+        public DeviceRuntimeMutationResult ClearPendingSdkLogout(int deviceId, int userId, DateTime now, DeviceIndexUpdateContext context, bool allowDeleting, int? expectedSdkUserId, long? expectedRuntimeVersion, string expectedDeletingLeaseId = null)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if ((allowDeleting && !state.IsDeleteLeaseValid(expectedDeletingLeaseId)) ||
+                    !state.ClearPendingSdkLogout(userId, now, allowDeleting, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，拒绝清理旧 SDK 会话记录。");
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "PENDING_SDK_LOGOUT_CLEARED", "Pending SDK logout was cleared.");
             }
         }
@@ -398,21 +596,10 @@ namespace ControlDoor.Devices.Runtime
 
         public DeviceRuntimeMutationResult MarkLoggedOut(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
-            lock (gate)
-            {
-                if (!devices.TryGetValue(deviceId, out var state))
-                {
-                    return DeviceRuntimeMutationResult.NotFound();
-                }
-
-                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
-                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
-                state.MarkLoggedOut(now);
-                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "LOGGED_OUT", "Device runtime was logged out.");
-            }
+            return MarkLoggedOut(deviceId, now, context, null, false, null, null);
         }
 
-        public DeviceRuntimeMutationResult MarkManualDisconnected(int deviceId, DeviceRuntimeError error, DateTime now, DeviceIndexUpdateContext context = null)
+        public DeviceRuntimeMutationResult MarkLoggedOut(int deviceId, DateTime now, DeviceIndexUpdateContext context, int? expectedSdkUserId, bool allowDeleting, string expectedDeletingLeaseId = null, long? expectedRuntimeVersion = null, bool preserveCurrentAlarmHandle = false)
         {
             lock (gate)
             {
@@ -421,9 +608,50 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
-                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
-                state.MarkManualDisconnected(error, now);
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if ((allowDeleting && !state.IsDeleteLeaseValid(expectedDeletingLeaseId)) ||
+                    !state.MarkLoggedOut(now, expectedSdkUserId, allowDeleting, expectedRuntimeVersion, expectedDeletingLeaseId, preserveCurrentAlarmHandle))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，忽略旧登出回调。");
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, current.SdkUserId);
+                var after = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (!after.AlarmHandle.HasValue || after.AlarmHandle.Value != current.AlarmHandle)
+                {
+                    RemoveAlarmHandleIndexLocked(deviceId, current.AlarmHandle);
+                }
+
+                return DeviceRuntimeMutationResult.Succeeded(after, GetWorkerIndexLocked(deviceId), "LOGGED_OUT", "Device runtime was logged out.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult MarkManualDisconnected(int deviceId, DeviceRuntimeError error, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            return MarkManualDisconnected(deviceId, error, now, context, false, null);
+        }
+
+        public DeviceRuntimeMutationResult MarkManualDisconnected(int deviceId, DeviceRuntimeError error, DateTime now, DeviceIndexUpdateContext context, bool allowDeleting, string expectedDeletingLeaseId = null, bool preserveCurrentAlarmHandle = false)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (!state.MarkManualDisconnected(error, now, allowDeleting, expectedDeletingLeaseId, preserveCurrentAlarmHandle))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除，忽略旧断开回调。");
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, current.SdkUserId);
+                if (!preserveCurrentAlarmHandle)
+                {
+                    RemoveAlarmHandleIndexLocked(deviceId, current.AlarmHandle);
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "MANUAL_DISCONNECTED", "Device runtime was manually disconnected.");
             }
         }
@@ -437,15 +665,25 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
-                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
-                state.MarkInvalidConfig(error, now);
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (!state.MarkInvalidConfig(error, now))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除，拒绝覆盖设备运行时。");
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, current.SdkUserId);
+                RemoveAlarmHandleIndexLocked(deviceId, current.AlarmHandle);
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "INVALID_CONFIG", "Device runtime was marked invalid.");
             }
         }
 
         public DeviceRuntimeMutationResult MarkReconnectPending(int deviceId, DateTime nextReconnectAt, string reason, DateTime now, DeviceIndexUpdateContext context = null)
         {
+            return MarkReconnectPending(deviceId, nextReconnectAt, reason, now, context, null);
+        }
+
+        public DeviceRuntimeMutationResult MarkReconnectPending(int deviceId, DateTime nextReconnectAt, string reason, DateTime now, DeviceIndexUpdateContext context, long? expectedRuntimeVersion)
+        {
             lock (gate)
             {
                 if (!devices.TryGetValue(deviceId, out var state))
@@ -453,13 +691,22 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                state.MarkReconnectPending(nextReconnectAt, reason, now);
+                if (!state.MarkReconnectPending(nextReconnectAt, reason, now, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或运行时已发生变化，拒绝调度重连。");
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "RECONNECT_PENDING", "Device reconnect was scheduled.");
             }
         }
 
         public DeviceRuntimeMutationResult ResetReconnect(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
+            return ResetReconnect(deviceId, now, context, null);
+        }
+
+        public DeviceRuntimeMutationResult ResetReconnect(int deviceId, DateTime now, DeviceIndexUpdateContext context, long? expectedRuntimeVersion)
+        {
             lock (gate)
             {
                 if (!devices.TryGetValue(deviceId, out var state))
@@ -467,13 +714,22 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                state.ResetReconnect(now);
+                if (!state.ResetReconnect(now, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或运行时已发生变化，拒绝重置重连状态。");
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "RECONNECT_RESET", "Device reconnect state was reset.");
             }
         }
 
         public DeviceRuntimeMutationResult MarkDisconnected(int deviceId, DeviceRuntimeError error, DateTime now, DeviceConnectionStatus status = DeviceConnectionStatus.Offline, DeviceIndexUpdateContext context = null)
         {
+            return MarkDisconnected(deviceId, error, now, status, context, false, null, null, null);
+        }
+
+        public DeviceRuntimeMutationResult MarkDisconnected(int deviceId, DeviceRuntimeError error, DateTime now, DeviceConnectionStatus status, DeviceIndexUpdateContext context, bool allowDeleting, int? expectedSdkUserId, long? expectedRuntimeVersion, string expectedDeletingLeaseId = null, bool preserveCurrentAlarmHandle = false)
+        {
             lock (gate)
             {
                 if (!devices.TryGetValue(deviceId, out var state))
@@ -481,15 +737,29 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                RemoveSdkUserIndexLocked(deviceId, state.SdkUserId);
-                RemoveAlarmHandleIndexLocked(deviceId, state.AlarmHandle);
-                state.MarkDisconnected(error, now, status);
+                var current = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (!state.MarkDisconnected(error, now, status, allowDeleting, expectedSdkUserId, expectedRuntimeVersion, expectedDeletingLeaseId, preserveCurrentAlarmHandle))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或 SDK 会话已发生变化，忽略旧断开回调。");
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, current.SdkUserId);
+                if (!preserveCurrentAlarmHandle)
+                {
+                    RemoveAlarmHandleIndexLocked(deviceId, current.AlarmHandle);
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "DISCONNECTED", "Device runtime was disconnected.");
             }
         }
 
         public DeviceRuntimeMutationResult MarkChecked(int deviceId, DateTime now, DeviceConnectionStatus status, DeviceRuntimeError error = null, DeviceIndexUpdateContext context = null)
         {
+            return MarkChecked(deviceId, now, status, error, context, null, null);
+        }
+
+        public DeviceRuntimeMutationResult MarkChecked(int deviceId, DateTime now, DeviceConnectionStatus status, DeviceRuntimeError error, DeviceIndexUpdateContext context, int? expectedSdkUserId, long? expectedRuntimeVersion)
+        {
             lock (gate)
             {
                 if (!devices.TryGetValue(deviceId, out var state))
@@ -497,26 +767,21 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                state.MarkChecked(now, status, error);
+                if (!state.MarkChecked(now, status, error, expectedSdkUserId, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或运行时已发生变化，忽略旧状态检测回调。");
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "CHECKED", "Device runtime check state was updated.");
             }
         }
 
         public DeviceRuntimeMutationResult RecordError(int deviceId, DeviceRuntimeError error, DateTime now, DeviceConnectionStatus? status = null, DeviceIndexUpdateContext context = null)
         {
-            lock (gate)
-            {
-                if (!devices.TryGetValue(deviceId, out var state))
-                {
-                    return DeviceRuntimeMutationResult.NotFound();
-                }
-
-                state.RecordError(error, now, status);
-                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "ERROR_RECORDED", "Device runtime error was recorded.");
-            }
+            return RecordError(deviceId, error, now, status, context, false, null, null, null);
         }
 
-        public DeviceRuntimeMutationResult UpdateCapabilities(int deviceId, DeviceCapabilities capabilities, DateTime now, DeviceIndexUpdateContext context = null)
+        public DeviceRuntimeMutationResult RecordError(int deviceId, DeviceRuntimeError error, DateTime now, DeviceConnectionStatus? status, DeviceIndexUpdateContext context, bool allowDeleting, int? expectedSdkUserId, long? expectedRuntimeVersion, string expectedDeletingLeaseId = null)
         {
             lock (gate)
             {
@@ -525,7 +790,35 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                state.MarkCapabilities(capabilities, now);
+                if ((allowDeleting && !state.IsDeleteLeaseValid(expectedDeletingLeaseId)) ||
+                    !state.RecordError(error, now, status, expectedSdkUserId, expectedRuntimeVersion, allowDeleting))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或运行时已发生变化，忽略旧设备错误回调。");
+                }
+
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "ERROR_RECORDED", "Device runtime error was recorded.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult UpdateCapabilities(int deviceId, DeviceCapabilities capabilities, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            return UpdateCapabilities(deviceId, capabilities, now, context, null);
+        }
+
+        public DeviceRuntimeMutationResult UpdateCapabilities(int deviceId, DeviceCapabilities capabilities, DateTime now, DeviceIndexUpdateContext context, long? expectedRuntimeVersion)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                if (!state.MarkCapabilities(capabilities, now, expectedRuntimeVersion))
+                {
+                    return DeviceRuntimeMutationResult.Invalid("设备正在删除或运行时已发生变化，忽略旧能力回调。");
+                }
+
                 return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "CAPABILITIES_UPDATED", "Device capabilities were updated.");
             }
         }
@@ -541,16 +834,26 @@ namespace ControlDoor.Devices.Runtime
 
                 if (state.IsDeleting)
                 {
-                    return DeviceRuntimeMutationResult.Conflict(deviceId, "DELETE_IN_PROGRESS", "设备正在删除。");
+                    return DeviceRuntimeMutationResult.Conflict(deviceId, "DELETE_IN_PROGRESS", "设备正在删除。", state.ToSnapshot(GetQueueInfoLocked(deviceId)));
                 }
 
-                state.MarkDeleting(now);
-                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "DELETE_STARTED", "设备删除屏障已建立。");
+                var leaseId = Guid.NewGuid().ToString("N");
+                var checkpoint = state.MarkDeleting(now, leaseId);
+                return DeviceRuntimeMutationResult.Deleting(
+                    state.ToSnapshot(GetQueueInfoLocked(deviceId)),
+                    GetWorkerIndexLocked(deviceId),
+                    leaseId,
+                    checkpoint);
             }
         }
 
         public DeviceRuntimeMutationResult ClearDeleting(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
         {
+            return ClearDeleting(deviceId, now, context, null);
+        }
+
+        public DeviceRuntimeMutationResult ClearDeleting(int deviceId, DateTime now, DeviceIndexUpdateContext context, string expectedDeletingLeaseId)
+        {
             lock (gate)
             {
                 if (!devices.TryGetValue(deviceId, out var state))
@@ -558,18 +861,58 @@ namespace ControlDoor.Devices.Runtime
                     return DeviceRuntimeMutationResult.NotFound();
                 }
 
-                state.ClearDeleting(now);
-                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "DELETE_CANCELLED", "设备删除屏障已解除。");
+                var before = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (!state.ClearDeleting(now, expectedDeletingLeaseId))
+                {
+                    return DeviceRuntimeMutationResult.Conflict(
+                        deviceId,
+                        "DELETE_LEASE_MISMATCH",
+                        "设备删除屏障 lease 已失效，拒绝恢复运行时。",
+                        state.ToSnapshot(GetQueueInfoLocked(deviceId)));
+                }
+
+                RemoveSdkUserIndexLocked(deviceId, before.SdkUserId);
+                RemoveAlarmHandleIndexLocked(deviceId, before.AlarmHandle);
+                var restored = state.ToSnapshot(GetQueueInfoLocked(deviceId));
+                if (restored.SdkUserId.HasValue &&
+                    (!sdkUserIdIndex.TryGetValue(restored.SdkUserId.Value, out var sdkOwner) || sdkOwner == deviceId))
+                {
+                    sdkUserIdIndex[restored.SdkUserId.Value] = deviceId;
+                }
+
+                if (restored.AlarmHandle.HasValue &&
+                    (!alarmHandleIndex.TryGetValue(restored.AlarmHandle.Value, out var alarmOwner) || alarmOwner == deviceId))
+                {
+                    alarmHandleIndex[restored.AlarmHandle.Value] = deviceId;
+                }
+
+                return DeviceRuntimeMutationResult.Succeeded(restored, GetWorkerIndexLocked(deviceId), "DELETE_CANCELLED", "设备删除屏障已解除。");
             }
         }
 
         public DeviceRuntimeMutationResult RemoveDevice(int deviceId, DateTime now, DeviceIndexUpdateContext context = null)
+        {
+            return RemoveDevice(deviceId, now, context, null);
+        }
+
+        public DeviceRuntimeMutationResult RemoveDevice(int deviceId, DateTime now, DeviceIndexUpdateContext context, string expectedDeletingLeaseId)
         {
             lock (gate)
             {
                 if (!devices.TryGetValue(deviceId, out var state))
                 {
                     return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                var hasLease = !string.IsNullOrWhiteSpace(expectedDeletingLeaseId);
+                if ((hasLease && (!state.IsDeleting || !state.IsDeleteLeaseValid(expectedDeletingLeaseId))) ||
+                    (!hasLease && state.IsDeleting))
+                {
+                    return DeviceRuntimeMutationResult.Conflict(
+                        deviceId,
+                        "DELETE_LEASE_MISMATCH",
+                        "设备删除屏障 lease 已失效，拒绝移除运行时。",
+                        state.ToSnapshot(GetQueueInfoLocked(deviceId)));
                 }
 
                 RemoveIpIndexLocked(deviceId, state.IpAddress);

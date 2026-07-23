@@ -20,6 +20,7 @@
 | 条件 | 说明 |
 | --- | --- |
 | `exhausted_at IS NULL` | 终态失败不再正常重试。 |
+| `claim_until IS NULL OR claim_until <= now` | 没有活动租约，或上一个领取租约已到期。 |
 | `next_retry_at IS NULL OR next_retry_at <= now` | 到期或历史兼容空值。 |
 | 至少一个 pending 为 1 | 没有 pending 的异常行应由清理逻辑处理。 |
 
@@ -33,17 +34,19 @@
 
 ## 领取策略
 
-当前表没有 `locked_at` 或 `owner` 字段，不能做严格的持久化领取锁。阶段 6 采用零表结构变更的双层去重策略，尽量避免多个服务实例同时领取同一条到期状态：
+当前表通过 `intent_version`、`claim_token` 和 `claim_until` 提供与既有状态行兼容的持久化领取保护。阶段 6 采用数据库租约与进程内去重的双层策略，降低多个服务实例同时执行同一条到期状态的概率：
 
 | 机制 | 规则 |
 | --- | --- |
 | 单实例扫描 | `DeviceOperationRetryManager` 在当前进程只允许一个扫描循环运行。 |
 | 内存 in-flight | 以 `retryStateId` 或 `deviceId + employeeId` 记录已投递未完成状态。 |
 | 到期扫描锁 | `LoadDueStates` 使用 `UPDLOCK, READPAST, ROWLOCK` 读取候选到期行，跳过其它事务正在锁定的行。 |
-| 数据库领取 | 投递前调用 guarded update：仅当 `exhausted_at IS NULL` 且 `next_retry_at IS NULL OR next_retry_at <= now` 时，把 `next_retry_at` 推到一个短租约时间并写入 `last_attempt_at`。若受影响行数为 0，说明已被其它实例领取或状态已变化，本轮跳过。 |
-| 服务重启 | 如果领取后进程退出但未回写成功/失败，短租约到期后状态会再次被扫描。 |
+| 到期过滤 | 只读取 `claim_until IS NULL OR claim_until <= now` 的状态；活动租约由其它实例持有时跳过。 |
+| 数据库领取 | 投递前调用 guarded update，要求 `id`、`intent_version`、pending、`exhausted_at`、`next_retry_at` 和现有租约均匹配；成功后写入新的随机 `claim_token`、`claim_until`、`next_retry_at` 和 `last_attempt_at`。受影响行数为 0 时，本轮跳过。 |
+| 结果回写 | 成功、失败、终态和删除操作都必须匹配领取时的 `intent_version`、`claim_token`，且 `claim_until > now`；回写成功后清除租约。 |
+| 服务重启 | 如果领取后进程退出但未回写成功/失败，租约到期后状态会再次被扫描。 |
 
-该方案不新增字段，能显著降低多实例重复领取概率；但由于没有 `owner`、`locked_at`、`lock_token` 等字段，不能表达严格所有权，也不能在设备调用时间超过短租约时提供绝对 exactly-once 语义。若未来要求严格多实例调度，应新增领取字段或使用外部分布式锁。
+`intent_version` 在新业务意图写入时递增并清除旧租约，防止旧任务结果覆盖新意图；`claim_token` 用于区分同一版本的不同领取者。租约到期后允许重新领取，因此调用时间超过租约仍可能出现设备侧重复执行，系统不宣称绝对 exactly-once；但旧领取者的结果会因令牌或版本不匹配而被拒绝。
 
 ## 扫描流程
 

@@ -29,7 +29,11 @@ namespace ControlDoor.Devices.Runtime
             DateTime updatedAt,
             DeviceQueueInfo queueInfo,
             IEnumerable<DeviceType> types = null,
-            string description = null)
+            string description = null,
+            IEnumerable<int> pendingSdkLogoutUserIds = null,
+            IEnumerable<int> pendingAlarmHandles = null,
+            long runtimeVersion = 0,
+            string deletingLeaseId = null)
         {
             DeviceId = deviceId;
             DeviceName = deviceName ?? string.Empty;
@@ -53,6 +57,10 @@ namespace ControlDoor.Devices.Runtime
             UpdatedAt = updatedAt;
             QueueInfo = queueInfo == null ? null : queueInfo.Clone();
             Types = (types ?? Enumerable.Empty<DeviceType>()).ToList().AsReadOnly();
+            PendingSdkLogoutUserIds = (pendingSdkLogoutUserIds ?? Enumerable.Empty<int>()).Distinct().ToList().AsReadOnly();
+            PendingAlarmHandles = (pendingAlarmHandles ?? Enumerable.Empty<int>()).Distinct().ToList().AsReadOnly();
+            RuntimeVersion = runtimeVersion;
+            DeletingLeaseId = deletingLeaseId;
         }
 
         public int DeviceId { get; private set; }
@@ -107,5 +115,13 @@ namespace ControlDoor.Devices.Runtime
 
         // 声明态设备类型，来自设备清单；不可变快照，供消费方按角色筛选。
         public IReadOnlyList<DeviceType> Types { get; private set; }
+
+        public IReadOnlyList<int> PendingSdkLogoutUserIds { get; private set; }
+
+        public IReadOnlyList<int> PendingAlarmHandles { get; private set; }
+
+        public long RuntimeVersion { get; private set; }
+
+        public string DeletingLeaseId { get; private set; }
     }
 }

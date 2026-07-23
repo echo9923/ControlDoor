@@ -14,6 +14,7 @@ namespace ControlDoor.Permissions
     public sealed class DeviceOperationRetryManager : IBackgroundTask
     {
         private readonly object gate = new object();
+        private readonly object storeWriteGate = new object();
         private readonly DeviceOperationRetryStore store;
         private readonly DeviceRuntimeRegistry registry;
         private readonly RetryExecutionCoordinator coordinator;
@@ -24,6 +25,7 @@ namespace ControlDoor.Permissions
         private readonly BackgroundTaskStatus status = new BackgroundTaskStatus("DeviceOperationRetryManager", false);
         private CancellationTokenSource stopSource;
         private Task loopTask;
+        private int stopRequested;
         private bool scanning;
 
         public DeviceOperationRetryManager(
@@ -47,6 +49,7 @@ namespace ControlDoor.Permissions
 
         public Task StartAsync(BackgroundTaskContext context)
         {
+            CancellationTokenSource previousSource = null;
             lock (gate)
             {
                 if (loopTask != null && !loopTask.IsCompleted)
@@ -54,35 +57,82 @@ namespace ControlDoor.Permissions
                     return Task.CompletedTask;
                 }
 
-                stopSource = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
+                previousSource = stopSource;
+                var source = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
+                stopSource = source;
+                Interlocked.Exchange(ref stopRequested, 0);
+                status.MarkStarting();
                 status.MarkStarted();
-                loopTask = Task.Run(() => RunLoopAsync(stopSource.Token));
+                loopTask = Task.Run(() => RunLoopAsync(source.Token));
             }
 
+            previousSource?.Dispose();
             return Task.CompletedTask;
         }
 
         public async Task StopAsync(BackgroundTaskContext context)
         {
             Task running;
+            CancellationTokenSource source;
+            Interlocked.Exchange(ref stopRequested, 1);
             lock (gate)
             {
-                stopSource?.Cancel();
+                source = stopSource;
+                source?.Cancel();
                 running = loopTask;
             }
 
-            if (running != null)
+            if (running == null)
             {
-                await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+                lock (storeWriteGate)
+                {
+                }
+
+                source?.Dispose();
+                lock (gate)
+                {
+                    if (object.ReferenceEquals(stopSource, source))
+                    {
+                        stopSource = null;
+                        loopTask = null;
+                    }
+
+                    status.MarkStopped();
+                }
+
+                return;
+            }
+
+            var completed = await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+            lock (storeWriteGate)
+            {
+            }
+
+            if (completed != running)
+            {
+                lock (gate)
+                {
+                    if (object.ReferenceEquals(loopTask, running))
+                    {
+                        status.MarkStopTimedOut();
+                    }
+                }
+
+                return;
             }
 
             lock (gate)
             {
+                if (object.ReferenceEquals(stopSource, source))
+                {
+                    stopSource = null;
+                    loopTask = null;
+                }
+
                 status.MarkStopped();
-                stopSource?.Dispose();
-                stopSource = null;
-                loopTask = null;
             }
+
+            source?.Dispose();
         }
 
         public BackgroundTaskStatus GetStatus()
@@ -159,17 +209,17 @@ namespace ControlDoor.Permissions
 
         private async Task<DeviceOperationRetryScanResult> RunScanAsync(string requestId, CancellationToken cancellationToken)
         {
-            var now = DateTime.Now;
+            var scanNow = DateTime.Now;
             var stopwatch = Stopwatch.StartNew();
             var result = new DeviceOperationRetryScanResult
             {
                 RequestId = string.IsNullOrWhiteSpace(requestId) ? RequestContext.Background("ScanRetryStates").RequestId : requestId,
-                ScannedAt = now
+                ScannedAt = scanNow
             };
 
             try
             {
-                var states = store.LoadDueStates(now, options.BatchSize);
+                var states = store.LoadDueStates(scanNow, options.BatchSize);
                 result.Due = states.Count;
                 foreach (var state in states)
                 {
@@ -184,7 +234,8 @@ namespace ControlDoor.Permissions
 
                     try
                     {
-                        if (!store.TryClaimDueState(state, now))
+                        var claimNow = DateTime.Now;
+                        if (!store.TryClaimDueState(state, claimNow))
                         {
                             result.ClaimSkipped++;
                             LogRetryState(result.RequestId, state, "Retry state claim skipped.", "CLAIM_SKIPPED");
@@ -192,7 +243,7 @@ namespace ControlDoor.Permissions
                         }
 
                         LogRetryState(result.RequestId, state, "Retry state claimed.", "CLAIMED");
-                        await ProcessStateAsync(state, result, now, cancellationToken).ConfigureAwait(false);
+                        await ProcessStateAsync(state, result, cancellationToken).ConfigureAwait(false);
                     }
                     finally
                     {
@@ -200,7 +251,9 @@ namespace ControlDoor.Permissions
                     }
                 }
 
-                result.CleanupDeleted = store.CleanupExpiredFailures(DateTime.Now, options.BatchSize);
+                var cleanupNow = DateTime.Now;
+                result.CleanupDeleted = store.CleanupExpiredFailures(cleanupNow, options.BatchSize) +
+                    store.CleanupEmptyStates(cleanupNow, options.BatchSize);
             }
             catch (Exception ex)
             {
@@ -258,11 +311,11 @@ namespace ControlDoor.Permissions
                 result.CleanupDeleted != 0;
         }
 
-        private async Task ProcessStateAsync(DeviceOperationRetryState state, DeviceOperationRetryScanResult scan, DateTime now, CancellationToken cancellationToken)
+        private async Task ProcessStateAsync(DeviceOperationRetryState state, DeviceOperationRetryScanResult scan, CancellationToken cancellationToken)
         {
             if (!state.HasPending)
             {
-                if (store.TryDeleteEmptyState(state))
+                if (store.TryDeleteEmptyState(state, DateTime.Now))
                 {
                     scan.EmptyDeleted++;
                     LogRetryState(scan.RequestId, state, "Empty retry state deleted.", "EMPTY_DELETED");
@@ -278,7 +331,7 @@ namespace ControlDoor.Permissions
             var lookup = registry.TryGetByDeviceId(state.DeviceId);
             if (!lookup.Found || lookup.Snapshot == null)
             {
-                if (store.MarkTerminalFailure(state, "DEVICE_NOT_FOUND", "设备运行时不存在。", now))
+                if (store.MarkTerminalFailure(state, "DEVICE_NOT_FOUND", "设备运行时不存在。", DateTime.Now))
                 {
                     scan.Terminal++;
                 }
@@ -289,7 +342,7 @@ namespace ControlDoor.Permissions
             var snapshot = lookup.Snapshot;
             if (!snapshot.Enabled || snapshot.Status == DeviceConnectionStatus.Disabled)
             {
-                if (store.MarkTerminalFailure(state, "DEVICE_DISABLED", "设备已停用。", now))
+                if (store.MarkTerminalFailure(state, "DEVICE_DISABLED", "设备已停用。", DateTime.Now))
                 {
                     scan.Terminal++;
                 }
@@ -299,7 +352,7 @@ namespace ControlDoor.Permissions
 
             if (snapshot.Status == DeviceConnectionStatus.InvalidConfig)
             {
-                if (store.MarkTerminalFailure(state, "DEVICE_CONFIG_INVALID", "设备配置非法。", now))
+                if (store.MarkTerminalFailure(state, "DEVICE_CONFIG_INVALID", "设备配置非法。", DateTime.Now))
                 {
                     scan.Terminal++;
                 }
@@ -309,7 +362,7 @@ namespace ControlDoor.Permissions
 
             if (!snapshot.IsConnected || !snapshot.SdkUserId.HasValue || snapshot.Status == DeviceConnectionStatus.ReconnectPending || snapshot.Status == DeviceConnectionStatus.Connecting)
             {
-                if (store.DeferOffline(state, "DEVICE_OFFLINE", "设备未在线，延后补偿。", now))
+                if (store.DeferOffline(state, "DEVICE_OFFLINE", "设备未在线，延后补偿。", DateTime.Now))
                 {
                     scan.OfflineDeferred++;
                 }
@@ -320,7 +373,7 @@ namespace ControlDoor.Permissions
             var plan = planner.Plan(state);
             if (!plan.HasSteps)
             {
-                if (store.TryDeleteEmptyState(state))
+                if (store.TryDeleteEmptyState(state, DateTime.Now))
                 {
                     scan.EmptyDeleted++;
                     LogRetryState(scan.RequestId, state, "Retry state produced no executable steps and was deleted.", "NO_STEPS");
@@ -338,7 +391,71 @@ namespace ControlDoor.Permissions
             {
                 fields.Extra["stepCount"] = plan.Steps.Count.ToString();
             });
-            var execution = await coordinator.ExecuteAsync(plan, scan.RequestId, cancellationToken).ConfigureAwait(false);
+            RetryExecutionResult execution = null;
+            using (var renewalStopSource = new CancellationTokenSource())
+            {
+                var renewalTask = RenewClaimLoopAsync(state, renewalStopSource.Token);
+                try
+                {
+                    var handle = coordinator.Submit(plan, scan.RequestId, cancellationToken);
+                    execution = await handle.WaitResult.ConfigureAwait(false);
+                    if (execution.IsWaitOutcome)
+                    {
+                        execution = await handle.FinalResult.ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.Error("DeviceOperationRetry", "补偿任务执行编排异常，释放领取租约。", ex, new LogFields
+                    {
+                        RequestId = scan.RequestId,
+                        DeviceId = state.DeviceId,
+                        EmployeeId = state.EmployeeId,
+                        OperationName = "RetryDeviceOperation"
+                    });
+                    ReleaseClaimWithoutAttempt(state, DateTime.Now, "EXECUTION_ERROR", ex.Message, scan.RequestId);
+                }
+                finally
+                {
+                    renewalStopSource.Cancel();
+                    try
+                    {
+                        await renewalTask.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.Error("DeviceOperationRetry", "补偿任务领取续租循环异常，继续处理最终设备结果。", ex, new LogFields
+                        {
+                            RequestId = scan.RequestId,
+                            DeviceId = state.DeviceId,
+                            EmployeeId = state.EmployeeId,
+                            OperationName = "RenewClaim",
+                            ErrorCode = "CLAIM_RENEW_ERROR"
+                        });
+                    }
+                }
+            }
+
+            if (execution == null)
+            {
+                return;
+            }
+
+            if (execution.WasCancelledBeforeStart)
+            {
+                ReleaseClaimWithoutAttempt(state, DateTime.Now, execution.Code, execution.Message, scan.RequestId);
+                LogRetryState(scan.RequestId, state, "补偿任务在开始前取消，保留状态等待下一轮。", execution.Code);
+                return;
+            }
+
+            if (execution.IsWaitOutcome)
+            {
+                return;
+            }
+
             store.ApplyExecutionResult(execution, DateTime.Now);
             if (execution.IsStale)
             {
@@ -358,6 +475,64 @@ namespace ControlDoor.Permissions
             {
                 scan.Failed++;
                 LogRetryState(scan.RequestId, state, "Retry state execution failed and will retry.", execution.Code);
+            }
+        }
+
+        private void ReleaseClaimWithoutAttempt(DeviceOperationRetryState state, DateTime now, string code, string message, string requestId)
+        {
+            try
+            {
+                var released = store.ReleaseClaimWithoutAttempt(state, now, code, message);
+                if (!released)
+                {
+                    LogRetryState(requestId, state, "补偿任务释放领取租约未生效，保留版本/令牌保护。", "CLAIM_RELEASE_STALE");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("DeviceOperationRetry", "补偿任务释放领取租约异常。", ex, new LogFields
+                {
+                    RequestId = requestId,
+                    DeviceId = state == null ? (int?)null : state.DeviceId,
+                    EmployeeId = state == null ? null : state.EmployeeId,
+                    OperationName = "ReleaseClaimWithoutAttempt",
+                    ErrorCode = "CLAIM_RELEASE_ERROR"
+                });
+            }
+        }
+
+        private async Task RenewClaimLoopAsync(DeviceOperationRetryState state, CancellationToken cancellationToken)
+        {
+            var interval = store.ClaimRenewalInterval;
+            while (true)
+            {
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var renewed = store.RenewClaim(state, DateTime.Now);
+                    if (!renewed)
+                    {
+                        logger?.Warn("DeviceOperationRetry", "补偿任务领取租约续租未生效，继续等待最终结果并由版本/令牌保护回写。", new LogFields
+                        {
+                            DeviceId = state.DeviceId,
+                            EmployeeId = state.EmployeeId,
+                            OperationName = "RenewClaim",
+                            ErrorCode = "CLAIM_RENEW_FAILED"
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.Error("DeviceOperationRetry", "补偿任务领取租约续租异常，继续等待最终结果。", ex, new LogFields
+                    {
+                        DeviceId = state.DeviceId,
+                        EmployeeId = state.EmployeeId,
+                        OperationName = "RenewClaim",
+                        ErrorCode = "CLAIM_RENEW_ERROR"
+                    });
+                }
             }
         }
 

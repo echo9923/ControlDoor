@@ -100,6 +100,103 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceRuntimeRegistry_DeleteLease_RejectsEmptyAndStaleCleanupOrRemoval()
+        {
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            var registry = new DeviceRuntimeRegistry();
+            registry.Register(NewOptions(1, "10.0.0.1"));
+            var deleting = registry.BeginDeleting(1, now);
+
+            var emptyClear = registry.ClearDeleting(1, now.AddMinutes(1), null, null);
+            var staleClear = registry.ClearDeleting(1, now.AddMinutes(1), null, "stale-lease");
+            var emptyRemove = registry.RemoveDevice(1, now.AddMinutes(1), null, null);
+            var staleRemove = registry.RemoveDevice(1, now.AddMinutes(1), null, "stale-lease");
+            var current = registry.TryGetByDeviceId(1);
+
+            Assert.True(deleting.Success);
+            Assert.False(string.IsNullOrWhiteSpace(deleting.DeleteLeaseId));
+            Assert.False(emptyClear.Success);
+            Assert.Equal("DELETE_LEASE_MISMATCH", emptyClear.Code);
+            Assert.False(staleClear.Success);
+            Assert.Equal("DELETE_LEASE_MISMATCH", staleClear.Code);
+            Assert.False(emptyRemove.Success);
+            Assert.Equal("DELETE_LEASE_MISMATCH", emptyRemove.Code);
+            Assert.False(staleRemove.Success);
+            Assert.Equal("DELETE_LEASE_MISMATCH", staleRemove.Code);
+            Assert.True(current.Found);
+            Assert.True(current.Snapshot.IsDeleting);
+            Assert.Equal(deleting.DeleteLeaseId, current.Snapshot.DeletingLeaseId);
+        }
+
+        [TestCase]
+        public static void DeviceRuntimeRegistry_ClearDeleting_WithCurrentLeaseRestoresRuntime()
+        {
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            var registry = new DeviceRuntimeRegistry();
+            registry.Register(NewOptions(1, "10.0.0.1"));
+            registry.RegisterSdkUserId(1, 11, "SN001", now);
+            var deleting = registry.BeginDeleting(1, now.AddMinutes(1));
+
+            var restored = registry.ClearDeleting(1, now.AddMinutes(2), null, deleting.DeleteLeaseId);
+
+            Assert.True(restored.Success);
+            Assert.False(restored.Snapshot.IsDeleting);
+            Assert.Equal(11, restored.Snapshot.SdkUserId.Value);
+            Assert.True(registry.TryGetBySdkUserId(11).Found);
+            Assert.Equal(1, registry.TryGetBySdkUserId(11).Snapshot.DeviceId);
+        }
+
+        [TestCase]
+        public static void DeviceRuntimeRegistry_RemoveDevice_WithCurrentLeaseClearsRuntime()
+        {
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            var registry = new DeviceRuntimeRegistry();
+            registry.Register(NewOptions(1, "10.0.0.1"));
+            registry.RegisterSdkUserId(1, 11, "SN001", now);
+            var deleting = registry.BeginDeleting(1, now.AddMinutes(1));
+
+            var removed = registry.RemoveDevice(1, now.AddMinutes(2), null, deleting.DeleteLeaseId);
+
+            Assert.True(removed.Success);
+            Assert.Equal(DeviceRuntimeLookupStatus.Deleted, removed.Status);
+            Assert.False(registry.TryGetByDeviceId(1).Found);
+            Assert.False(registry.TryGetBySdkUserId(11).Found);
+        }
+
+        [TestCase]
+        public static void DeviceRuntimeRegistry_ClearDeleting_DoesNotOverwriteNewReverseIndexOwners()
+        {
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            var registry = new DeviceRuntimeRegistry();
+            registry.Register(NewOptions(1, "10.0.0.1"));
+            registry.Register(NewOptions(2, "10.0.0.2"));
+            registry.RegisterSdkUserId(1, 77, "SN001", now);
+            registry.RegisterAlarmHandle(1, 7001, now);
+            var deleting = registry.BeginDeleting(1, now.AddMinutes(1));
+            var loggedOut = registry.MarkLoggedOut(
+                1,
+                now.AddMinutes(2),
+                context: null,
+                expectedSdkUserId: 77,
+                allowDeleting: true,
+                expectedDeletingLeaseId: deleting.DeleteLeaseId,
+                expectedRuntimeVersion: deleting.Snapshot.RuntimeVersion);
+            registry.RegisterSdkUserId(2, 77, "SN002", now.AddMinutes(3));
+            registry.RegisterAlarmHandle(2, 7001, now.AddMinutes(4));
+
+            var restored = registry.ClearDeleting(1, now.AddMinutes(5), null, deleting.DeleteLeaseId);
+            var sdkOwner = registry.TryGetBySdkUserId(77);
+            var alarmOwner = registry.TryGetByAlarmHandle(7001);
+
+            Assert.True(loggedOut.Success);
+            Assert.True(restored.Success);
+            Assert.Equal(2, sdkOwner.Snapshot.DeviceId);
+            Assert.Equal(2, alarmOwner.Snapshot.DeviceId);
+            Assert.Equal(77, restored.Snapshot.SdkUserId.Value);
+            Assert.Equal(7001, restored.Snapshot.AlarmHandle.Value);
+        }
+
+        [TestCase]
         public static void DeviceRuntimeRegistry_RemoveDevice_ClearsAllReverseIndexes()
         {
             var now = new DateTime(2026, 1, 1, 8, 0, 0);

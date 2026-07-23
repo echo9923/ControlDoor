@@ -157,12 +157,15 @@ END
 GO
 
 /* ========== 设备操作重试状态表 device_operation_retry_states ========== */
--- 与专项_20260309_设备操作重试状态表.sql 完全等价（含 3 个性能索引）
+-- 与专项_20260309_设备操作重试状态表.sql 完全等价（含版本、租约列和 3 个性能索引）
 IF OBJECT_ID(N'[dbo].[device_operation_retry_states]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[device_operation_retry_states]
     (
         [id] BIGINT IDENTITY(1,1) NOT NULL,
+        [intent_version] BIGINT NOT NULL CONSTRAINT [DF_device_operation_retry_states_intent_version] DEFAULT ((1)),
+        [claim_token] NVARCHAR(64) NULL,
+        [claim_until] DATETIME2(0) NULL,
         [device_id] INT NOT NULL,
         [employee_id] NVARCHAR(64) NOT NULL,
         [permission_level] INT NULL,
@@ -201,6 +204,31 @@ BEGIN
     ALTER TABLE [dbo].[device_operation_retry_states]
         ADD [permission_sync_completion_blocked] BIT NOT NULL
             CONSTRAINT [DF_device_operation_retry_states_permission_sync_completion_blocked] DEFAULT ((1));
+END
+GO
+
+-- 与专项脚本等价：补齐意图版本列（若表已存在且缺列）
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'intent_version') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [intent_version] BIGINT NOT NULL
+            CONSTRAINT [DF_device_operation_retry_states_intent_version] DEFAULT ((1));
+END
+GO
+
+-- 与专项脚本等价：补齐领取令牌列（若表已存在且缺列）
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'claim_token') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [claim_token] NVARCHAR(64) NULL;
+END
+GO
+
+-- 与专项脚本等价：补齐领取租约截止时间列（若表已存在且缺列）
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'claim_until') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [claim_until] DATETIME2(0) NULL;
 END
 GO
 

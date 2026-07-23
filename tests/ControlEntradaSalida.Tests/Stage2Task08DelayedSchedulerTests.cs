@@ -330,6 +330,127 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DelayedDeviceTaskScheduler_ImmediateStartStopAndDispose_LeavesLifecycleConsistent()
+        {
+            var dispatcher = NewDispatcher(queueCapacity: 10);
+            var stoppedScheduler = NewScheduler(dispatcher);
+            var disposedScheduler = NewScheduler(dispatcher);
+
+            try
+            {
+                stoppedScheduler.Start();
+                stoppedScheduler.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+                stoppedScheduler.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+
+                Assert.False(stoppedScheduler.IsRunning);
+                Assert.Equal<CancellationTokenSource>(null, GetStopSource(stoppedScheduler));
+                Assert.False(stoppedScheduler.GetStatus().IsRunning);
+
+                disposedScheduler.Start();
+                disposedScheduler.Dispose();
+                disposedScheduler.Dispose();
+
+                Assert.False(disposedScheduler.IsRunning);
+                Assert.Equal<CancellationTokenSource>(null, GetStopSource(disposedScheduler));
+                Assert.False(disposedScheduler.GetStatus().IsRunning);
+            }
+            finally
+            {
+                stoppedScheduler.Dispose();
+                disposedScheduler.Dispose();
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+        }
+
+        [TestCase]
+        public static void DelayedDeviceTaskScheduler_BackgroundLoopFailure_LeavesRunningStateConsistent()
+        {
+            var dispatcher = NewDispatcher(queueCapacity: 10);
+            var options = new DelayedDeviceTaskSchedulerOptions
+            {
+                MaxDelayedTaskCount = 100,
+                DispatchBatchSize = 100,
+                WakeupMaxSleepMilliseconds = 10
+            };
+            var scheduler = new DelayedDeviceTaskScheduler(dispatcher, options);
+
+            try
+            {
+                // Monitor.Wait rejects values below -1ms; changing the already validated option
+                // makes the background loop fail deterministically after it starts.
+                options.WakeupMaxSleepMilliseconds = -2;
+                scheduler.Start();
+                WaitUntil(() => scheduler.GetStatus().LastError != null, "scheduler loop did not report its failure.");
+
+                var failed = scheduler.GetStatus();
+                Assert.False(scheduler.IsRunning);
+                Assert.False(failed.IsRunning);
+                Assert.Contains("ArgumentOutOfRange", failed.LastError);
+
+                scheduler.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+                var stopped = scheduler.GetStatus();
+                Assert.False(stopped.IsRunning);
+                Assert.Equal(failed.LastError, stopped.LastError);
+            }
+            finally
+            {
+                scheduler.Dispose();
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+        }
+
+        [TestCase]
+        public static void DelayedDeviceTaskScheduler_StopDuringFactoryCreation_RestoresDueTaskWithoutDispatching()
+        {
+            var dispatcher = NewDispatcher(queueCapacity: 10);
+            var scheduler = NewScheduler(dispatcher);
+            var now = new DateTime(2026, 1, 1, 8, 0, 0);
+            var factoryEntered = NewSignal();
+            var releaseFactory = NewSignal();
+            var factoryCalls = 0;
+            var delayed = new DelayedDeviceTask(
+                1,
+                DeviceTaskType.UploadFace,
+                DeviceTaskPriority.Normal,
+                now,
+                "stop-interleave:1",
+                "stage2-test",
+                () =>
+                {
+                    Interlocked.Increment(ref factoryCalls);
+                    factoryEntered.TrySetResult(true);
+                    releaseFactory.Task.GetAwaiter().GetResult();
+                    return NewAsyncTask(DeviceTaskType.UploadFace, context => Task.FromResult(Success(context.Task)));
+                },
+                now.AddMinutes(-1));
+
+            try
+            {
+                scheduler.Schedule(delayed);
+                var dispatchTask = Task.Run(() => scheduler.DispatchDueTasks(now));
+                WaitForSignal(factoryEntered, "delayed task factory did not start.");
+
+                scheduler.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+                var afterStop = scheduler.GetSnapshot(now);
+                Assert.Equal(1, afterStop.DelayedTaskCount);
+
+                releaseFactory.TrySetResult(true);
+                var results = dispatchTask.GetAwaiter().GetResult();
+                Assert.Equal(1, results.Count);
+                Assert.Equal(DelayedTaskDispatchStatus.SchedulerStopped, results[0].Status);
+                Assert.Equal(1, factoryCalls);
+                Assert.Equal(0, dispatcher.GetWorkerSnapshots()[0].QueueLength);
+                Assert.Equal(1, scheduler.GetSnapshot(now).DelayedTaskCount);
+            }
+            finally
+            {
+                releaseFactory.TrySetResult(true);
+                scheduler.Dispose();
+                dispatcher.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            }
+        }
+
+        [TestCase]
         public static void DelayedDeviceTaskScheduler_BatchSize_LimitsDueDispatch()
         {
             var dispatcher = NewDispatcher(queueCapacity: 10);

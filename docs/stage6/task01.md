@@ -10,8 +10,8 @@
 
 | 边界 | 要求 |
 | --- | --- |
-| 表结构兼容变更 | 仅允许幂等补齐当前补偿语义必需的兼容列；不得破坏既有字段、索引、默认值、唯一约束和类型。 |
-| 不新增阶段 6 表 | 阶段 6 的持久化只使用现有补偿表。 |
+| 表结构兼容变更 | 仅允许幂等补齐当前补偿语义必需的兼容列（`intent_version`、`claim_token`、`claim_until`）；不得破坏既有字段、索引、默认值、唯一约束和类型。 |
+| 不新增阶段 6 表 | 阶段 6 的持久化只使用现有补偿表；版本和租约列是对既有表的向后兼容补充。 |
 | 同设备同员工唯一 | 严格遵守 `device_id + employee_id` 唯一状态行。 |
 | 设备调用通道化 | 补偿重试必须通过 `DeviceSdkDispatcher` 投递，不能直接调用 SDK 或 ISAPI。 |
 | 不改变 gRPC 契约 | 阶段 6 不新增、不修改外部 gRPC 方法。 |
@@ -54,6 +54,8 @@
 | `face_payload`、`face_pending` | 需要把人脸信息下发到设备。 |
 | `delete_person_pending` | 需要删除设备端人员。 |
 | `delete_face_pending` | 需要删除设备端人脸。 |
+| `intent_version` | 同一设备/员工状态行的业务意图版本；每次新意图更新时递增，旧任务回写必须匹配该版本。 |
+| `claim_token`、`claim_until` | 当前扫描实例的领取令牌和租约截止时间；仅租约未过期且令牌匹配时允许结果回写，租约过期后可重新领取。 |
 | `attempt_count` | 当前状态行连续补偿尝试次数。 |
 | `next_retry_at` | 下次允许被扫描的时间。 |
 | `last_error`、`last_attempt_at` | 最近一次补偿失败或跳过原因。 |
@@ -61,7 +63,7 @@
 
 ## 操作冲突规则
 
-因为表结构不记录操作序列，必须用明确规则表达“最新业务意图”：
+表结构不保存完整操作历史，但通过 `intent_version` 标识最新业务意图；仍必须用明确规则表达同一状态行内的冲突：
 
 | 新意图 | 合并规则 |
 | --- | --- |
@@ -79,15 +81,16 @@
 | 步骤 | 动作 |
 | --- | --- |
 | 1 | 阶段 5 产生补偿意图，调用 `DeviceOperationRetryStore.UpsertIntent`。 |
-| 2 | Store 在事务内按 `device_id + employee_id` 插入或更新补偿状态。 |
+| 2 | Store 在事务内按 `device_id + employee_id` 插入或更新补偿状态，并为新意图递增 `intent_version`、清除旧领取租约。 |
 | 3 | 后台 `DeviceOperationRetryManager` 按 `ScanIntervalSeconds` 扫描到期状态。 |
-| 4 | 对仍启用且可连接的设备生成 `RetryDeviceOperation` 任务。 |
-| 5 | 任务通过 `DeviceSdkDispatcher` 投递到对应设备固定通道。 |
-| 6 | 设备任务按人员、权限、人脸、删除规则执行。 |
-| 7 | 成功后清除对应 pending；全部 pending 清空后删除状态行。 |
-| 8 | 可重试失败更新 `attempt_count`、`next_retry_at`、`last_error`。 |
-| 9 | 达到最大次数或不可重试失败写入 `exhausted_at`。 |
-| 10 | 清理任务按保留天数删除终态失败记录。 |
+| 4 | 通过 `claim_token` + `claim_until` 原子领取状态，只有成功领取的实例继续处理。 |
+| 5 | 对仍启用且可连接的设备生成 `RetryDeviceOperation` 任务。 |
+| 6 | 任务通过 `DeviceSdkDispatcher` 投递到对应设备固定通道。 |
+| 7 | 设备任务按人员、权限、人脸、删除规则执行。 |
+| 8 | 成功后清除对应 pending；全部 pending 清空后删除状态行。 |
+| 9 | 可重试失败更新 `attempt_count`、`next_retry_at`、`last_error`。 |
+| 10 | 达到最大次数或不可重试失败写入 `exhausted_at`。 |
+| 11 | 清理任务按保留天数删除终态失败记录。 |
 
 ## 阶段完成标准
 
@@ -99,4 +102,4 @@
 | 重试走设备通道 | 不绕过 `DeviceSdkDispatcher`。 |
 | 结果回写完整 | 成功、可重试失败、不可重试失败、达到上限都有明确状态变化。 |
 | 运维可观察 | 日志能定位设备、员工、操作、attempt、nextRetry、错误。 |
-| 数据库兼容 | 不修改现有表结构，不新增阶段 6 表。 |
+| 数据库兼容 | 仅对既有补偿表幂等补齐 `intent_version`、`claim_token`、`claim_until`，不新增阶段 6 表；seed 与专项脚本保持同一字段语义。 |

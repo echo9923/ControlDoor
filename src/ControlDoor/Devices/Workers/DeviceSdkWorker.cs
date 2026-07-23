@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ControlDoor.Devices.Runtime;
@@ -67,7 +68,7 @@ namespace ControlDoor.Devices.Workers
         {
             DeviceTaskQueueItem cancelledItem;
             DeviceQueueInfo queueInfo;
-            DeviceTaskResult result;
+            bool completed;
             lock (gate)
             {
                 if (!queue.TryCancel(taskId, reason, out cancelledItem))
@@ -75,18 +76,16 @@ namespace ControlDoor.Devices.Workers
                     return false;
                 }
 
-                result = DeviceTaskResult.Cancelled(cancelledItem.Task, string.IsNullOrEmpty(reason) ? "Task was cancelled before execution." : reason);
-                cancelledItem.Task.MarkCancelled(result.CompletedAt);
-                cancelledItem.Task.Completion.TrySetResult(result);
-                completedTaskCount++;
-                cancelledTaskCount++;
-                lastTaskCompletedAt = result.CompletedAt;
+                var result = DeviceTaskResult.Cancelled(
+                    cancelledItem.Task,
+                    string.IsNullOrEmpty(reason) ? "Task was cancelled before execution." : reason);
+                completed = CompleteTaskLocked(cancelledItem.Task, result, clearCurrentTask: false);
                 queueInfo = BuildQueueInfoLocked();
                 Monitor.PulseAll(gate);
             }
 
             registry.UpdateQueueInfo(cancelledItem.Task.DeviceId, queueInfo);
-            return true;
+            return completed || cancelledItem.Task.Completion.IsCompleted;
         }
 
         public void Start()
@@ -99,7 +98,10 @@ namespace ControlDoor.Devices.Workers
                     return;
                 }
 
-                if (status == DeviceWorkerStatus.Running || status == DeviceWorkerStatus.Starting || status == DeviceWorkerStatus.Stopping)
+                if (status == DeviceWorkerStatus.Running ||
+                    status == DeviceWorkerStatus.Starting ||
+                    status == DeviceWorkerStatus.Stopping ||
+                    status == DeviceWorkerStatus.Stopped)
                 {
                     return;
                 }
@@ -109,8 +111,9 @@ namespace ControlDoor.Devices.Workers
                 startedAt = DateTime.Now;
                 stoppedAt = null;
                 acceptingTasks = true;
-                stopSource = new CancellationTokenSource();
-                loopTask = Task.Run(() => RunLoopGuardedAsync(stopSource.Token));
+                var source = new CancellationTokenSource();
+                stopSource = source;
+                loopTask = Task.Run(() => RunLoopGuardedAsync(source, source.Token));
                 status = DeviceWorkerStatus.Running;
                 Monitor.PulseAll(gate);
             }
@@ -132,8 +135,13 @@ namespace ControlDoor.Devices.Workers
                 if (!acceptingTasks || status == DeviceWorkerStatus.Stopping || status == DeviceWorkerStatus.Stopped)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPING", "Worker is stopping.");
-                    task.MarkRejected(rejected);
-                    task.Completion.TrySetResult(rejected);
+                    task.TryRejectBeforeSubmission(rejected);
+                    return DeviceTaskSubmissionResult.Rejected(task, rejected);
+                }
+
+                if (!task.TryReserveForQueue())
+                {
+                    var rejected = DeviceTaskResult.Rejected(task, "TASK_ALREADY_SUBMITTED", "Task has already been submitted.");
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
 
@@ -142,18 +150,19 @@ namespace ControlDoor.Devices.Workers
                 if (!queue.TryEnqueue(task, now, effectiveTimeout, out var item))
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "QUEUE_FULL", "Worker queue is full.");
-                    task.MarkRejected(rejected);
-                    task.Completion.TrySetResult(rejected);
-                    return DeviceTaskSubmissionResult.Rejected(task, rejected);
+                    task.ReleaseQueueReservation();
+                    task.TryComplete(rejected);
+                    var finalResult = task.TerminalResult ?? rejected;
+                    return DeviceTaskSubmissionResult.Rejected(task, finalResult);
                 }
 
                 queueInfo = BuildQueueInfoLocked();
                 Monitor.PulseAll(gate);
                 if (item == null)
                 {
-                    var coalesced = DeviceTaskResult.Rejected(task, "COALESCED", "Background task was coalesced.");
-                    task.Completion.TrySetResult(coalesced);
-                    result = DeviceTaskSubmissionResult.AcceptedResult(task, WorkerIndex, null, coalesced);
+                    var coalesced = task.TerminalResult ?? DeviceTaskResult.Rejected(task, "COALESCED", "Background task was coalesced.");
+                    SetCompletionResult(task, coalesced);
+                    result = DeviceTaskSubmissionResult.AcceptedResult(task, WorkerIndex, null, task.TerminalResult ?? coalesced);
                 }
                 else
                 {
@@ -169,6 +178,8 @@ namespace ControlDoor.Devices.Workers
         {
             Task runningLoop;
             CancellationTokenSource source;
+            IReadOnlyList<int> cancelledDeviceIds;
+            DeviceQueueInfo queueInfo;
             lock (gate)
             {
                 if (disposed)
@@ -189,17 +200,24 @@ namespace ControlDoor.Devices.Workers
 
                 acceptingTasks = false;
                 status = DeviceWorkerStatus.Stopping;
-                CancelQueuedTasksLocked();
+                cancelledDeviceIds = CancelQueuedTasksLocked();
+                queueInfo = BuildQueueInfoLocked();
                 source = stopSource;
                 CancelStopSource(source);
                 Monitor.PulseAll(gate);
                 runningLoop = loopTask;
             }
 
+            foreach (var deviceId in cancelledDeviceIds)
+            {
+                registry.UpdateQueueInfo(deviceId, queueInfo);
+            }
+
+            var loopCompleted = runningLoop == null;
             if (runningLoop != null)
             {
-                var completed = await Task.WhenAny(runningLoop, Task.Delay(waitTimeout)).ConfigureAwait(false);
-                if (completed != runningLoop)
+                loopCompleted = (await Task.WhenAny(runningLoop, Task.Delay(waitTimeout)).ConfigureAwait(false)) == runningLoop;
+                if (!loopCompleted)
                 {
                     lock (gate)
                     {
@@ -210,21 +228,27 @@ namespace ControlDoor.Devices.Workers
 
             lock (gate)
             {
-                status = DeviceWorkerStatus.Stopped;
-                stoppedAt = DateTime.Now;
-                currentTaskId = null;
-                currentDeviceId = null;
-                currentTaskType = null;
-                currentTaskStartedAt = null;
-                if (object.ReferenceEquals(stopSource, source))
+                if (loopCompleted)
                 {
-                    stopSource = null;
+                    status = DeviceWorkerStatus.Stopped;
+                    stoppedAt = DateTime.Now;
+                    currentTaskId = null;
+                    currentDeviceId = null;
+                    currentTaskType = null;
+                    currentTaskStartedAt = null;
+                    if (object.ReferenceEquals(stopSource, source))
+                    {
+                        stopSource = null;
+                    }
                 }
 
                 Monitor.PulseAll(gate);
             }
 
-            DisposeStopSource(source);
+            if (loopCompleted)
+            {
+                DisposeStopSource(source);
+            }
         }
 
         public void Dispose()
@@ -281,7 +305,7 @@ namespace ControlDoor.Devices.Workers
             }
         }
 
-        private async Task RunLoopGuardedAsync(CancellationToken cancellationToken)
+        private async Task RunLoopGuardedAsync(CancellationTokenSource source, CancellationToken cancellationToken)
         {
             try
             {
@@ -296,6 +320,23 @@ namespace ControlDoor.Devices.Workers
                     lastError = ex.GetType().Name + ": " + ex.Message;
                     Monitor.PulseAll(gate);
                 }
+            }
+            finally
+            {
+                lock (gate)
+                {
+                    if (object.ReferenceEquals(stopSource, source) &&
+                        status == DeviceWorkerStatus.Stopping &&
+                        cancellationToken.IsCancellationRequested)
+                    {
+                        status = DeviceWorkerStatus.Stopped;
+                        stoppedAt = DateTime.Now;
+                        stopSource = null;
+                        Monitor.PulseAll(gate);
+                    }
+                }
+
+                DisposeStopSource(source);
             }
         }
 
@@ -346,14 +387,47 @@ namespace ControlDoor.Devices.Workers
             DeviceTaskResult result;
             DeviceRuntimeSnapshot snapshotBeforeExecution;
             DeviceQueueInfo queueInfo;
+            DeviceTaskResult boundaryResult = null;
+            var canRun = false;
             lock (gate)
             {
-                currentTaskId = task.TaskId;
-                currentDeviceId = task.DeviceId;
-                currentTaskType = task.TaskType;
-                currentTaskStartedAt = startedAt;
-                task.MarkRunning(startedAt);
+                if (item.Cancelled || workerCancellationToken.IsCancellationRequested)
+                {
+                    boundaryResult = DeviceTaskResult.Cancelled(
+                        task,
+                        string.IsNullOrEmpty(item.CancellationReason) ? "Task was cancelled before execution." : item.CancellationReason);
+                }
+                else if (task.CallerCancellationToken.IsCancellationRequested)
+                {
+                    boundaryResult = DeviceTaskResult.Cancelled(task, "Caller cancelled before task started.");
+                }
+                else if (task.DeadlineAt.HasValue && task.DeadlineAt.Value <= startedAt)
+                {
+                    boundaryResult = DeviceTaskResult.Timeout(task, "Task expired before execution.", isWaitOutcome: false);
+                }
+                else
+                {
+                    canRun = task.TryMarkRunning(startedAt);
+                }
+
+                if (canRun)
+                {
+                    currentTaskId = task.TaskId;
+                    currentDeviceId = task.DeviceId;
+                    currentTaskType = task.TaskType;
+                    currentTaskStartedAt = startedAt;
+                }
+
                 queueInfo = BuildQueueInfoLocked();
+            }
+
+            if (!canRun)
+            {
+                CompleteTask(
+                    task,
+                    task.TerminalResult ?? boundaryResult ?? DeviceTaskResult.Cancelled(task, "Task was completed before execution."),
+                    clearCurrentTask: false);
+                return;
             }
 
             snapshotBeforeExecution = registry.TryGetByDeviceId(task.DeviceId).Snapshot;
@@ -406,67 +480,94 @@ namespace ControlDoor.Devices.Workers
             CompleteTask(task, result.WithCompletionTiming(startedAt, DateTime.Now));
         }
 
-        private void CompleteTask(DeviceSdkTask task, DeviceTaskResult result)
+        private void CompleteTask(DeviceSdkTask task, DeviceTaskResult result, bool clearCurrentTask = true)
         {
             DeviceQueueInfo queueInfo;
             lock (gate)
             {
-                task.MarkCompleted(result);
-                completedTaskCount++;
-                if (!result.Success)
-                {
-                    failedTaskCount++;
-                    lastError = result.Code + ": " + result.Message;
-                }
+                CompleteTaskLocked(task, result, clearCurrentTask);
+                queueInfo = BuildQueueInfoLocked();
+                Monitor.PulseAll(gate);
+            }
 
-                if (result.Code == "CANCELLED")
+            registry.UpdateQueueInfo(task.DeviceId, queueInfo);
+        }
+
+        private bool CompleteTaskLocked(DeviceSdkTask task, DeviceTaskResult result, bool clearCurrentTask)
+        {
+            if (result == null)
+            {
+                var now = DateTime.Now;
+                result = DeviceTaskResult.FromTask(task, false, "INTERNAL_ERROR", "Task returned null result.", DeviceConnectionStatus.Unknown, now, now);
+            }
+
+            DeviceTaskResult finalResult;
+            var completed = task.TryFinalizeFromWorker(result, out finalResult);
+            if (task.TryClaimCompletionCount())
+            {
+                completedTaskCount++;
+                if (finalResult != null && finalResult.Code == "CANCELLED")
                 {
                     cancelledTaskCount++;
                 }
+                else if (finalResult != null && !finalResult.Success)
+                {
+                    failedTaskCount++;
+                    lastError = finalResult.Code + ": " + finalResult.Message;
+                }
 
-                lastTaskCompletedAt = result.CompletedAt;
+                if (finalResult != null)
+                {
+                    lastTaskCompletedAt = finalResult.CompletedAt;
+                }
+            }
+
+            if (clearCurrentTask && string.Equals(currentTaskId, task.TaskId, StringComparison.Ordinal))
+            {
                 currentTaskId = null;
                 currentDeviceId = null;
                 currentTaskType = null;
                 currentTaskStartedAt = null;
-                queueInfo = BuildQueueInfoLocked();
-                Monitor.PulseAll(gate);
             }
 
-            registry.UpdateQueueInfo(task.DeviceId, queueInfo);
-            task.Completion.TrySetResult(result);
+            return completed;
+        }
+
+        private void CompleteNonRunningTaskLocked(DeviceSdkTask task, DeviceTaskResult result, DeviceTaskExecutionState expectedState)
+        {
+            if (task.ExecutionState == DeviceTaskExecutionState.Rejected && expectedState == DeviceTaskExecutionState.Rejected)
+            {
+                task.TrySetCompletion(result);
+                return;
+            }
+
+            task.TryComplete(result);
+        }
+
+        private static void SetCompletionResult(DeviceSdkTask task, DeviceTaskResult result)
+        {
+            task.TryComplete(result);
         }
 
         private void CompleteCancelled(DeviceSdkTask task, string message)
         {
-            var result = DeviceTaskResult.Cancelled(task, message);
-            DeviceQueueInfo queueInfo;
-            task.MarkCancelled(result.CompletedAt);
-            lock (gate)
-            {
-                completedTaskCount++;
-                cancelledTaskCount++;
-                lastTaskCompletedAt = result.CompletedAt;
-                queueInfo = BuildQueueInfoLocked();
-                Monitor.PulseAll(gate);
-            }
-
-            registry.UpdateQueueInfo(task.DeviceId, queueInfo);
-            task.Completion.TrySetResult(result);
+            CompleteTask(task, DeviceTaskResult.Cancelled(task, message));
         }
 
-        private void CancelQueuedTasksLocked()
+        private IReadOnlyList<int> CancelQueuedTasksLocked()
         {
+            var deviceIds = new HashSet<int>();
             foreach (var item in queue.Drain())
             {
+                deviceIds.Add(item.Task.DeviceId);
                 item.Cancel("Worker stopped before task started.");
-                var result = DeviceTaskResult.Cancelled(item.Task, "Worker stopped before task started.");
-                item.Task.MarkCancelled(result.CompletedAt);
-                item.Task.Completion.TrySetResult(result);
-                completedTaskCount++;
-                cancelledTaskCount++;
-                lastTaskCompletedAt = result.CompletedAt;
+                CompleteTaskLocked(
+                    item.Task,
+                    DeviceTaskResult.Cancelled(item.Task, "Worker stopped before task started."),
+                    clearCurrentTask: false);
             }
+
+            return new List<int>(deviceIds);
         }
 
         private DeviceQueueInfo BuildQueueInfoLocked()

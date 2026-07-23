@@ -63,7 +63,7 @@ namespace ControlDoor.Devices.Workers
                     throw new ObjectDisposedException(nameof(DeviceSdkDispatcher));
                 }
 
-                if (started || stopped)
+                if (started || stopping || stopped)
                 {
                     return;
                 }
@@ -89,24 +89,21 @@ namespace ControlDoor.Devices.Workers
                 if (disposed)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPED", "Dispatcher is disposed.");
-                    task.MarkRejected(rejected);
-                    task.Completion.TrySetResult(rejected);
+                    task.TryRejectBeforeSubmission(rejected);
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
 
                 if (stopping)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPING", "Dispatcher is stopping.");
-                    task.MarkRejected(rejected);
-                    task.Completion.TrySetResult(rejected);
+                    task.TryRejectBeforeSubmission(rejected);
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
 
                 if (stopped)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPED", "Dispatcher is stopped.");
-                    task.MarkRejected(rejected);
-                    task.Completion.TrySetResult(rejected);
+                    task.TryRejectBeforeSubmission(rejected);
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
             }
@@ -115,55 +112,47 @@ namespace ControlDoor.Devices.Workers
             if (!route.Found || !route.WorkerIndex.HasValue)
             {
                 var rejected = DeviceTaskResult.Rejected(task, "DEVICE_NOT_FOUND", "Device runtime was not found.");
-                task.MarkRejected(rejected);
-                task.Completion.TrySetResult(rejected);
+                task.TryRejectBeforeSubmission(rejected);
                 return DeviceTaskSubmissionResult.Rejected(task, rejected);
             }
 
             if (route.WorkerIndex.Value < 0 || route.WorkerIndex.Value >= workers.Length)
             {
                 var rejected = DeviceTaskResult.Rejected(task, "INTERNAL_ERROR", "Worker route is outside dispatcher range.");
-                task.MarkRejected(rejected);
-                task.Completion.TrySetResult(rejected);
+                task.TryRejectBeforeSubmission(rejected);
                 return DeviceTaskSubmissionResult.Rejected(task, rejected);
             }
 
-            var shouldStart = false;
             lock (gate)
             {
                 if (disposed)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPED", "Dispatcher is disposed.");
-                    task.MarkRejected(rejected);
-                    task.Completion.TrySetResult(rejected);
+                    task.TryRejectBeforeSubmission(rejected);
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
 
                 if (stopping)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPING", "Dispatcher is stopping.");
-                    task.MarkRejected(rejected);
-                    task.Completion.TrySetResult(rejected);
+                    task.TryRejectBeforeSubmission(rejected);
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
 
                 if (stopped)
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPED", "Dispatcher is stopped.");
-                    task.MarkRejected(rejected);
-                    task.Completion.TrySetResult(rejected);
+                    task.TryRejectBeforeSubmission(rejected);
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
 
-                shouldStart = !started;
-            }
+                if (!started)
+                {
+                    Start();
+                }
 
-            if (shouldStart)
-            {
-                Start();
+                return workers[route.WorkerIndex.Value].Enqueue(task);
             }
-
-            return workers[route.WorkerIndex.Value].Enqueue(task);
         }
 
         public async Task<DeviceTaskResult> SubmitAndWaitAsync(DeviceSdkTask task)
@@ -181,9 +170,12 @@ namespace ControlDoor.Devices.Workers
             if (cancellationToken.IsCancellationRequested)
             {
                 var cancelled = DeviceTaskResult.Cancelled(task, "Caller cancelled before task submission.");
-                task.MarkCancelled(cancelled.CompletedAt);
-                task.Completion.TrySetResult(cancelled);
-                return cancelled;
+                if (task.TryCancelBeforeSubmission(cancelled))
+                {
+                    return task.TerminalResult;
+                }
+
+                return task.TerminalResult ?? cancelled;
             }
 
             task.AttachCallerCancellationToken(cancellationToken);
@@ -216,21 +208,29 @@ namespace ControlDoor.Devices.Workers
             }
 
             var completed = await Task.WhenAny(waiters).ConfigureAwait(false);
-            if (completed == waitTask)
+            if (completed == waitTask || waitTask.IsCompleted)
             {
                 return await waitTask.ConfigureAwait(false);
             }
 
             if (completed == cancellationTask)
             {
-                TryCancelQueuedTask(task.TaskId, "Caller cancelled before task started.");
-                var cancelled = DeviceTaskResult.Cancelled(task, "Caller cancelled while waiting for task result.");
-                cancelled.IsWaitOutcome = true;
-                return cancelled;
+                var removed = TryCancelQueuedTask(task.TaskId, "Caller cancelled before task started.");
+                if (!removed && waitTask.IsCompleted)
+                {
+                    return await waitTask.ConfigureAwait(false);
+                }
+
+                return DeviceTaskResult.Cancelled(task, "Caller cancelled while waiting for task result.", isWaitOutcome: true);
             }
 
-            TryCancelQueuedTask(task.TaskId, "Caller wait timed out before task started.");
-            return DeviceTaskResult.Timeout(task, "Caller wait timed out before task completed.");
+            var removedBeforeExecution = TryCancelQueuedTask(task.TaskId, "Caller wait timed out before task started.");
+            if (!removedBeforeExecution && waitTask.IsCompleted)
+            {
+                return await waitTask.ConfigureAwait(false);
+            }
+
+            return DeviceTaskResult.Timeout(task, "Caller wait timed out before task completed.", isWaitOutcome: true);
         }
 
         public bool TryCancelQueuedTask(string taskId, string reason)

@@ -50,6 +50,7 @@
 | `next_retry_at` | 由退避策略计算。 |
 | `last_error` | 写入错误码、SDK 错误码、操作名和简短说明。 |
 | `updated_at` | 当前时间。 |
+| `claim_token`、`claim_until` | 回写成功或失败后清除当前领取租约，避免已完成任务继续占用状态。 |
 
 ## 退避策略
 
@@ -88,12 +89,14 @@ delay = min(InitialRetryDelaySeconds * 2^(attempt_count - 1), MaxRetryDelaySecon
 
 | 机制 | 说明 |
 | --- | --- |
-| 读取当前状态 | 回写前查询当前 pending 和 updated_at。 |
-| 操作级清除 | 只清除本次实际成功的 pending。 |
+| 版本匹配 | 回写必须带上领取时的 `intent_version`；新意图递增版本后，旧任务更新 0 行并标记为 stale。 |
+| 领取匹配 | 回写必须带上当前 `claim_token`，且要求 `claim_until > now`；租约过期或被重新领取时拒绝旧结果。 |
+| 读取当前状态 | 回写前使用状态快照中的 pending、payload 和 `intent_version`。 |
+| 操作级清除 | 只清除本次实际成功且仍与快照匹配的 pending。 |
 | 不覆盖新 payload | 成功回写不得把当前不同的新 payload 清空。 |
-| requestId 日志 | 数据库不新增字段，日志记录旧结果与当前状态差异。 |
+| requestId 日志 | 日志记录状态版本、领取令牌结果和 stale 差异。 |
 
-由于表中没有版本字段，无法做严格乐观锁。实现时应保持保守：旧任务只清除自己确认成功且当前仍 pending 的操作，不修改无关 pending。
+`intent_version` 提供轻量乐观并发校验，`claim_token` + `claim_until` 提供领取者和租约校验。实现仍应保持保守：旧任务只清除自己确认成功且当前仍 pending 的操作，不修改无关 pending。
 
 ## 日志
 
@@ -115,4 +118,6 @@ delay = min(InitialRetryDelaySeconds * 2^(attempt_count - 1), MaxRetryDelaySecon
 | 达到上限终态 | 写入 exhausted_at，不再扫描。 |
 | 不可重试立即终态 | 不安排下次重试。 |
 | 权限完成标记 | permission_sync_completion_blocked 成功后清零。 |
+| 版本保护 | 新意图递增 `intent_version` 后，旧任务回写被拒绝并标记 stale。 |
+| 租约保护 | `claim_token` 不匹配或 `claim_until` 已过期时，旧任务回写被拒绝。 |
 | 旧任务回写 | 不清空新业务 payload。 |

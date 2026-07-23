@@ -108,6 +108,54 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void DeviceOperationRetryStore_ApplyExecutionResult_SameCompletionIsAppliedOnlyOnce()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database);
+            var state = NewState();
+            var result = new RetryExecutionResult(
+                state,
+                new[] { RetryOperation.Permission },
+                null,
+                true,
+                "OK",
+                "全部成功。",
+                null);
+
+            store.ApplyExecutionResult(result, new DateTime(2026, 1, 1, 10, 0, 0));
+            store.ApplyExecutionResult(result, new DateTime(2026, 1, 1, 10, 0, 1));
+
+            Assert.Equal(1, database.Commands.Count(item => item.OperationName == "DeviceOperationRetryStore.MarkOperationSuccess"));
+            Assert.Equal(1, database.Commands.Count(item => item.OperationName == "DeviceOperationRetryStore.DeleteIfCompleted"));
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryStore_ApplyExecutionResult_WaitOutcome_IsNoOp()
+        {
+            var database = new RecordingDatabaseClient();
+            var store = new DeviceOperationRetryStore(database);
+            var result = new RetryExecutionResult(
+                NewState(),
+                new[] { RetryOperation.Permission },
+                null,
+                true,
+                "TIMEOUT",
+                "等待层超时，最终设备任务仍在运行。",
+                null)
+            {
+                FinalDeviceTaskResult = new ControlDoor.Devices.Tasks.DeviceTaskResult
+                {
+                    Code = "TIMEOUT",
+                    IsWaitOutcome = true
+                }
+            };
+
+            store.ApplyExecutionResult(result, new DateTime(2026, 1, 1, 10, 0, 0));
+
+            Assert.Equal(0, database.Commands.Count);
+        }
+
+        [TestCase]
         public static void DeviceOperationRetryStore_ApplyExecutionResult_NonRetryableTerminalCode_MarksTerminal()
         {
             var database = new RecordingDatabaseClient();

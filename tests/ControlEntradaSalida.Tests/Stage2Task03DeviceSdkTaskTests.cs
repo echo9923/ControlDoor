@@ -19,6 +19,8 @@ namespace ControlEntradaSalida.Tests
             Assert.Equal(DeviceTaskPriority.Normal, task.Priority);
             Assert.Equal(DeviceTaskWaitMode.WaitForResult, task.WaitMode);
             Assert.Equal(DeviceTaskExecutionState.Created, task.ExecutionState);
+            Assert.False(task.TaskStarted);
+            Assert.False(task.TaskCompleted);
             Assert.NotNull(task.Payload);
             Assert.NotNull(task.RetrySource);
             Assert.NotNull(task.Completion);
@@ -83,6 +85,64 @@ namespace ControlEntradaSalida.Tests
             Assert.True(task.Completion.TrySetResult(first));
             Assert.False(task.Completion.TrySetResult(second));
             Assert.Equal("QUEUED", task.Completion.Task.GetAwaiter().GetResult().Code);
+        }
+
+        [TestCase]
+        public static void DeviceSdkTask_TerminalStateIsOneWayAndCompletionIsSingleShot()
+        {
+            var task = NewTask(12, DeviceTaskType.HealthCheck);
+            var startedAt = new DateTime(2026, 1, 1, 8, 0, 0);
+            var success = DeviceTaskResult.FromTask(task, true, "OK", "done", DeviceConnectionStatus.Online, startedAt, startedAt);
+            var cancelled = DeviceTaskResult.Cancelled(task, "late cancellation.");
+
+            Assert.True(task.TryMarkRunning(startedAt));
+            Assert.True(task.TryComplete(success));
+            Assert.False(task.TryComplete(cancelled));
+            Assert.Equal(DeviceTaskExecutionState.Succeeded, task.ExecutionState);
+            Assert.True(task.TaskStarted);
+            Assert.True(task.TaskCompleted);
+            Assert.True(task.Completion.IsCompleted);
+            Assert.Equal("OK", task.Completion.Task.GetAwaiter().GetResult().Code);
+        }
+
+        [TestCase]
+        public static void DeviceSdkTask_ProvisionalQueuedCompletionIsPromotedToWorkerResult()
+        {
+            var task = NewTask(13, DeviceTaskType.HealthCheck);
+            var enqueuedAt = new DateTime(2026, 1, 1, 8, 0, 0);
+            var startedAt = enqueuedAt.AddMilliseconds(10);
+            var queued = DeviceTaskResult.Queued(task);
+            var success = DeviceTaskResult.FromTask(task, true, "OK", "done", DeviceConnectionStatus.Online, startedAt, startedAt);
+
+            task.MarkQueued(enqueuedAt, sequence: 1, effectiveTimeoutMilliseconds: 30000);
+            Assert.True(task.Completion.TrySetResult(queued));
+            Assert.True(task.TryMarkRunning(startedAt));
+            Assert.True(task.TryComplete(success));
+
+            var completionResult = task.Completion.Task.GetAwaiter().GetResult();
+            Assert.True(object.ReferenceEquals(queued, completionResult));
+            Assert.Equal(DeviceTaskExecutionState.Succeeded, task.ExecutionState);
+            Assert.Equal("OK", completionResult.Code);
+            Assert.True(completionResult.TaskStarted);
+            Assert.True(completionResult.TaskCompleted);
+        }
+
+        [TestCase]
+        public static void DeviceSdkTask_QueueReservationBlocksExternalCompletionUntilReleased()
+        {
+            var task = NewTask(13, DeviceTaskType.HealthCheck);
+            var result = DeviceTaskResult.Rejected(task, "QUEUE_FULL", "queue full");
+
+            Assert.True(task.TryReserveForQueue());
+            Assert.False(task.TryComplete(result));
+            Assert.Equal(DeviceTaskExecutionState.Created, task.ExecutionState);
+            Assert.False(task.Completion.IsCompleted);
+
+            task.ReleaseQueueReservation();
+
+            Assert.True(task.TryComplete(result));
+            Assert.Equal(DeviceTaskExecutionState.Rejected, task.ExecutionState);
+            Assert.Equal("QUEUE_FULL", task.Completion.Task.GetAwaiter().GetResult().Code);
         }
 
         [TestCase]

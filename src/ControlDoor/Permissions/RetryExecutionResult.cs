@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using ControlDoor.Devices.Tasks;
 
 namespace ControlDoor.Permissions
 {
@@ -41,7 +43,31 @@ namespace ControlDoor.Permissions
 
         public string ClaimToken => State == null ? null : State.ClaimToken;
 
+        private int completionApplied;
+
         public bool IsStale { get; internal set; }
+
+        public bool TryBeginCompletionApplication()
+        {
+            return Interlocked.Exchange(ref completionApplied, 1) == 0;
+        }
+
+        public bool CompletionApplicationStarted => Volatile.Read(ref completionApplied) != 0;
+
+        public DeviceTaskResult FinalDeviceTaskResult { get; internal set; }
+
+        public bool TaskStarted { get; internal set; }
+
+        public bool IsWaitOutcome => FinalDeviceTaskResult != null && FinalDeviceTaskResult.IsWaitOutcome;
+
+        public bool WasCancelledBeforeStart =>
+            !IsWaitOutcome &&
+            !TaskStarted &&
+            FinalDeviceTaskResult != null &&
+            (FinalDeviceTaskResult.Code == "CANCELLED" ||
+             FinalDeviceTaskResult.Code == "TIMEOUT" ||
+             FinalDeviceTaskResult.Code == "DISPATCHER_STOPPING" ||
+             FinalDeviceTaskResult.Code == "DISPATCHER_STOPPED");
 
         public bool AllSucceeded => !FailedOperation.HasValue;
     }
