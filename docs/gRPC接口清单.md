@@ -147,7 +147,78 @@
 | `targetDevices` | 目标设备数量 |
 | `queuedDetails` | 排队明细 |
 
-### 4.3 `DeleteFaces`
+### 4.3 `SyncPersonsToDevices`
+
+| 项目 | 内容 |
+| --- | --- |
+| 完整方法名 | `/permission.PermissionSyncService/SyncPersonsToDevices` |
+| 方法类型 | Unary |
+| 用途 | 仅向调用方指定的门禁设备批量下发人员基础信息 |
+| 服务端处理 | `PermissionSyncGrpcService.SyncPersonsToDevices` |
+
+请求必须是包含 `deviceIds` 和人员容器的对象。同一批人员共用一个目标设备集合：
+
+```json
+{
+  "deviceIds": [1, 3, 5],
+  "items": [
+    {
+      "employee_id": "10001",
+      "name": "张三",
+      "gender": "male",
+      "enabled": true,
+      "valid_from": "2026-01-01T00:00:00",
+      "valid_to": "2035-12-31T23:59:59"
+    }
+  ]
+}
+```
+
+请求规则：
+
+- `deviceIds`（别名 `device_ids`）必填，必须是非空正整数数组；重复 ID 按首次出现顺序去重。
+- 全部设备必须存在、启用且声明 `Acs` 类型；任一设备不合法时整批返回 `INVALID_ARGUMENT`，不执行设备调用、不写补偿。
+- 人员字段和批量上限沿用 `SyncPersons`，单批最多 500 人。
+- 请求不得携带任何人脸字段；需要上传人脸时调用 `SyncFacesToDevices`。
+- 在线设备立即下发人员；离线设备或可重试失败只为对应指定设备写入 `SyncPerson` 补偿。
+- 接口不调用全局 `MarkPersonSynced`，也不会操作未指定设备。
+
+响应包含 `total`、`succeeded`、`failed`、`queued`、`targetDevices`、`queuedDetails`、`items`、`deviceErrors` 和 `dbErrors`。设备维度结果位于 `items[].devices[]`。
+
+### 4.4 `SyncFacesToDevices`
+
+| 项目 | 内容 |
+| --- | --- |
+| 完整方法名 | `/permission.PermissionSyncService/SyncFacesToDevices` |
+| 方法类型 | Unary |
+| 用途 | 仅向调用方指定的门禁设备批量上传人脸 |
+| 服务端处理 | `PermissionSyncGrpcService.SyncFacesToDevices` |
+
+```json
+{
+  "deviceIds": [1, 3, 5],
+  "items": [
+    {
+      "employee_id": "10001",
+      "face_image_base64": "base64字符串",
+      "face_image_format": "jpg"
+    }
+  ]
+}
+```
+
+请求规则：
+
+- `deviceIds` 的必填、去重和原子校验规则与 `SyncPersonsToDevices` 相同。
+- `employee_id` 与 `face_image_base64` 必填；员工编号别名沿用 `SyncPersons`，人脸字段别名沿用现有接口。
+- 人脸支持 data URI 前缀，解码后最大 200KB；Base64 非法返回 `INVALID_ARGUMENT`，超限返回 `FACE_TOO_LARGE`。
+- 该接口只执行 `UploadFace`，不会查询、创建或更新人员。设备端人员不存在时返回设备维度失败。
+- 在线设备立即上传；离线设备或可重试失败只为对应指定设备写入 `UploadFace` 补偿。
+- 接口不调用全局 `MarkPersonSynced`，也不会操作未指定设备。
+
+响应字段与 `SyncPersonsToDevices` 一致，并额外返回 `facesUploaded`。
+
+### 4.5 `DeleteFaces`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -181,7 +252,7 @@
 | `queuedDetails` | 排队明细 |
 | `items` | 每个员工的人脸操作结果 |
 
-### 4.4 `DeletePersons`
+### 4.6 `DeletePersons`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -211,7 +282,7 @@
 | `queuedDetails` | 排队明细 |
 | `items` | 每个员工的删除结果，含成功设备、失败设备与设备错误 |
 
-### 4.5 `GetFaces`
+### 4.7 `GetFaces`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -233,7 +304,7 @@
 | `targetDevices` | 目标设备数量 |
 | `items` | 查询结果，含 `employeeId`、`success`、`faceImageBase64`、`rawResponse`、`error` |
 
-### 4.6 `CaptureFaceStream`
+### 4.8 `CaptureFaceStream`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -278,7 +349,7 @@
 
 失败时返回一帧失败结果，常见错误码为 `DEVICE_ERROR` 或 `FACE_TOO_LARGE`。
 
-### 4.7 `GetEnrollmentStatus`
+### 4.9 `GetEnrollmentStatus`
 
 | 项目 | 内容 |
 | --- | --- |

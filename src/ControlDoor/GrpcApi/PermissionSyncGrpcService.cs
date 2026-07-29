@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -17,6 +18,8 @@ namespace ControlDoor.GrpcApi
         public const string ServiceName = "permission.PermissionSyncService";
         public const string SyncPermissionsFullName = "/permission.PermissionSyncService/SyncPermissions";
         public const string SyncPersonsFullName = "/permission.PermissionSyncService/SyncPersons";
+        public const string SyncPersonsToDevicesFullName = "/permission.PermissionSyncService/SyncPersonsToDevices";
+        public const string SyncFacesToDevicesFullName = "/permission.PermissionSyncService/SyncFacesToDevices";
         public const string DeleteFacesFullName = "/permission.PermissionSyncService/DeleteFaces";
         public const string DeletePersonsFullName = "/permission.PermissionSyncService/DeletePersons";
         public const string GetFacesFullName = "/permission.PermissionSyncService/GetFaces";
@@ -62,6 +65,8 @@ namespace ControlDoor.GrpcApi
         {
             SyncPermissionsFullName,
             SyncPersonsFullName,
+            SyncPersonsToDevicesFullName,
+            SyncFacesToDevicesFullName,
             DeleteFacesFullName,
             DeletePersonsFullName,
             GetFacesFullName,
@@ -294,6 +299,180 @@ namespace ControlDoor.GrpcApi
         {
             context = EnsureContext(context);
             return System.Threading.Tasks.Task.Run(() => SyncPersons(requestJson, context), context.CancellationToken);
+        }
+
+        public string SyncFacesToDevices(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteUnary("SyncFacesToDevices", requestJson, context, SyncFacesToDevicesCore);
+        }
+
+        private string SyncFacesToDevicesCore(string requestJson, GrpcRequestContext context)
+        {
+            context = EnsureContext(context);
+            TargetedSyncRequest<PersonSyncCommand> request;
+            IReadOnlyList<DeviceRuntimeSnapshot> devices;
+            try
+            {
+                request = ParseTargetedFaceRequest(requestJson);
+                devices = ResolveTargetAcsDevices(request.DeviceIds);
+            }
+            catch (RequestValidationException ex)
+            {
+                return Error(context, ex.Code, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return Error(context, "INVALID_ARGUMENT", ex.Message);
+            }
+
+            var onlineDevices = devices.Where(item => item.IsConnected && item.SdkUserId.HasValue).ToList();
+            var offlineDevices = devices.Where(item => !item.IsConnected || !item.SdkUserId.HasValue).ToList();
+            var employeeResults = CreateEmployeeResults(request.Items.Select(item => item.EmployeeId));
+            var queuedDetails = new List<object>();
+            var deviceErrors = new List<object>();
+            var facesUploaded = 0;
+
+            foreach (var command in request.Items)
+            {
+                foreach (var device in onlineDevices)
+                {
+                    var result = ExecuteUploadFaceTask(device, command, context);
+                    var detail = ToDeviceResult(device, result, "UploadFace");
+                    if (!result.Success && result.Retryable)
+                    {
+                        detail.Queued = true;
+                    }
+
+                    employeeResults[command.EmployeeId].DeviceResults.Add(detail);
+                    if (result.Success)
+                    {
+                        facesUploaded++;
+                    }
+                    else
+                    {
+                        deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
+                        if (result.Retryable)
+                        {
+                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, result.Message, context));
+                        }
+                    }
+                }
+
+                foreach (var device in offlineDevices)
+                {
+                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, "设备离线，已生成补偿意图。", context));
+                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace"));
+                }
+            }
+
+            var succeededEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Success));
+            var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
+            var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
+            var code = DetermineCode(request.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
+
+            return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
+            {
+                ["total"] = request.Items.Count,
+                ["succeeded"] = succeededEmployees,
+                ["failed"] = failedEmployees,
+                ["queued"] = queuedEmployees,
+                ["facesUploaded"] = facesUploaded,
+                ["targetDevices"] = devices.Count,
+                ["queuedDetails"] = queuedDetails,
+                ["items"] = employeeResults.Values.Select(item => item.ToDictionary()).ToList(),
+                ["deviceErrors"] = deviceErrors,
+                ["dbErrors"] = new List<object>()
+            });
+        }
+
+        public System.Threading.Tasks.Task<string> SyncFacesToDevicesAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run(() => SyncFacesToDevices(requestJson, context), context.CancellationToken);
+        }
+
+        public string SyncPersonsToDevices(string requestJson, GrpcRequestContext context = null)
+        {
+            return ExecuteUnary("SyncPersonsToDevices", requestJson, context, SyncPersonsToDevicesCore);
+        }
+
+        private string SyncPersonsToDevicesCore(string requestJson, GrpcRequestContext context)
+        {
+            context = EnsureContext(context);
+            TargetedSyncRequest<PersonSyncCommand> request;
+            IReadOnlyList<DeviceRuntimeSnapshot> devices;
+            try
+            {
+                request = ParseTargetedPersonRequest(requestJson);
+                devices = ResolveTargetAcsDevices(request.DeviceIds);
+            }
+            catch (RequestValidationException ex)
+            {
+                return Error(context, ex.Code, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return Error(context, "INVALID_ARGUMENT", ex.Message);
+            }
+
+            var onlineDevices = devices.Where(item => item.IsConnected && item.SdkUserId.HasValue).ToList();
+            var offlineDevices = devices.Where(item => !item.IsConnected || !item.SdkUserId.HasValue).ToList();
+            var employeeResults = CreateEmployeeResults(request.Items.Select(item => item.EmployeeId));
+            var queuedDetails = new List<object>();
+            var deviceErrors = new List<object>();
+
+            foreach (var command in request.Items)
+            {
+                foreach (var device in onlineDevices)
+                {
+                    var result = ExecutePersonTask(device, command, context);
+                    var detail = ToDeviceResult(device, result, "SyncPerson");
+                    if (!result.Success && result.Retryable)
+                    {
+                        detail.Queued = true;
+                    }
+
+                    employeeResults[command.EmployeeId].DeviceResults.Add(detail);
+                    if (!result.Success)
+                    {
+                        deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
+                        if (result.Retryable)
+                        {
+                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, result.Message, context));
+                        }
+                    }
+                }
+
+                foreach (var device in offlineDevices)
+                {
+                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, "设备离线，已生成补偿意图。", context));
+                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPerson"));
+                }
+            }
+
+            var succeededEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Success));
+            var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
+            var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
+            var code = DetermineCode(request.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
+
+            return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
+            {
+                ["total"] = request.Items.Count,
+                ["succeeded"] = succeededEmployees,
+                ["failed"] = failedEmployees,
+                ["queued"] = queuedEmployees,
+                ["targetDevices"] = devices.Count,
+                ["queuedDetails"] = queuedDetails,
+                ["items"] = employeeResults.Values.Select(item => item.ToDictionary()).ToList(),
+                ["deviceErrors"] = deviceErrors,
+                ["dbErrors"] = new List<object>()
+            });
+        }
+
+        public System.Threading.Tasks.Task<string> SyncPersonsToDevicesAsync(string requestJson, GrpcRequestContext context = null)
+        {
+            context = EnsureContext(context);
+            return System.Threading.Tasks.Task.Run(() => SyncPersonsToDevices(requestJson, context), context.CancellationToken);
         }
 
         public string DeleteFaces(string requestJson, GrpcRequestContext context = null)
@@ -960,6 +1139,163 @@ namespace ControlDoor.GrpcApi
             return ParseResult<PermissionCommand>.Ok(commands);
         }
 
+        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedFaceRequest(string requestJson)
+        {
+            var deviceIds = ParseRequiredDeviceIds(requestJson);
+            var root = JsonRequestReader.ParseAny(requestJson);
+            var items = JsonRequestReader.ReadItems(root, "people", "items", "records", "data");
+            ValidateBatch(items.Count);
+            var commands = new List<PersonSyncCommand>();
+            foreach (var item in items)
+            {
+                var values = JsonRequestReader.AsObject(item);
+                var employeeId = TrimRequired(JsonRequestReader.GetString(values, "employee_id", "employeeId", "employee_no", "employeeNo"), "employee_id");
+                var faceBase64 = JsonRequestReader.GetString(values, "face_image_base64", "faceImageBase64", "face_base64", "faceBase64", "face_image");
+                if (string.IsNullOrWhiteSpace(faceBase64))
+                {
+                    throw new RequestValidationException("INVALID_ARGUMENT", "face_image_base64 必填。");
+                }
+
+                commands.Add(new PersonSyncCommand
+                {
+                    EmployeeId = employeeId,
+                    FaceImageBase64 = NormalizeBase64(faceBase64),
+                    FaceImageBytes = DecodeFaceBytes(faceBase64),
+                    FaceImageFormat = JsonRequestReader.GetString(values, "face_image_format", "faceImageFormat") ?? InferFormat(faceBase64)
+                });
+            }
+
+            if (commands.Count == 0)
+            {
+                throw new RequestValidationException("INVALID_ARGUMENT", "请求至少包含一条记录。");
+            }
+
+            return new TargetedSyncRequest<PersonSyncCommand>(deviceIds, commands);
+        }
+
+        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedPersonRequest(string requestJson)
+        {
+            var deviceIds = ParseRequiredDeviceIds(requestJson);
+            var root = JsonRequestReader.ParseAny(requestJson);
+            var items = JsonRequestReader.ReadItems(root, "people", "items", "records", "data");
+            foreach (var item in items)
+            {
+                var values = JsonRequestReader.AsObject(item);
+                object ignored;
+                if (JsonRequestReader.TryGetValue(
+                    values,
+                    out ignored,
+                    "face_image_base64",
+                    "faceImageBase64",
+                    "face_base64",
+                    "faceBase64",
+                    "face_image"))
+                {
+                    throw new RequestValidationException("INVALID_ARGUMENT", "SyncPersonsToDevices 不接受人脸字段，请使用 SyncFacesToDevices。");
+                }
+            }
+
+            var people = ParsePersonCommands(requestJson);
+            if (!people.Success)
+            {
+                throw new RequestValidationException(people.Code, people.Message);
+            }
+
+            foreach (var person in people.Items)
+            {
+                if (string.IsNullOrWhiteSpace(person.Name))
+                {
+                    person.Name = person.EmployeeId;
+                }
+            }
+
+            return new TargetedSyncRequest<PersonSyncCommand>(deviceIds, people.Items.ToList());
+        }
+
+        private static IReadOnlyList<int> ParseRequiredDeviceIds(string requestJson)
+        {
+            var root = JsonRequestReader.ParseAny(requestJson);
+            var values = JsonRequestReader.AsObject(root, "请求 JSON 必须是对象。");
+            object raw;
+            if (!JsonRequestReader.TryGetValue(values, out raw, "deviceIds", "device_ids") || raw == null)
+            {
+                throw new RequestValidationException("INVALID_ARGUMENT", "deviceIds 必填且必须是非空整数数组。");
+            }
+
+            var enumerable = raw as IEnumerable;
+            if (enumerable == null || raw is string || raw is IDictionary<string, object>)
+            {
+                throw new RequestValidationException("INVALID_ARGUMENT", "deviceIds 必须是非空整数数组。");
+            }
+
+            var result = new List<int>();
+            var seen = new HashSet<int>();
+            foreach (var item in enumerable)
+            {
+                int deviceId;
+                if (item is int)
+                {
+                    deviceId = (int)item;
+                }
+                else if (item is long && (long)item <= int.MaxValue && (long)item >= int.MinValue)
+                {
+                    deviceId = (int)(long)item;
+                }
+                else
+                {
+                    throw new RequestValidationException("INVALID_ARGUMENT", "deviceIds 只能包含整数。");
+                }
+
+                if (deviceId <= 0)
+                {
+                    throw new RequestValidationException("INVALID_ARGUMENT", "deviceIds 只能包含大于 0 的整数。");
+                }
+
+                if (seen.Add(deviceId))
+                {
+                    result.Add(deviceId);
+                }
+            }
+
+            if (result.Count == 0)
+            {
+                throw new RequestValidationException("INVALID_ARGUMENT", "deviceIds 必填且不能为空。");
+            }
+
+            return result;
+        }
+
+        private IReadOnlyList<DeviceRuntimeSnapshot> ResolveTargetAcsDevices(IEnumerable<int> deviceIds)
+        {
+            var snapshots = GetTargetDevices()
+                .Where(item => item != null)
+                .GroupBy(item => item.DeviceId)
+                .ToDictionary(group => group.Key, group => group.First());
+            var result = new List<DeviceRuntimeSnapshot>();
+            foreach (var deviceId in deviceIds)
+            {
+                DeviceRuntimeSnapshot snapshot;
+                if (!snapshots.TryGetValue(deviceId, out snapshot))
+                {
+                    throw new RequestValidationException("INVALID_ARGUMENT", "指定设备不存在: deviceId=" + deviceId + "。");
+                }
+
+                if (!snapshot.Enabled)
+                {
+                    throw new RequestValidationException("INVALID_ARGUMENT", "指定设备未启用: deviceId=" + deviceId + "。");
+                }
+
+                if (snapshot.Types == null || !snapshot.Types.Contains(DeviceType.Acs))
+                {
+                    throw new RequestValidationException("INVALID_ARGUMENT", "指定设备不是 Acs 类型: deviceId=" + deviceId + "。");
+                }
+
+                result.Add(snapshot);
+            }
+
+            return result;
+        }
+
         private static ParseResult<PersonSyncCommand> ParsePersonCommands(string requestJson)
         {
             var root = JsonRequestReader.ParseAny(requestJson);
@@ -1421,6 +1757,19 @@ namespace ControlDoor.GrpcApi
         private sealed class EmployeeCommand
         {
             public string EmployeeId { get; set; }
+        }
+
+        private sealed class TargetedSyncRequest<T>
+        {
+            public TargetedSyncRequest(IReadOnlyList<int> deviceIds, IReadOnlyList<T> items)
+            {
+                DeviceIds = deviceIds;
+                Items = items;
+            }
+
+            public IReadOnlyList<int> DeviceIds { get; }
+
+            public IReadOnlyList<T> Items { get; }
         }
 
         private sealed class PersonSyncCommand

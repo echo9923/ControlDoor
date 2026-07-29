@@ -788,7 +788,7 @@ String resp = client.call(ACCESS, "GetDeviceStatus", "{}");
 
 ### 4.2 权限同步服务 `permission.PermissionSyncService`
 
-**通用说明（适用于 4.2.1–4.2.5 批量接口）：**
+**通用说明（适用于 4.2.1–4.2.7 批量接口）：**
 
 - 请求体容器因接口而异：
   - `SyncPermissions` / `DeleteFaces` / `DeletePersons`：数组、`{"items":[...]}`、`{"records":[...]}`、单个对象/字符串。
@@ -916,7 +916,99 @@ String resp = client.call(ACCESS, "GetDeviceStatus", "{}");
 | `deviceErrors` | 设备错误明细 |
 | `dbErrors` | 数据库错误明细 |
 
-#### 4.2.3 `DeleteFaces`
+#### 4.2.3 `SyncPersonsToDevices`
+
+| 项 | 内容 |
+| --- | --- |
+| 完整方法名 | `/permission.PermissionSyncService/SyncPersonsToDevices` |
+| 类型 | Unary |
+| 用途 | 仅向指定门禁设备批量创建或更新人员 |
+
+**输入示例：**
+
+```json
+{
+  "deviceIds": [1, 3, 5],
+  "items": [
+    {
+      "employee_id": "10001",
+      "name": "张三",
+      "gender": "male",
+      "enabled": true,
+      "valid_from": "2026-01-01T00:00:00",
+      "valid_to": "2035-12-31T23:59:59"
+    }
+  ]
+}
+```
+
+**输入规则：**
+
+| 字段 | 别名 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `deviceIds` | `device_ids` | 是 | 非空正整数数组；重复值按首次出现顺序去重 |
+| `items` | `people` / `records` / `data` | 是 | 人员数组，最多 500 条 |
+| 人员字段 | 与 `SyncPersons` 相同 | 是/否 | 员工编号必填，姓名、性别、启用状态和有效期规则沿用 `SyncPersons` |
+
+该接口拒绝 `face_image_base64`、`faceImageBase64`、`face_base64`、`faceBase64` 和 `face_image`。人员接口不会上传人脸。
+
+设备选择采用原子校验：所有 ID 必须存在、启用且声明 `Acs` 类型。任一 ID 非法时整批返回 `INVALID_ARGUMENT`，不会调用任何设备，也不会写补偿。缺少或留空 `deviceIds` 不会回退到全部设备；需要全设备下发时继续调用 `SyncPersons`。
+
+在线指定设备立即执行 `SyncPerson`。离线指定设备或在线可重试失败只为对应设备写入 `SyncPerson` 补偿。接口不会调用全局 `MarkPersonSynced`。
+
+**输出字段：**
+
+| 字段 | 说明 |
+| --- | --- |
+| `total` | 本次人员总数 |
+| `succeeded` | 至少一个指定设备成功的人员数 |
+| `failed` | 存在未排队失败的人员数 |
+| `queued` | 存在补偿排队的人员数 |
+| `targetDevices` | 去重后的指定设备数 |
+| `queuedDetails` | 按员工、设备和操作返回的排队明细 |
+| `items` | 每个员工的 `devices` 设备维度结果 |
+| `deviceErrors` | 设备错误明细 |
+| `dbErrors` | 数据库错误明细，本接口通常为空 |
+
+#### 4.2.4 `SyncFacesToDevices`
+
+| 项 | 内容 |
+| --- | --- |
+| 完整方法名 | `/permission.PermissionSyncService/SyncFacesToDevices` |
+| 类型 | Unary |
+| 用途 | 仅向指定门禁设备批量上传人脸 |
+
+**输入示例：**
+
+```json
+{
+  "deviceIds": [1, 3, 5],
+  "items": [
+    {
+      "employee_id": "10001",
+      "face_image_base64": "base64字符串",
+      "face_image_format": "jpg"
+    }
+  ]
+}
+```
+
+**输入规则：**
+
+| 字段 | 别名 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `deviceIds` | `device_ids` | 是 | 校验、去重和不回退规则同 `SyncPersonsToDevices` |
+| `employee_id` | `employeeId` / `employee_no` / `employeeNo` | 是 | 设备端已有人员的员工编号，保留原始字符串和前导零 |
+| `face_image_base64` | `faceImageBase64` / `face_base64` / `faceBase64` / `face_image` | 是 | 支持 data URI；解码后最大 200KB |
+| `face_image_format` | `faceImageFormat` | 否 | 图片格式，默认 `jpg` |
+
+该接口只执行 `UploadFace`，不会查询、创建或更新人员。设备端人员不存在时返回该设备的人脸上传失败，调用方应先调用 `SyncPersonsToDevices`。
+
+在线指定设备立即上传人脸。离线指定设备或在线可重试失败只为对应设备写入 `UploadFace` 补偿，不会附带 `SyncPerson` 补偿，也不会调用全局 `MarkPersonSynced`。
+
+Base64 非法返回 `INVALID_ARGUMENT`；图片超过 200KB 返回 `FACE_TOO_LARGE`。响应字段与 `SyncPersonsToDevices` 相同，并额外返回 `facesUploaded`。
+
+#### 4.2.5 `DeleteFaces`
 
 | 项 | 内容 |
 | --- | --- |
@@ -949,7 +1041,7 @@ String resp = client.call(ACCESS, "GetDeviceStatus", "{}");
 | `deviceErrors` | 设备错误明细 |
 | `dbErrors` | 数据库错误明细 |
 
-#### 4.2.4 `DeletePersons`
+#### 4.2.6 `DeletePersons`
 
 | 项 | 内容 |
 | --- | --- |
@@ -975,7 +1067,7 @@ String resp = client.call(ACCESS, "GetDeviceStatus", "{}");
 | `deviceErrors` | 设备错误明细 |
 | `dbErrors` | 数据库错误明细 |
 
-#### 4.2.5 `GetFaces`
+#### 4.2.7 `GetFaces`
 
 | 项 | 内容 |
 | --- | --- |
@@ -996,7 +1088,7 @@ String resp = client.call(ACCESS, "GetDeviceStatus", "{}");
 | `targetDevices` | 目标设备数量 |
 | `items` | 查询结果，每项含 `employeeId`、`success`、`queued`、`devices`（每台设备固定含 `deviceId`/`deviceName`/`operation`/`success`/`queued`/`code`/`message`；查询成功时追加 `faceCount`/`exists`/`faces`/`rawResponse`，即使 `exists=false`/`faceCount=0` 也会出现。错误信息在 `code`/`message`，无 `error` 字段） |
 
-#### 4.2.6 `CaptureFaceStream`（ServerStreaming）
+#### 4.2.8 `CaptureFaceStream`（ServerStreaming）
 
 | 项 | 内容 |
 | --- | --- |
@@ -1075,7 +1167,7 @@ String resp = client.call(ACCESS, "GetDeviceStatus", "{}");
 }
 ```
 
-#### 4.2.7 `GetEnrollmentStatus`
+#### 4.2.9 `GetEnrollmentStatus`
 
 | 项 | 内容 |
 | --- | --- |

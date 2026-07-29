@@ -23,6 +23,8 @@ namespace ControlDoor.GrpcApi
             return ServerServiceDefinition.CreateBuilder()
                 .AddMethod(CreateUnaryMethod("SyncPermissions"), HandleSyncPermissions)
                 .AddMethod(CreateUnaryMethod("SyncPersons"), HandleSyncPersons)
+                .AddMethod(CreateUnaryMethod("SyncPersonsToDevices"), HandleSyncPersonsToDevices)
+                .AddMethod(CreateUnaryMethod("SyncFacesToDevices"), HandleSyncFacesToDevices)
                 .AddMethod(CreateUnaryMethod("DeleteFaces"), HandleDeleteFaces)
                 .AddMethod(CreateUnaryMethod("DeletePersons"), HandleDeletePersons)
                 .AddMethod(CreateUnaryMethod("GetFaces"), HandleGetFaces)
@@ -59,6 +61,16 @@ namespace ControlDoor.GrpcApi
         private Task<string> HandleSyncPersons(string request, ServerCallContext context)
         {
             return service.SyncPersonsAsync(request, ToContext(context));
+        }
+
+        private Task<string> HandleSyncPersonsToDevices(string request, ServerCallContext context)
+        {
+            return service.SyncPersonsToDevicesAsync(request, ToContext(context));
+        }
+
+        private Task<string> HandleSyncFacesToDevices(string request, ServerCallContext context)
+        {
+            return service.SyncFacesToDevicesAsync(request, ToContext(context));
         }
 
         private Task<string> HandleDeleteFaces(string request, ServerCallContext context)

@@ -45,6 +45,8 @@ namespace ControlEntradaSalida.Tests
             {
                 ["SyncPermissions"] = PermissionSyncGrpcService.SyncPermissionsFullName,
                 ["SyncPersons"] = PermissionSyncGrpcService.SyncPersonsFullName,
+                ["SyncPersonsToDevices"] = PermissionSyncGrpcService.SyncPersonsToDevicesFullName,
+                ["SyncFacesToDevices"] = PermissionSyncGrpcService.SyncFacesToDevicesFullName,
                 ["DeleteFaces"] = PermissionSyncGrpcService.DeleteFacesFullName,
                 ["DeletePersons"] = PermissionSyncGrpcService.DeletePersonsFullName,
                 ["GetFaces"] = PermissionSyncGrpcService.GetFacesFullName,
@@ -94,6 +96,8 @@ namespace ControlEntradaSalida.Tests
                 AccessControlGrpcService.GetDeviceAlarmStatusFullName,
                 PermissionSyncGrpcService.SyncPermissionsFullName,
                 PermissionSyncGrpcService.SyncPersonsFullName,
+                PermissionSyncGrpcService.SyncPersonsToDevicesFullName,
+                PermissionSyncGrpcService.SyncFacesToDevicesFullName,
                 PermissionSyncGrpcService.DeleteFacesFullName,
                 PermissionSyncGrpcService.DeletePersonsFullName,
                 PermissionSyncGrpcService.GetFacesFullName,
@@ -129,6 +133,10 @@ namespace ControlEntradaSalida.Tests
             Assert.False(permissionBinder.Contains("Task.FromResult(service."));
             Assert.Contains("Task.Run", accessBinder);
             Assert.Contains("SyncPermissionsAsync", permissionBinder);
+            Assert.Contains(".AddMethod(CreateUnaryMethod(\"SyncPersonsToDevices\")", permissionBinder);
+            Assert.Contains(".AddMethod(CreateUnaryMethod(\"SyncFacesToDevices\")", permissionBinder);
+            Assert.Contains("SyncPersonsToDevicesAsync", permissionBinder);
+            Assert.Contains("SyncFacesToDevicesAsync", permissionBinder);
             Assert.Contains("Task.Run", permissionService);
             Assert.Contains("context.CancellationToken", permissionService);
             Assert.Contains("CancellationToken = callContext.CancellationToken", accessBinder);
