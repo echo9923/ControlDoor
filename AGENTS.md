@@ -78,6 +78,7 @@
 - `docs/stage10/task01.md`：设备清单 JSON 化与设备类型字段方案，适用于确认 `devices.json`、`Devices.FilePath`、`Devices.Items`、`types` 语义、门禁刷脸设备下发范围和 `lastUsedTime` 移除边界。
 - `docs/superpowers/specs/2026-07-16-acs-employee-id-zero-source-design.md`: source-aware ACS employee ID zero handling design; use when distinguishing explicit string IDs, SDK numeric defaults, and card fallback.
 - `docs/superpowers/specs/2026-07-29-targeted-person-face-sync-design.md`：指定设备人员与人脸下发接口设计，适用于新增 `SyncPersonsToDevices`、`SyncFacesToDevices` 及确认设备校验、离线补偿和全局同步状态边界。
+- `docs/superpowers/plans/2026-07-29-targeted-person-face-sync.md`：指定设备人员与人脸下发接口 TDD 实施计划，适用于实现新 gRPC 方法、定向设备原子校验、补偿行为、契约文档和回归测试。
 - `docs/superpowers/plans/2026-07-16-acs-employee-id-zero-source.md`: TDD implementation plan for ACS employee ID zero handling; use when modifying the SDK callback, parser, and regression coverage.
 
 在 `docs/` 下每新增一个文档，必须在本节同步增加一条目录指引项。目录项应包含文档路径、核心用途和适用场景，确保后续查阅和实施时能快速定位。
