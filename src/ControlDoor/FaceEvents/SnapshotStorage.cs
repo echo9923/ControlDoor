@@ -52,9 +52,22 @@ namespace ControlDoor.FaceEvents
                 Directory.CreateDirectory(absoluteDirectory);
 
                 var fileName = BuildFileName(faceEvent, compact: false);
+                // 文件名含全局唯一 EventId：目标已存在说明是同一事件先前尝试的落盘产物
+                // （temp+Move 原子写保证已存在文件完整），直接复用路径，避免重试产生孤立图片。
+                // 完整与紧凑两种命名方案都必须执行复用检查（复核 F05）。
+                if (TryReuseExistingSnapshot(faceEvent, absoluteDirectory, fileName, out var reused))
+                {
+                    return reused;
+                }
+
                 if (!TryResolveSnapshotPath(absoluteDirectory, fileName, out var targetPath, out var snapshotPath))
                 {
                     fileName = BuildFileName(faceEvent, compact: true);
+                    if (TryReuseExistingSnapshot(faceEvent, absoluteDirectory, fileName, out var compactReused))
+                    {
+                        return compactReused;
+                    }
+
                     TryResolveSnapshotPath(absoluteDirectory, fileName, out targetPath, out snapshotPath);
                 }
 
@@ -137,6 +150,33 @@ namespace ControlDoor.FaceEvents
                 "_" + SafeSegment(faceEvent.EmployeeId) +
                 "_" + faceEvent.EventId +
                 ".jpg";
+        }
+
+        private static bool TryReuseExistingSnapshot(AcsFaceEvent faceEvent, string absoluteDirectory, string fileName, out SnapshotSaveResult result)
+        {
+            result = null;
+            try
+            {
+                var candidatePath = Path.Combine(absoluteDirectory, fileName);
+                if (!File.Exists(candidatePath))
+                {
+                    return false;
+                }
+
+                var snapshotPath = NormalizeSnapshotPath(Path.GetFullPath(candidatePath));
+                if (snapshotPath.Length > MaxSnapshotPathLength)
+                {
+                    return false;
+                }
+
+                result = SnapshotSaveResult.SavedResult(snapshotPath);
+                ApplySnapshotPayload(faceEvent, result);
+                return true;
+            }
+            catch (PathTooLongException)
+            {
+                return false;
+            }
         }
 
         private static bool TryResolveSnapshotPath(string directory, string fileName, out string targetPath, out string snapshotPath)

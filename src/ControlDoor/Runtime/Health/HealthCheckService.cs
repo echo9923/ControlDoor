@@ -35,7 +35,7 @@ namespace ControlDoor.Runtime.Health
                 }
 
                 summary.Add(result);
-                if (context.Logger != null && context.Logger.IsSlowOperation(result.ElapsedMs))
+                if (result.Status != HealthCheckStatus.Failed && context.Logger != null && context.Logger.IsSlowOperation(result.ElapsedMs))
                 {
                     context.Logger.Warn("HealthCheck", "健康检查执行较慢。", new LogFields
                     {
@@ -51,7 +51,8 @@ namespace ControlDoor.Runtime.Health
                 }
                 else
                 {
-                    context.Logger?.Info("HealthCheck", "健康检查完成。", new LogFields
+                    context.Logger?.Write(result.Status == HealthCheckStatus.Failed ? LogLevel.Error
+                        : result.Status == HealthCheckStatus.Warning ? LogLevel.Warn : LogLevel.Debug, "HealthCheck", "健康检查完成。", new LogFields
                     {
                         OperationName = check.Name,
                         ElapsedMs = result.ElapsedMs,
@@ -89,6 +90,7 @@ namespace ControlDoor.Runtime.Health
                 new RunDirectoryHealthCheck(),
                 new ConfigurationFileHealthCheck(),
                 new DirectoryHealthCheck("日志目录", settings.Logging.LogDirectory, required: true),
+                new DirectoryHealthCheck("诊断日志目录", System.IO.Path.Combine(settings.Logging.LogDirectory, "diagnostic"), required: true),
                 new DirectoryHealthCheck("SDK 日志目录", settings.HikvisionSdk.SdkLogDirectory, required: settings.HikvisionSdk.RequireSdkLog),
                 new DirectoryHealthCheck("抓拍目录", settings.FaceEventLogging.SnapshotRootDirectory, required: settings.FaceEventLogging.Enabled),
                 new DeviceStoreHealthCheck(),

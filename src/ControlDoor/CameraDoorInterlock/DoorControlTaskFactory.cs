@@ -30,7 +30,7 @@ namespace ControlDoor.CameraDoorInterlock
             this.logger = logger;
         }
 
-        public DeviceSdkTask CreateAlwaysClose(int doorDeviceId, int doorNo, string targetKey, string requestId)
+        public DeviceSdkTask CreateAlwaysClose(int doorDeviceId, int doorNo, string targetKey, string requestId, Func<bool> canExecute = null)
         {
             return CreateTask(
                 doorDeviceId,
@@ -42,10 +42,11 @@ namespace ControlDoor.CameraDoorInterlock
                 DeviceTaskPriority.High,
                 idempotencySuffix: ":AlwaysClose",
                 payloadKind: "DoorAlwaysClose",
-                attempt: 0);
+                attempt: 0,
+                canExecute: canExecute);
         }
 
-        public DeviceSdkTask CreateRestore(int doorDeviceId, int doorNo, string targetKey, string requestId, int attempt)
+        public DeviceSdkTask CreateRestore(int doorDeviceId, int doorNo, string targetKey, string requestId, int attempt, Func<bool> canExecute = null)
         {
             return CreateTask(
                 doorDeviceId,
@@ -57,7 +58,8 @@ namespace ControlDoor.CameraDoorInterlock
                 DeviceTaskPriority.Critical,
                 idempotencySuffix: ":Restore",
                 payloadKind: "DoorRestoreControlled",
-                attempt: attempt);
+                attempt: attempt,
+                canExecute: canExecute);
         }
 
         private DeviceSdkTask CreateTask(
@@ -70,7 +72,8 @@ namespace ControlDoor.CameraDoorInterlock
             DeviceTaskPriority priority,
             string idempotencySuffix,
             string payloadKind,
-            int attempt)
+            int attempt,
+            Func<bool> canExecute)
         {
             if (doorDeviceId <= 0)
             {
@@ -90,6 +93,11 @@ namespace ControlDoor.CameraDoorInterlock
                 var startedAt = taskContext.Task.StartedAt ?? DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
                 var statusAfter = snapshot == null ? DeviceConnectionStatus.Unknown : snapshot.Status;
+
+                if (canExecute != null && !canExecute())
+                {
+                    return DeviceTaskResult.FromTask(taskContext.Task, true, "SUPERSEDED", "门目标状态已变化，跳过过期任务。", statusAfter, startedAt, DateTime.Now);
+                }
 
                 if (snapshot == null || !snapshot.SdkUserId.HasValue)
                 {
@@ -116,6 +124,7 @@ namespace ControlDoor.CameraDoorInterlock
             })
             {
                 RequiresOnline = true,
+                AllowDuringShutdown = command == GateControlCommand.Restore,
                 Priority = priority,
                 WaitMode = DeviceTaskWaitMode.WaitForResult,
                 TimeoutMilliseconds = DefaultTimeoutMs,

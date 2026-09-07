@@ -13,23 +13,46 @@ namespace ControlDoor.Observability
             this.enabled = enabled;
         }
 
-        public void Trace(string operationName, int? deviceId, bool success, long elapsedMs, int? sdkErrorCode = null, string message = null)
+        public void Trace(string operationName, int? deviceId, bool success, long elapsedMs, int? sdkErrorCode = null, string message = null, Exception exception = null)
         {
             if (!enabled)
             {
                 return;
             }
 
-            logger.Info(
-                "SdkTrace",
-                message ?? "SDK 调用完成。",
-                new LogFields
+            var fields = new LogFields
+            {
+                OperationName = operationName,
+                DeviceId = deviceId,
+                ElapsedMs = elapsedMs,
+                ErrorCode = sdkErrorCode?.ToString(),
+                Exception = exception?.ToString(),
+                Extra = { ["success"] = success.ToString(), ["errorMessage"] = message }
+            };
+            if (!success)
+            {
+                if (operationName == "Login" || operationName == "GetAlarmDeploymentStatus")
                 {
-                    OperationName = operationName,
-                    DeviceId = deviceId,
-                    ElapsedMs = elapsedMs,
-                    ErrorCode = sdkErrorCode?.ToString()
-                });
+                    logger.WarnRepeated("SdkTrace", "SDK 调用失败。", fields);
+                }
+                else
+                {
+                    logger.Warn("SdkTrace", "SDK 调用失败。", fields);
+                }
+                return;
+            }
+            if (logger.ClearRepeatedWarnings("SdkTrace", deviceId ?? logger.CurrentScopeDeviceId, operationName))
+            {
+                logger.Info("SdkTrace", "SDK 调用已恢复。", fields);
+            }
+            if (logger.IsSlowOperation(elapsedMs))
+            {
+                logger.Warn("SdkTrace", "SDK 调用完成，但耗时较长。", fields);
+            }
+            else
+            {
+                logger.Debug("SdkTrace", "SDK 调用完成。", fields);
+            }
         }
     }
 }

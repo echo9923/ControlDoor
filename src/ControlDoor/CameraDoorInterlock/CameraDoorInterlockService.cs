@@ -39,6 +39,7 @@ namespace ControlDoor.CameraDoorInterlock
         private CancellationTokenSource stopSource;
         private Task loopTask;
         private bool disposed;
+        private volatile bool stopping;
 
         public CameraDoorInterlockService(
             CameraAlarmDoorInterlockOptions options,
@@ -89,6 +90,7 @@ namespace ControlDoor.CameraDoorInterlock
                 }
 
                 status.MarkStarted();
+                stopping = false;
                 if (disabled)
                 {
                     logger?.Info("CameraDoorInterlock", "阶段 9 已禁用，后台扫描循环不启动。");
@@ -104,6 +106,7 @@ namespace ControlDoor.CameraDoorInterlock
 
         public async Task StopAsync(BackgroundTaskContext context)
         {
+            stopping = true;
             Task running;
             CancellationTokenSource source;
             lock (gate)
@@ -163,14 +166,14 @@ namespace ControlDoor.CameraDoorInterlock
                 return AiopAlarmEnqueueResult.Rejected("DISABLED", "camera door interlock is disabled", SafeQueueDepth(), SafeQueueCapacity());
             }
 
-            if (disposed)
+            if (disposed || stopping)
             {
                 return AiopAlarmEnqueueResult.Rejected("DISPOSED", "camera door interlock service is disposed", 0, 0);
             }
 
             lock (gate)
             {
-                if (disposed)
+                if (disposed || stopping)
                 {
                     return AiopAlarmEnqueueResult.Rejected("DISPOSED", "camera door interlock service is disposed", 0, 0);
                 }
@@ -293,7 +296,7 @@ namespace ControlDoor.CameraDoorInterlock
             }
             else
             {
-                logger?.Info("CameraDoorInterlock", "摄像头窗口内重复报警，窗口已续期。", new LogFields
+                logger?.Debug("CameraDoorInterlock", "摄像头窗口内重复报警，窗口已续期。", new LogFields
                 {
                     RequestId = interlockId,
                     OperationName = "ExtendInterlockWindow",
@@ -391,7 +394,8 @@ namespace ControlDoor.CameraDoorInterlock
         private void SubmitAlwaysClose(DoorTarget target, string requestId, DateTime now)
         {
             var interlockId = NormalizeInterlockId(requestId);
-            var task = taskFactory.CreateAlwaysClose(target.DoorDeviceId, target.DoorNo, target.TargetKey, requestId);
+            var task = taskFactory.CreateAlwaysClose(target.DoorDeviceId, target.DoorNo, target.TargetKey, requestId,
+                () => !stopping && targetManager.IsActive(target.TargetKey));
             var submission = dispatcher.Submit(task);
             if (!submission.Accepted)
             {
@@ -417,7 +421,7 @@ namespace ControlDoor.CameraDoorInterlock
             }
 
             targetManager.MarkAlwaysCloseSubmitted(target.TargetKey, now);
-            logger?.Info("CameraDoorInterlock", "常闭任务已投递。", new LogFields
+            logger?.Debug("CameraDoorInterlock", "常闭任务已投递。", new LogFields
             {
                 RequestId = interlockId,
                 DeviceId = target.DoorDeviceId,
@@ -517,41 +521,136 @@ namespace ControlDoor.CameraDoorInterlock
             }, TaskScheduler.Default);
         }
 
+        // 恢复任务异步投递：主循环不等待设备执行，一个慢设备不拖延其他报警和窗口到期处理（复核 R07）。
         private void SubmitRestore(DoorTargetActivity activity, string requestId, int attempt, DateTime now)
         {
             var interlockId = NormalizeInterlockId(string.IsNullOrWhiteSpace(activity.InterlockId) ? requestId : activity.InterlockId);
-            var task = taskFactory.CreateRestore(activity.DoorDeviceId, activity.DoorNo, activity.TargetKey, requestId, attempt);
-            Devices.Tasks.DeviceTaskResult result;
-            try
+            var targetKey = activity.TargetKey;
+            var generation = activity.Generation;
+            var task = taskFactory.CreateRestore(activity.DoorDeviceId, activity.DoorNo, targetKey, requestId, attempt,
+                () => !targetManager.IsActive(targetKey));
+            var submission = dispatcher.Submit(task);
+            if (!submission.Accepted)
             {
-                result = dispatcher.SubmitAndWaitAsync(task, CancellationToken.None).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                logger?.Error("CameraDoorInterlock", "恢复任务投递异常。", ex, new LogFields
+                var rejected = submission.ImmediateResult;
+                logger?.Warn("CameraDoorInterlock", "恢复任务投递被拒绝。", new LogFields
                 {
                     RequestId = interlockId,
                     DeviceId = activity.DoorDeviceId,
                     OperationName = "RestoreDoor",
-                    ErrorCode = ex.GetType().Name,
+                    ErrorCode = rejected == null ? "UNKNOWN" : rejected.Code,
                     Extra =
                     {
                         ["interlockId"] = interlockId,
-                        ["targetKey"] = activity.TargetKey,
+                        ["targetKey"] = targetKey,
                         ["doorNo"] = activity.DoorNo.ToString(),
                         ["attempt"] = attempt.ToString(),
+                        ["code"] = rejected == null ? string.Empty : rejected.Code,
                         ["sdkOperation"] = "ControlGateway",
                         ["retryable"] = "True",
                         ["manualActionRequired"] = "False"
                     }
                 });
-                RecordRestoreOutcome(activity, attempt, success: false, retryable: true, now);
+                RecordRestoreOutcome(activity, attempt, generation, taskId: null, success: false, retryable: true, now);
+                return;
+            }
+
+            targetManager.MarkRestoreSubmitted(targetKey, generation, task.TaskId, attempt, now);
+            logger?.Debug("CameraDoorInterlock", "恢复任务已投递。", new LogFields
+            {
+                RequestId = interlockId,
+                DeviceId = activity.DoorDeviceId,
+                OperationName = "RestoreDoor",
+                Extra =
+                {
+                    ["interlockId"] = interlockId,
+                    ["targetKey"] = targetKey,
+                    ["doorNo"] = activity.DoorNo.ToString(),
+                    ["attempt"] = attempt.ToString(),
+                    ["taskId"] = task.TaskId,
+                    ["sdkOperation"] = "ControlGateway"
+                }
+            });
+
+            ObserveRestoreCompletion(task, activity, interlockId, attempt, generation);
+        }
+
+        private void ObserveRestoreCompletion(Devices.Tasks.DeviceSdkTask task, DoorTargetActivity activity, string interlockId, int attempt, int generation)
+        {
+            var targetKey = activity.TargetKey;
+            var deviceId = activity.DoorDeviceId;
+            var doorNo = activity.DoorNo;
+            var taskId = task.TaskId;
+            var capturedLogger = logger;
+
+            task.Completion.Task.ContinueWith(completed =>
+            {
+                try
+                {
+                    var result = completed.Result;
+                    // 投递后窗口代次变化说明新窗口已开启，旧恢复结果不得覆盖新窗口状态。
+                    targetManager.TryGetActivity(targetKey, out var current);
+                    if (current == null || current.Generation != generation)
+                    {
+                        // 原子条件清除：仅在归属仍是本任务时生效（复核 F03/G3）。
+                        targetManager.ClearRestoreInFlight(targetKey, generation, taskId);
+                        capturedLogger?.Info("CameraDoorInterlock", "恢复结果已过期（窗口代次变化），忽略。", new LogFields
+                        {
+                            RequestId = interlockId,
+                            DeviceId = deviceId,
+                            OperationName = "RestoreDoor",
+                            ErrorCode = result == null ? "UNKNOWN" : result.Code,
+                            Extra =
+                            {
+                                ["interlockId"] = interlockId,
+                                ["targetKey"] = targetKey,
+                                ["doorNo"] = doorNo.ToString(),
+                                ["attempt"] = attempt.ToString(),
+                                ["sdkOperation"] = "ControlGateway"
+                            }
+                        });
+                        return;
+                    }
+
+                    HandleRestoreResult(result, activity, interlockId, attempt, generation, taskId);
+                }
+                catch (Exception ex)
+                {
+                    targetManager.ClearRestoreInFlight(targetKey, generation, taskId);
+                    capturedLogger?.Error("CameraDoorInterlock", "恢复完成回调异常。", ex, new LogFields
+                    {
+                        RequestId = interlockId,
+                        DeviceId = deviceId,
+                        OperationName = "RestoreDoor",
+                        ErrorCode = ex.GetType().Name,
+                        Extra =
+                        {
+                            ["interlockId"] = interlockId,
+                            ["targetKey"] = targetKey,
+                            ["doorNo"] = doorNo.ToString(),
+                            ["attempt"] = attempt.ToString()
+                        }
+                    });
+                }
+            }, TaskScheduler.Default);
+        }
+
+        private void HandleRestoreResult(Devices.Tasks.DeviceTaskResult result, DoorTargetActivity activity, string interlockId, int attempt, int generation, string taskId)
+        {
+            // 以实际完成时刻安排下一次重试：排队或执行再慢，失败后仍等待完整退避间隔（复核 F06）。
+            // 在途标记保持到原子完成方法为止：回调期间后台扫描不会看到"空闲 + 旧到期记录"而重复投递（复核 G3）。
+            var now = clock();
+            var targetKey = activity.TargetKey;
+
+            if (result != null && result.Code == "SUPERSEDED")
+            {
+                targetManager.ClearRestoreInFlight(targetKey, generation, taskId);
                 return;
             }
 
             if (result != null && result.Success)
             {
-                targetManager.MarkRestoreSucceeded(activity.TargetKey, now);
+                targetManager.MarkRestoreSucceeded(targetKey, generation, taskId, now);
                 if (logger != null && logger.IsSlowOperation(result.DurationMilliseconds))
                 {
                     logger.Warn("CameraDoorInterlock", "恢复任务执行较慢。", new LogFields
@@ -563,7 +662,7 @@ namespace ControlDoor.CameraDoorInterlock
                         Extra =
                         {
                             ["interlockId"] = interlockId,
-                            ["targetKey"] = activity.TargetKey,
+                            ["targetKey"] = targetKey,
                             ["doorNo"] = activity.DoorNo.ToString(),
                             ["attempt"] = attempt.ToString(),
                             ["sdkOperation"] = "ControlGateway",
@@ -582,7 +681,7 @@ namespace ControlDoor.CameraDoorInterlock
                     Extra =
                     {
                         ["interlockId"] = interlockId,
-                        ["targetKey"] = activity.TargetKey,
+                        ["targetKey"] = targetKey,
                         ["doorNo"] = activity.DoorNo.ToString(),
                         ["attempt"] = attempt.ToString(),
                         ["durationMs"] = result.DurationMilliseconds.ToString(),
@@ -605,7 +704,7 @@ namespace ControlDoor.CameraDoorInterlock
                 Extra =
                 {
                     ["interlockId"] = interlockId,
-                    ["targetKey"] = activity.TargetKey,
+                    ["targetKey"] = targetKey,
                     ["doorNo"] = activity.DoorNo.ToString(),
                     ["attempt"] = attempt.ToString(),
                     ["code"] = code,
@@ -616,15 +715,15 @@ namespace ControlDoor.CameraDoorInterlock
                 }
             });
 
-            RecordRestoreOutcome(activity, attempt, success: false, retryable: retryable, now);
+            RecordRestoreOutcome(activity, attempt, generation, taskId, success: false, retryable: retryable, now);
         }
 
-        private void RecordRestoreOutcome(DoorTargetActivity activity, int attempt, bool success, bool retryable, DateTime now)
+        private void RecordRestoreOutcome(DoorTargetActivity activity, int attempt, int generation, string taskId, bool success, bool retryable, DateTime now)
         {
             var interlockId = NormalizeInterlockId(activity.InterlockId);
             if (success)
             {
-                targetManager.MarkRestoreSucceeded(activity.TargetKey, now);
+                targetManager.MarkRestoreSucceeded(activity.TargetKey, generation, taskId, now);
                 return;
             }
 
@@ -634,7 +733,7 @@ namespace ControlDoor.CameraDoorInterlock
             {
                 var nextAttempt = attempt + 1;
                 var nextRetryAt = now.AddMilliseconds(CalculateRestoreRetryDelayMilliseconds(nextAttempt));
-                targetManager.RecordRestoreFailure(activity.TargetKey, nextAttempt, nextRetryAt, now);
+                targetManager.RecordRestoreFailure(activity.TargetKey, generation, taskId, nextAttempt, nextRetryAt, now);
                 logger?.Info("CameraDoorInterlock", "恢复失败将持续重试直至成功。", new LogFields
                 {
                     RequestId = interlockId,
@@ -656,7 +755,7 @@ namespace ControlDoor.CameraDoorInterlock
             else
             {
                 // 不可重试错误（如非法门号等配置类错误）重试无意义，转终态需人工确认。
-                targetManager.RecordRestoreFailure(activity.TargetKey, attempt, null, now);
+                targetManager.RecordRestoreFailure(activity.TargetKey, generation, taskId, attempt, null, now);
                 logger?.Error("CameraDoorInterlock", "恢复遇到不可重试错误，需人工确认门禁恢复。", null, new LogFields
                 {
                     RequestId = interlockId,
@@ -687,6 +786,7 @@ namespace ControlDoor.CameraDoorInterlock
         /// <summary>服务停止时对活动门目标 best-effort 恢复（task05）。</summary>
         public RestoreActiveTargetsBestEffortResult RestoreActiveTargetsBestEffort(TimeSpan timeout)
         {
+            stopping = true;
             var result = new RestoreActiveTargetsBestEffortResult();
             if (disabled)
             {
@@ -722,7 +822,7 @@ namespace ControlDoor.CameraDoorInterlock
                     else if (taskResult != null && taskResult.Success)
                     {
                         result.Succeeded++;
-                        targetManager.MarkRestoreSucceeded(activity.TargetKey, nowForBestEffort());
+                        targetManager.MarkRestoreSucceeded(activity.TargetKey, activity.Generation, null, nowForBestEffort());
                     }
                     else
                     {

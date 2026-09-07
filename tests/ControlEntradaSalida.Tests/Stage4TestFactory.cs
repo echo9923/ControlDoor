@@ -64,6 +64,7 @@ namespace ControlEntradaSalida.Tests
 
         public void Dispose()
         {
+            DelayedScheduler.Dispose();
             Dispatcher.StopAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
             Gateway.Dispose();
         }

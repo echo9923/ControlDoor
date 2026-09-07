@@ -10,6 +10,20 @@ namespace ControlDoor.Permissions
     {
         public int MaxFaceImageBytes { get; set; } = 200 * 1024;
 
+        public PersonInfo ParseEffectivePerson(DeviceOperationRetryState state, string deviceDescription)
+        {
+            var person = ParsePerson(state.PersonPayloadJson, state.EmployeeId);
+            if (!string.IsNullOrWhiteSpace(state.PermissionPayloadJson))
+            {
+                var permission = ParsePermissionPerson(state.PermissionPayloadJson, state.EmployeeId);
+                person.Name = permission.Name;
+                person.Enabled = DevicePermissionAreaPolicy.ShouldEnable(deviceDescription, state.PermissionLevel ?? 0);
+                person.ValidFrom = new DateTime(2022, 1, 1);
+                person.ValidTo = person.Enabled ? new DateTime(2035, 12, 31, 23, 59, 59) : person.ValidFrom;
+            }
+            return person;
+        }
+
         public PersonInfo ParsePerson(string payloadJson, string employeeId)
         {
             var values = ParseObject(payloadJson);

@@ -6,6 +6,9 @@ namespace ControlDoor.Devices.Tasks
 {
     public sealed class DeviceSdkTask
     {
+        internal bool AllowDuringShutdown { get; set; }
+
+        internal bool IgnoreDeadline { get; set; }
         public DeviceSdkTask(int deviceId, DeviceTaskType taskType, string operationName, Func<DeviceTaskContext, Task<DeviceTaskResult>> executeAsync)
         {
             if (deviceId <= 0)
@@ -141,7 +144,7 @@ namespace ControlDoor.Devices.Tasks
 
         public int GetEffectiveTimeoutMilliseconds(int defaultTimeoutMilliseconds)
         {
-            return TimeoutMilliseconds > 0 ? TimeoutMilliseconds : defaultTimeoutMilliseconds;
+            return IgnoreDeadline ? 0 : TimeoutMilliseconds > 0 ? TimeoutMilliseconds : defaultTimeoutMilliseconds;
         }
     }
 }

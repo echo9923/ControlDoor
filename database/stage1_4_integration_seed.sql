@@ -196,6 +196,14 @@ END
 GO
 
 -- 与专项脚本等价：补齐 permission_sync_completion_blocked 列（若表已存在且缺列）
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'intent_version') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [intent_version] UNIQUEIDENTIFIER NOT NULL
+            CONSTRAINT [DF_device_operation_retry_states_intent_version] DEFAULT (NEWID()) WITH VALUES;
+END
+GO
+
 IF COL_LENGTH(N'dbo.device_operation_retry_states', N'permission_sync_completion_blocked') IS NULL
 BEGIN
     ALTER TABLE [dbo].[device_operation_retry_states]

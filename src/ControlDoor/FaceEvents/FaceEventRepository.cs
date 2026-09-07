@@ -8,9 +8,14 @@ namespace ControlDoor.FaceEvents
     public sealed class FaceEventRepository
     {
         private const string ServiceName = "ControlDoor";
+        // SQL Server 每命令参数上限 2100；分块下限留足余量，批量 IN 查询按 1000 一块。
+        private const int SqlParameterChunkSize = 1000;
         private readonly IDatabaseClient database;
         private readonly SnapshotStorage snapshotStorage;
         private readonly Func<SqlConnection> connectionFactory;
+        private readonly int commandTimeoutSeconds;
+
+        internal int CommandTimeoutForTest => commandTimeoutSeconds;
 
         public FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage)
             : this(database, snapshotStorage, (Func<SqlConnection>)null)
@@ -22,11 +27,24 @@ namespace ControlDoor.FaceEvents
         {
         }
 
+        public FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage, string connectionString, int commandTimeoutSeconds)
+            : this(database, snapshotStorage, CreateDefaultConnectionFactory(connectionString), commandTimeoutSeconds)
+        {
+        }
+
         internal FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage, Func<SqlConnection> connectionFactory)
+            : this(database, snapshotStorage, connectionFactory, 30)
+        {
+        }
+
+        internal FaceEventRepository(IDatabaseClient database, SnapshotStorage snapshotStorage, Func<SqlConnection> connectionFactory, int commandTimeoutSeconds)
         {
             this.database = database ?? throw new ArgumentNullException(nameof(database));
             this.snapshotStorage = snapshotStorage ?? throw new ArgumentNullException(nameof(snapshotStorage));
             this.connectionFactory = connectionFactory;
+            // 与 SqlServerDatabase 的 Database.CommandTimeoutSeconds 语义一致：单命令期限，
+            // 批量事务总时长为各条命令期限之和；非法值回退驱动默认 30 秒。
+            this.commandTimeoutSeconds = commandTimeoutSeconds > 0 ? commandTimeoutSeconds : 30;
         }
 
         public FaceEventInsertResult InsertEvent(AcsFaceEvent faceEvent)
@@ -253,6 +271,7 @@ namespace ControlDoor.FaceEvents
             using (var connection = connectionFactory())
             using (var command = new SqlCommand(InsertSql, connection))
             {
+                command.CommandTimeout = commandTimeoutSeconds;
                 // 预建 22 个参数（与 BuildParameters 列集一致），循环只换值，避免每条重建参数集合。
                 AddCommandParameters(command);
                 connection.Open();
@@ -286,29 +305,36 @@ namespace ControlDoor.FaceEvents
                 return existing;
             }
 
-            var parameterNames = new List<string>(events.Count);
-            for (var i = 0; i < events.Count; i++)
+            // 按 SqlParameterChunkSize 分块查询，避免大批次超过 SQL Server 每命令 2100 参数上限。
+            for (var offset = 0; offset < events.Count; offset += SqlParameterChunkSize)
             {
-                parameterNames.Add("@id" + i);
-            }
-
-            var sql = "SELECT id FROM dbo.attendance_gate_v2 WHERE id IN (" + string.Join(",", parameterNames) + ")";
-            using (var connection = connectionFactory())
-            using (var command = new SqlCommand(sql, connection))
-            {
-                for (var i = 0; i < events.Count; i++)
+                var count = Math.Min(SqlParameterChunkSize, events.Count - offset);
+                var parameterNames = new List<string>(count);
+                for (var i = 0; i < count; i++)
                 {
-                    command.Parameters.AddWithValue(parameterNames[i], events[i].EventId);
+                    parameterNames.Add("@id" + i);
                 }
-                connection.Open();
-                using (var reader = command.ExecuteReader())
+
+                var sql = "SELECT id FROM dbo.attendance_gate_v2 WHERE id IN (" + string.Join(",", parameterNames) + ")";
+                using (var connection = connectionFactory())
+                using (var command = new SqlCommand(sql, connection))
                 {
-                    while (reader.Read())
+                    command.CommandTimeout = commandTimeoutSeconds;
+                    for (var i = 0; i < count; i++)
                     {
-                        existing.Add(reader.GetInt64(0));
+                        command.Parameters.AddWithValue(parameterNames[i], events[offset + i].EventId);
+                    }
+                    connection.Open();
+                    using (var reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            existing.Add(reader.GetInt64(0));
+                        }
                     }
                 }
             }
+
             return existing;
         }
 
@@ -329,38 +355,42 @@ namespace ControlDoor.FaceEvents
                 return result;
             }
 
-            var parameterNames = new List<string>(employeeIds.Count);
-            var index = 0;
-            foreach (var employeeId in employeeIds)
+            // 与 QueryExistingIds 相同的分块策略。
+            var employeeIdList = new List<string>(employeeIds);
+            for (var offset = 0; offset < employeeIdList.Count; offset += SqlParameterChunkSize)
             {
-                parameterNames.Add("@u" + index);
-                index++;
-            }
-
-            var sql = "SELECT username, nickname FROM dbo.system_users WHERE deleted = 0 AND username IN (" + string.Join(",", parameterNames) + ")";
-            using (var connection = connectionFactory())
-            using (var command = new SqlCommand(sql, connection))
-            {
-                index = 0;
-                foreach (var employeeId in employeeIds)
+                var count = Math.Min(SqlParameterChunkSize, employeeIdList.Count - offset);
+                var parameterNames = new List<string>(count);
+                for (var i = 0; i < count; i++)
                 {
-                    command.Parameters.AddWithValue(parameterNames[index], employeeId);
-                    index++;
+                    parameterNames.Add("@u" + i);
                 }
-                connection.Open();
-                using (var reader = command.ExecuteReader())
+
+                var sql = "SELECT username, nickname FROM dbo.system_users WHERE deleted = 0 AND username IN (" + string.Join(",", parameterNames) + ")";
+                using (var connection = connectionFactory())
+                using (var command = new SqlCommand(sql, connection))
                 {
-                    while (reader.Read())
+                    command.CommandTimeout = commandTimeoutSeconds;
+                    for (var i = 0; i < count; i++)
                     {
-                        var username = reader.IsDBNull(0) ? null : reader.GetString(0);
-                        var nickname = reader.IsDBNull(1) ? null : reader.GetString(1);
-                        if (username != null && nickname != null)
+                        command.Parameters.AddWithValue(parameterNames[i], employeeIdList[offset + i]);
+                    }
+                    connection.Open();
+                    using (var reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
                         {
-                            result[username] = nickname;
+                            var username = reader.IsDBNull(0) ? null : reader.GetString(0);
+                            var nickname = reader.IsDBNull(1) ? null : reader.GetString(1);
+                            if (username != null && nickname != null)
+                            {
+                                result[username] = nickname;
+                            }
                         }
                     }
                 }
             }
+
             return result;
         }
 

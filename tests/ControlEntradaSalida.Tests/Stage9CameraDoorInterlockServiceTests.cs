@@ -113,6 +113,8 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(1, fixture.WindowManager.GetActive().Count);
 
                 fixture.Service.ExpireWindows(t0.AddSeconds(9));
+                // 恢复为异步投递（复核 R07），等待设备执行完成后再断言。
+                SpinUntil(() => RestoreCount(fixture) >= 1, "最后一条报警后静默满 WindowSeconds 才应恢复。");
                 Assert.Equal(1, RestoreCount(fixture), "最后一条报警后静默满 WindowSeconds 才应恢复。");
             }
         }
@@ -128,6 +130,8 @@ namespace ControlEntradaSalida.Tests
                 fixture.SpinForControlGatewayCalls(1);
 
                 fixture.Service.ExpireWindows(t0.AddSeconds(5));
+                // 恢复为异步投递（复核 R07/G4），等待设备执行完成后再断言指令内容。
+                SpinUntil(() => RestoreRequest(fixture) != null, "恢复指令未被异步执行。");
 
                 var restore = RestoreRequest(fixture);
                 Assert.NotNull(restore);
@@ -155,6 +159,8 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(2, alwaysCloseDoorNos[1]);
 
                 fixture.Service.ExpireWindows(t0.AddSeconds(5));
+                // 恢复为异步投递（复核 R07），等待两个门目标恢复完成。
+                SpinUntil(() => fixture.Gateway.Calls.Count(c => CommandOf(c) == GateControlCommand.Restore) >= 2, "窗口结束后两个门都应恢复。");
 
                 var restoreDoorNos = fixture.Gateway.Calls
                     .Where(c => c.MethodName == "ControlGatewayAsync" && ((GateControlRequest)c.Request).Command == GateControlCommand.Restore)
@@ -186,6 +192,8 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal(0, RestoreCount(fixture), "第一摄像头窗口结束、仍有活动摄像头时不应恢复。");
 
                 fixture.Service.ExpireWindows(t0.AddSeconds(7));
+                // 恢复为异步投递（复核 R07），等待最后一个摄像头窗口结束后的恢复完成。
+                SpinUntil(() => RestoreCount(fixture) >= 1, "最后一个摄像头窗口结束才应恢复。");
                 Assert.Equal(1, RestoreCount(fixture), "最后一个摄像头窗口结束才应恢复。");
             }
         }
@@ -290,7 +298,7 @@ namespace ControlEntradaSalida.Tests
 
                 fixture.Service.Dispose();
 
-                var text = System.IO.File.ReadAllText(logger.CurrentLogPath);
+                var text = System.IO.File.ReadAllText(logger.CurrentDiagnosticLogPath);
                 Assert.Contains("level=Warn", text);
                 Assert.Contains("CameraDoorInterlockDispose", text);
                 Assert.Contains("loop exploded", text);
@@ -346,20 +354,34 @@ namespace ControlEntradaSalida.Tests
 
                 fixture.EmitAiopAlarm(fixture.CameraIp);
                 fixture.Service.ProcessEvents(t0);
+                fixture.SpinForControlGatewayCalls(1);
                 fixture.Service.ExpireWindows(t0.AddSeconds(5));
+                // 恢复为异步投递：以共享读取等待两条完成回调记录都落盘——常闭失败与恢复失败
+                // 必须各自成行携带 sdkErrorCode=7，不能只看全文出现任一 sdkErrorCode（复核 G5）。
+                SpinUntil(() =>
+                {
+                    var pending = ReadSharedLogText(logger.CurrentDiagnosticLogPath);
+                    return FindLineWith(pending, "operationName=\"AlwaysClose\"", "sdkErrorCode=\"7\"") != null
+                        && FindLineWith(pending, "operationName=\"RestoreDoor\"", "sdkErrorCode=\"7\"", "恢复任务失败") != null;
+                }, "常闭/恢复失败回调日志未完整写入。");
 
-                var text = System.IO.File.ReadAllText(logger.CurrentLogPath);
-                var interlockId = ExtractField(text, "interlockId");
+                var text = ReadSharedLogText(logger.CurrentDiagnosticLogPath);
+                var alwaysCloseLine = FindLineWith(text, "operationName=\"AlwaysClose\"", "sdkErrorCode=\"7\"");
+                var restoreLine = FindLineWith(text, "operationName=\"RestoreDoor\"", "sdkErrorCode=\"7\"", "恢复任务失败");
+                Assert.NotNull(alwaysCloseLine);
+                Assert.NotNull(restoreLine);
+                var interlockId = ExtractField(alwaysCloseLine, "interlockId");
                 Assert.False(string.IsNullOrWhiteSpace(interlockId));
+                Assert.Equal(interlockId, ExtractField(restoreLine, "interlockId"));
                 Assert.True(CountOccurrences(text, "interlockId=\"" + interlockId + "\"") >= 4);
-                Assert.Contains("operationName=\"AlwaysClose\"", text);
-                Assert.Contains("operationName=\"RestoreDoor\"", text);
-                Assert.Contains("deviceId=\"10\"", text);
-                Assert.Contains("doorNo=\"1\"", text);
-                Assert.Contains("sdkOperation=\"ControlGateway\"", text);
-                Assert.Contains("sdkErrorCode=\"7\"", text);
-                Assert.Contains("retryable=\"True\"", text);
-                Assert.Contains("manualActionRequired=\"False\"", text);
+                Assert.Contains("deviceId=\"10\"", alwaysCloseLine);
+                Assert.Contains("deviceId=\"10\"", restoreLine);
+                Assert.Contains("doorNo=\"1\"", alwaysCloseLine);
+                Assert.Contains("doorNo=\"1\"", restoreLine);
+                Assert.Contains("sdkOperation=\"ControlGateway\"", alwaysCloseLine);
+                Assert.Contains("sdkOperation=\"ControlGateway\"", restoreLine);
+                Assert.Contains("retryable=\"True\"", restoreLine);
+                Assert.Contains("manualActionRequired=\"False\"", restoreLine);
             }
         }
 
@@ -403,7 +425,7 @@ namespace ControlEntradaSalida.Tests
 
         private static void SpinUntil(Func<bool> condition, string failureMessage)
         {
-            var deadline = DateTime.UtcNow.AddSeconds(2);
+            var deadline = DateTime.UtcNow.AddSeconds(8);
             while (DateTime.UtcNow < deadline)
             {
                 if (condition())
@@ -415,6 +437,61 @@ namespace ControlEntradaSalida.Tests
             }
 
             Assert.True(false, failureMessage);
+        }
+
+        // 共享读取运行中的日志：独占式 File.ReadAllText 会与 RollingLogFile.Append 冲突（复核 G5）。
+        // 轮转/占用瞬间按空内容返回，由外层自旋在下一轮重试。
+        private static string ReadSharedLogText(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                using (var stream = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite | System.IO.FileShare.Delete))
+                using (var reader = new System.IO.StreamReader(stream, System.Text.Encoding.UTF8))
+                {
+                    return reader.ReadToEnd();
+                }
+            }
+            catch (System.IO.IOException)
+            {
+                return string.Empty;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return string.Empty;
+            }
+        }
+
+        private static string FindLineWith(string text, params string[] tokens)
+        {
+            if (string.IsNullOrEmpty(text) || tokens == null || tokens.Length == 0)
+            {
+                return null;
+            }
+
+            foreach (var line in text.Split('\n'))
+            {
+                var matched = true;
+                foreach (var token in tokens)
+                {
+                    if (!line.Contains(token))
+                    {
+                        matched = false;
+                        break;
+                    }
+                }
+
+                if (matched)
+                {
+                    return line;
+                }
+            }
+
+            return null;
         }
 
         private static string ExtractField(string text, string field)

@@ -30,14 +30,13 @@ namespace ControlDoor.Observability
             StringComparer.OrdinalIgnoreCase);
 
         private static readonly HashSet<string> FaceImageFields = new HashSet<string>(
-            new[] { "face_image_base64", "faceImageBase64", "face_base64", "faceBase64", "faceImage" },
+            new[] { "face_image_base64", "faceImageBase64", "face_base64", "faceBase64", "faceImage", "face_image" },
             StringComparer.OrdinalIgnoreCase);
-
-        private readonly JavaScriptSerializer serializer = new JavaScriptSerializer();
 
         public string Format(string json, LogOptions options)
         {
             options = options ?? new LogOptions();
+            var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             if (!options.EnableGrpcPayloadLogging)
             {
                 return "payload=disabled";
@@ -53,18 +52,31 @@ namespace ControlDoor.Observability
             {
                 parsed = serializer.DeserializeObject(json);
             }
-            catch
+            catch (Exception ex)
             {
-                return "payload=invalidJson length=" + json.Length;
+                return "payload=invalidJson length=" + json.Length + " reason=" + ex.GetType().Name;
             }
 
+            string formatted;
             if (string.Equals(options.GrpcPayloadLogMode, "Full", StringComparison.OrdinalIgnoreCase))
             {
                 var sanitized = Sanitize(parsed, options);
-                return serializer.Serialize(sanitized);
+                formatted = serializer.Serialize(sanitized);
             }
-
-            return BuildSummary(parsed);
+            else
+            {
+                formatted = BuildSummary(parsed);
+            }
+            var limit = options.MaxPayloadChars > 0 ? options.MaxPayloadChars : 16384;
+            if (formatted.Length <= limit)
+            {
+                return formatted;
+            }
+            if (char.IsHighSurrogate(formatted[limit - 1]))
+            {
+                limit--;
+            }
+            return formatted.Substring(0, limit) + " [payloadTruncated originalLength=" + json.Length + " sanitizedLength=" + formatted.Length + "]";
         }
 
         private object Sanitize(object value, LogOptions options)

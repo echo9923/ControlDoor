@@ -8,6 +8,8 @@ namespace ControlDoor.Permissions
     {
         public long Id { get; set; }
 
+        public Guid IntentVersion { get; set; }
+
         public int DeviceId { get; set; }
 
         public string EmployeeId { get; set; } = string.Empty;
@@ -70,6 +72,7 @@ namespace ControlDoor.Permissions
             return new DeviceOperationRetryState
             {
                 Id = ToInt64(Get(row, "id")),
+                IntentVersion = Guid.TryParse(Convert.ToString(Get(row, "intent_version")), out var version) ? version : Guid.Empty,
                 DeviceId = ToInt32(Get(row, "device_id")),
                 EmployeeId = Convert.ToString(Get(row, "employee_id")) ?? string.Empty,
                 PermissionLevel = ToNullableInt32(Get(row, "permission_level")),

@@ -88,7 +88,7 @@ namespace ControlEntradaSalida.Tests
                 WaitUntil(() => processor.SuccessCount >= 1, "second ACS event was not processed after the first threw.");
 
                 Assert.True(processor.ThrownOnce);
-                Assert.Equal(1, processor.SuccessCount);
+                Assert.Equal(2, processor.SuccessCount);
             }
             finally
             {
@@ -146,7 +146,7 @@ namespace ControlEntradaSalida.Tests
 
                     service.StopAsync(context).GetAwaiter().GetResult();
 
-                    var text = File.ReadAllText(logger.CurrentLogPath);
+                    var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
                     Assert.Contains("ACS event ingestion stop timed out before queue drain completed.", text);
                     Assert.Contains("unfinishedAccepted=\"1\"", text);
                     Assert.Contains("queueDepth=\"0\"", text);

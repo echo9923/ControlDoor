@@ -20,11 +20,11 @@ namespace ControlEntradaSalida.Tests
 
                 var response = service.GetDeviceStatus(@"{""password"":""secret-for-log"",""includeDisabled"":true}", new GrpcRequestContext { RequestId = "req-grpc-log" });
 
-                var text = File.ReadAllText(logger.CurrentLogPath);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
                 Assert.Contains(@"""success"":true", response);
                 Assert.Contains("component=\"GrpcApi\"", text);
-                Assert.Contains("message=\"gRPC request started.\"", text);
-                Assert.Contains("message=\"gRPC payload.\"", text);
+                Assert.Contains("message=\"接口请求开始。\"", text);
+                Assert.Contains("message=\"接口报文。\"", text);
                 Assert.Contains("operationName=\"GetDeviceStatus\"", text);
                 Assert.Contains("requestId=\"req-grpc-log\"", text);
                 Assert.Contains("direction=\"request\"", text);
@@ -47,8 +47,8 @@ namespace ControlEntradaSalida.Tests
 
                 service.GetDeviceStatus("{}", new GrpcRequestContext { RequestId = "req-grpc-auth" });
 
-                var text = File.ReadAllText(logger.CurrentLogPath);
-                Assert.Contains("message=\"gRPC request business failure.\"", text);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
+                Assert.Contains("message=\"接口处理失败。\"", text);
                 Assert.Contains("errorCode=\"UNAUTHENTICATED\"", text);
                 Assert.Contains("operationName=\"GetDeviceStatus\"", text);
             }
@@ -65,7 +65,7 @@ namespace ControlEntradaSalida.Tests
 
                 var text = fixture.ReadLog();
                 Assert.Contains("component=\"DeviceOperationRetry\"", text);
-                Assert.Contains("message=\"Retry intent queued from gRPC.\"", text);
+                Assert.Contains("message=\"接口补偿意图已持久化，等待设备执行。\"", text);
                 Assert.Contains("deviceId=\"1\"", text);
                 Assert.Contains("employeeId=\"10001\"", text);
                 Assert.Contains("operationName=\"SyncPermission\"", text);

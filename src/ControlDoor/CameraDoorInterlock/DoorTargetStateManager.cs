@@ -41,12 +41,14 @@ namespace ControlDoor.CameraDoorInterlock
                 activity.ActiveCameraKeys.Add(cameraKey ?? string.Empty);
                 if (wasEmpty)
                 {
+                    activity.Generation++;
                     activity.InterlockId = interlockId ?? string.Empty;
                     activity.AlwaysCloseSubmittedAt = now;
                     activity.RestoreSubmittedAt = null;
                     activity.PendingRestoreAttempt = null;
                     activity.RestoreNextRetryAt = null;
                     activity.RestoreTerminalFailed = false;
+                    activity.RestoreInFlight = false;
                 }
                 else if (string.IsNullOrWhiteSpace(activity.InterlockId) && !string.IsNullOrWhiteSpace(interlockId))
                 {
@@ -78,13 +80,70 @@ namespace ControlDoor.CameraDoorInterlock
                 }
 
                 activity.ActiveCameraKeys.Remove(cameraKey ?? string.Empty);
-                var shouldRestore = activity.ActiveCameraKeys.Count == 0;
+                // 已有恢复在途时不再重复投递：在途恢复完成后会按当前活动集合决定后续状态。
+                var shouldRestore = activity.ActiveCameraKeys.Count == 0 && !activity.RestoreInFlight;
                 return new DoorTargetChange
                 {
                     ShouldSubmitAlwaysClose = false,
                     ShouldSubmitRestore = shouldRestore,
                     Activity = activity
                 };
+            }
+        }
+
+        public void MarkRestoreSubmitted(string targetKey, int generation, string taskId, int attempt, DateTime now)
+        {
+            lock (gate)
+            {
+                DoorTargetActivity activity;
+                if (activitiesByKey.TryGetValue(targetKey, out activity) && activity != null)
+                {
+                    // 仅当提交代次仍是当前代次时置在途标记；不回写代次，避免竞争下倒退（复核 F03）。
+                    if (activity.Generation != generation)
+                    {
+                        return;
+                    }
+
+                    activity.RestoreInFlight = true;
+                    activity.RestoreInFlightTaskId = taskId ?? string.Empty;
+                    activity.RestoreSubmittedAt = now;
+                    activity.PendingRestoreAttempt = attempt;
+                }
+            }
+        }
+
+        // 完成态更新（成功/失败/清在途）在同一把锁内校验"窗口代次 + 在途任务归属"后原子应用：
+        // 迟到的旧代次或同代次旧任务结果整体忽略，不得清除新任务的防重复标记或改写其重试安排（复核 G3）。
+        private static bool IsStaleCompletion(DoorTargetActivity activity, int generation, string taskId)
+        {
+            if (activity.Generation != generation)
+            {
+                return true;
+            }
+
+            // 在途属于更新的同代次任务时，旧任务结果忽略；在途未置（如投递拒绝路径）则放行。
+            return activity.RestoreInFlight &&
+                !string.Equals(activity.RestoreInFlightTaskId, taskId ?? string.Empty, System.StringComparison.Ordinal);
+        }
+
+        public bool ClearRestoreInFlight(string targetKey, int generation, string taskId)
+        {
+            lock (gate)
+            {
+                DoorTargetActivity activity;
+                if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
+                {
+                    return false;
+                }
+
+                if (IsStaleCompletion(activity, generation, taskId))
+                {
+                    return false;
+                }
+
+                activity.RestoreInFlight = false;
+                activity.RestoreInFlightTaskId = null;
+                return true;
             }
         }
 
@@ -100,41 +159,58 @@ namespace ControlDoor.CameraDoorInterlock
             }
         }
 
-        public void MarkRestoreSucceeded(string targetKey, DateTime now)
+        public bool MarkRestoreSucceeded(string targetKey, int generation, string taskId, DateTime now)
         {
             lock (gate)
             {
                 DoorTargetActivity activity;
                 if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
                 {
-                    return;
+                    return false;
+                }
+
+                if (IsStaleCompletion(activity, generation, taskId))
+                {
+                    return false;
                 }
 
                 activity.RestoreSubmittedAt = now;
                 activity.PendingRestoreAttempt = null;
                 activity.RestoreNextRetryAt = null;
                 activity.RestoreTerminalFailed = false;
+                activity.RestoreInFlight = false;
+                activity.RestoreInFlightTaskId = null;
                 if (activity.ActiveCameraKeys.Count == 0)
                 {
                     activitiesByKey.Remove(targetKey);
                 }
+
+                return true;
             }
         }
 
-        public void RecordRestoreFailure(string targetKey, int attempt, DateTime? nextRetryAt, DateTime now)
+        public bool RecordRestoreFailure(string targetKey, int generation, string taskId, int attempt, DateTime? nextRetryAt, DateTime now)
         {
             lock (gate)
             {
                 DoorTargetActivity activity;
                 if (!activitiesByKey.TryGetValue(targetKey, out activity) || activity == null)
                 {
-                    return;
+                    return false;
+                }
+
+                if (IsStaleCompletion(activity, generation, taskId))
+                {
+                    return false;
                 }
 
                 activity.RestoreSubmittedAt = now;
                 activity.PendingRestoreAttempt = attempt;
                 activity.RestoreNextRetryAt = nextRetryAt;
                 activity.RestoreTerminalFailed = !nextRetryAt.HasValue;
+                activity.RestoreInFlight = false;
+                activity.RestoreInFlightTaskId = null;
+                return true;
             }
         }
 
@@ -143,7 +219,7 @@ namespace ControlDoor.CameraDoorInterlock
             lock (gate)
             {
                 return activitiesByKey.Values
-                    .Where(a => !a.RestoreTerminalFailed && a.PendingRestoreAttempt.HasValue && a.RestoreNextRetryAt.HasValue && a.RestoreNextRetryAt.Value <= now)
+                    .Where(a => !a.RestoreTerminalFailed && !a.RestoreInFlight && a.PendingRestoreAttempt.HasValue && a.RestoreNextRetryAt.HasValue && a.RestoreNextRetryAt.Value <= now)
                     .ToList();
             }
         }
@@ -153,6 +229,14 @@ namespace ControlDoor.CameraDoorInterlock
             lock (gate)
             {
                 return activitiesByKey.Values.Where(a => !a.RestoreTerminalFailed).ToList();
+            }
+        }
+
+        public bool IsActive(string targetKey)
+        {
+            lock (gate)
+            {
+                return activitiesByKey.TryGetValue(targetKey, out var activity) && activity.IsActive;
             }
         }
 

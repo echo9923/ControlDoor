@@ -29,7 +29,8 @@ namespace ControlDoor.Devices.Runtime
             DateTime updatedAt,
             DeviceQueueInfo queueInfo,
             IEnumerable<DeviceType> types = null,
-            string description = null)
+            string description = null,
+            int? staleSdkUserId = null)
         {
             DeviceId = deviceId;
             DeviceName = deviceName ?? string.Empty;
@@ -40,6 +41,7 @@ namespace ControlDoor.Devices.Runtime
             Status = status;
             IsDeleting = isDeleting;
             SdkUserId = sdkUserId;
+            StaleSdkUserId = staleSdkUserId;
             AlarmHandle = alarmHandle;
             StaleAlarmHandle = staleAlarmHandle;
             AlarmManuallyDisarmed = alarmManuallyDisarmed;
@@ -76,6 +78,8 @@ namespace ControlDoor.Devices.Runtime
         public bool IsDeleting { get; private set; }
 
         public int? SdkUserId { get; private set; }
+
+        public int? StaleSdkUserId { get; private set; }
 
         public int? AlarmHandle { get; private set; }
 

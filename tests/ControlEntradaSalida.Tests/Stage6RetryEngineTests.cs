@@ -246,7 +246,7 @@ namespace ControlEntradaSalida.Tests
             var staleSql = staleDatabase.Commands.Single().CommandText;
             Assert.Contains("permission_level = @permissionLevel", staleSql);
             Assert.Contains("permission_payload = @permissionPayload", staleSql);
-            Assert.Contains("permission_payload = NULL", staleSql);
+            Assert.Contains("permission_payload = CASE WHEN person_pending = 1 THEN permission_payload ELSE NULL END", staleSql);
             Assert.False(staleUserWriter.PermissionLevels.ContainsKey("10001"));
 
             var updatedDatabase = new RecordingDatabaseClient { RowsAffected = 1 };
@@ -277,7 +277,7 @@ namespace ControlEntradaSalida.Tests
             var sql = database.Commands.Last(item => item.OperationName == "DeviceOperationRetryStore.HasBlockingPermissionStateForEmployee").CommandText;
             Assert.Contains("employee_id = @employeeId", sql);
             Assert.Contains("id <> @id", sql);
-            Assert.Contains("exhausted_at IS NULL", sql);
+            Assert.False(sql.Contains("exhausted_at IS NULL"));
             Assert.Contains("permission_pending = 1", sql);
             Assert.Contains("permission_sync_completion_blocked = 1", sql);
         }
@@ -699,8 +699,8 @@ namespace ControlEntradaSalida.Tests
 
         public string ReadLog()
         {
-            return System.IO.File.Exists(logger.CurrentLogPath)
-                ? System.IO.File.ReadAllText(logger.CurrentLogPath)
+            return System.IO.File.Exists(logger.CurrentDiagnosticLogPath)
+                ? System.IO.File.ReadAllText(logger.CurrentDiagnosticLogPath)
                 : string.Empty;
         }
 

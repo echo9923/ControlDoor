@@ -72,6 +72,8 @@ namespace ControlDoor.Devices.Management
                     {
                         lifecycle.SubmitHealthCheck(snapshot.DeviceId, wait: false, requestId: string.Empty);
                     }
+
+                    SelfHealStuckReconnects();
                 }
                 catch (Exception ex)
                 {
@@ -85,6 +87,23 @@ namespace ControlDoor.Devices.Management
                 catch (OperationCanceledException)
                 {
                     return;
+                }
+            }
+        }
+
+        // 补排幂等：ScheduleReconnect 按 taskKey 合并，正常路径的既有重连任务不会被重复创建。
+        private void SelfHealStuckReconnects()
+        {
+            var grace = TimeSpan.FromMilliseconds(Math.Max(0, options.ReconnectSelfHealGraceMs));
+            var now = DateTime.Now;
+            foreach (var snapshot in lifecycle.GetDeviceSnapshots(includeDisabled: false)
+                .Where(item => item.Status == DeviceConnectionStatus.ReconnectPending)
+                .ToList())
+            {
+                var nextReconnectAt = snapshot.Reconnect.NextReconnectAt;
+                if (!nextReconnectAt.HasValue || nextReconnectAt.Value.Add(grace) < now)
+                {
+                    lifecycle.EnsureReconnectScheduled(snapshot.DeviceId);
                 }
             }
         }

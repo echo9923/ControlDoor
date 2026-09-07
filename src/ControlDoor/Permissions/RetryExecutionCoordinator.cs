@@ -12,19 +12,24 @@ namespace ControlDoor.Permissions
 {
     public sealed class RetryExecutionCoordinator
     {
-        private const int MaxFaceBytes = 200 * 1024;
+        private const int DefaultMaxFaceImageBytes = 200 * 1024;
+        private readonly int maxFaceImageBytes;
         private readonly DeviceSdkDispatcher dispatcher;
         private readonly IHikvisionGateway gateway;
         private readonly RetryPayloadParser payloadParser;
         private readonly RetryExecutionResultMapper resultMapper;
         private readonly ServiceLogger logger;
+        private readonly Func<DeviceOperationRetryState, bool> isCurrent;
 
-        public RetryExecutionCoordinator(DeviceSdkDispatcher dispatcher, IHikvisionGateway gateway, ServiceLogger logger = null)
+        public RetryExecutionCoordinator(DeviceSdkDispatcher dispatcher, IHikvisionGateway gateway, ServiceLogger logger = null, Func<DeviceOperationRetryState, bool> isCurrent = null, int maxFaceImageBytes = DefaultMaxFaceImageBytes)
         {
             this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
             this.gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
             this.logger = logger;
-            payloadParser = new RetryPayloadParser { MaxFaceImageBytes = MaxFaceBytes };
+            this.isCurrent = isCurrent;
+            // 与前台 SyncPersons 使用同一份 FaceEnrollment.MaxFaceImageBytes：在线与离线补偿规则一致（复核 F04）。
+            this.maxFaceImageBytes = maxFaceImageBytes > 0 ? maxFaceImageBytes : DefaultMaxFaceImageBytes;
+            payloadParser = new RetryPayloadParser { MaxFaceImageBytes = this.maxFaceImageBytes };
             resultMapper = new RetryExecutionResultMapper();
         }
 
@@ -36,6 +41,7 @@ namespace ControlDoor.Permissions
             }
 
             var state = plan.State;
+            cancellationToken.ThrowIfCancellationRequested();
             var task = new DeviceSdkTask(state.DeviceId, DeviceTaskType.RetryDeviceOperation, "RetryDeviceOperation", context => ExecutePlanInsideWorkerAsync(plan, context))
             {
                 RequiresOnline = true,
@@ -61,7 +67,11 @@ namespace ControlDoor.Permissions
                 }
             };
 
-            var result = await dispatcher.SubmitAndWaitAsync(task, cancellationToken).ConfigureAwait(false);
+            // The background retry owns completion. Caller wait timeouts must not discard a running SDK result.
+            var submission = dispatcher.Submit(task);
+            var result = submission.Accepted
+                ? await task.Completion.Task.ConfigureAwait(false)
+                : submission.ImmediateResult;
             var executionResult = result?.Data as RetryExecutionResult;
             if (executionResult != null)
             {
@@ -73,6 +83,11 @@ namespace ControlDoor.Permissions
 
         private async Task<DeviceTaskResult> ExecutePlanInsideWorkerAsync(RetryCommandPlan plan, DeviceTaskContext context)
         {
+            using var logScope = logger?.BeginScope(new LogFields
+            {
+                EmployeeId = plan.State.EmployeeId,
+                Extra = { ["stateId"] = plan.State.Id.ToString(), ["intentVersion"] = plan.State.IntentVersion.ToString() }
+            });
             var taskResults = new List<DeviceTaskResult>();
             foreach (var step in plan.Steps)
             {
@@ -103,6 +118,8 @@ namespace ControlDoor.Permissions
 
         private async Task<DeviceTaskResult> ExecuteStepAsync(DeviceOperationRetryState state, RetryOperation operation, DeviceTaskContext context)
         {
+            using var logScope = logger?.BeginScope(new LogFields { OperationName = RetryOperationNames.ToStage5OperationName(operation) });
+            logger?.Debug("DeviceOperationRetry", "补偿步骤开始。");
             var task = context.Task;
             var started = DateTime.Now;
             var snapshot = context.SnapshotBeforeExecution;
@@ -116,7 +133,14 @@ namespace ControlDoor.Permissions
 
             try
             {
+                if (isCurrent != null && !isCurrent(state))
+                {
+                    var superseded = DeviceTaskResult.FromTask(task, false, "SUPERSEDED", "补偿意图已更新，跳过旧任务。", snapshot.Status, started, DateTime.Now);
+                    superseded.OperationName = RetryOperationNames.ToStage5OperationName(operation);
+                    return superseded;
+                }
                 await ExecuteGatewayOperationAsync(state, operation, snapshot, context.CancellationToken).ConfigureAwait(false);
+                logger?.Debug("DeviceOperationRetry", "补偿步骤完成。");
                 var success = DeviceTaskResult.FromTask(task, true, "OK", SuccessMessage(operation), snapshot.Status, started, DateTime.Now);
                 success.OperationName = RetryOperationNames.ToStage5OperationName(operation);
                 return success;
@@ -153,7 +177,7 @@ namespace ControlDoor.Permissions
                     await gateway.UpsertPersonAsync(new UpsertPersonRequest
                     {
                         UserId = userId,
-                        Person = payloadParser.ParsePerson(state.PersonPayloadJson, state.EmployeeId)
+                        Person = payloadParser.ParseEffectivePerson(state, snapshot.Description)
                     }, cancellationToken).ConfigureAwait(false);
                     return;
                 case RetryOperation.Permission:
@@ -171,7 +195,7 @@ namespace ControlDoor.Permissions
                     await gateway.UploadFaceAsync(new UploadFaceRequest
                     {
                         UserId = userId,
-                        MaxImageBytes = MaxFaceBytes,
+                        MaxImageBytes = maxFaceImageBytes,
                         Face = payloadParser.ParseFace(state.FacePayloadJson, state.EmployeeId)
                     }, cancellationToken).ConfigureAwait(false);
                     return;

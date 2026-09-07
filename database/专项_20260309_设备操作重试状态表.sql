@@ -7,6 +7,7 @@ BEGIN
     CREATE TABLE [dbo].[device_operation_retry_states]
     (
         [id] BIGINT IDENTITY(1,1) NOT NULL,
+        [intent_version] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [DF_device_operation_retry_states_intent_version] DEFAULT (NEWID()),
         [device_id] INT NOT NULL,
         [employee_id] NVARCHAR(64) NOT NULL,
         [permission_level] INT NULL,
@@ -29,6 +30,14 @@ BEGIN
         CONSTRAINT [PK_device_operation_retry_states] PRIMARY KEY CLUSTERED ([id] ASC),
         CONSTRAINT [UQ_device_operation_retry_states_device_employee] UNIQUE NONCLUSTERED ([device_id] ASC, [employee_id] ASC)
     );
+END
+GO
+
+IF COL_LENGTH(N'dbo.device_operation_retry_states', N'intent_version') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[device_operation_retry_states]
+        ADD [intent_version] UNIQUEIDENTIFIER NOT NULL
+            CONSTRAINT [DF_device_operation_retry_states_intent_version] DEFAULT (NEWID()) WITH VALUES;
 END
 GO
 

@@ -69,11 +69,23 @@ namespace ControlDoor.Configuration
 
         public string MinimumLevel { get; set; } = "Info";
 
+        public string DiagnosticMinimumLevel { get; set; } = "Debug";
+
+        public int DiagnosticRetentionDays { get; set; } = 7;
+
+        public int MaxFileSizeMB { get; set; } = 20;
+
+        public int MaxTotalSizeMB { get; set; } = 512;
+
+        public int DiagnosticMaxTotalSizeMB { get; set; } = 2048;
+
+        public int MaxPayloadChars { get; set; } = 16384;
+
         public int SlowOperationThresholdMs { get; set; } = 1000;
 
-        public bool EnableGrpcPayloadLogging { get; set; }
+        public bool EnableGrpcPayloadLogging { get; set; } = true;
 
-        public string GrpcPayloadLogMode { get; set; } = "Summary";
+        public string GrpcPayloadLogMode { get; set; } = "Full";
 
         public bool IncludeCredentialFields { get; set; }
 

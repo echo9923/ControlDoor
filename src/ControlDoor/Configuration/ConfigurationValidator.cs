@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Web.Script.Serialization;
+using ControlDoor.FaceEvents;
 using ControlDoor.Observability;
 
 namespace ControlDoor.Configuration
@@ -82,6 +83,18 @@ namespace ControlDoor.Configuration
                 1000,
                 "Logging.SlowOperationThresholdMs",
                 warnings);
+
+            var diagnosticMinimumLevel = LogLevelParser.NormalizeOrDefault(settings.Logging.DiagnosticMinimumLevel, "Debug");
+            if (!string.Equals(settings.Logging.DiagnosticMinimumLevel, diagnosticMinimumLevel, StringComparison.Ordinal))
+            {
+                warnings.Add("Logging.DiagnosticMinimumLevel 非法，已回退为 Debug。");
+                settings.Logging.DiagnosticMinimumLevel = diagnosticMinimumLevel;
+            }
+            settings.Logging.DiagnosticRetentionDays = MinimumOrDefault(settings.Logging.DiagnosticRetentionDays, 1, 7, "Logging.DiagnosticRetentionDays", warnings);
+            settings.Logging.MaxFileSizeMB = MinimumOrDefault(settings.Logging.MaxFileSizeMB, 1, 20, "Logging.MaxFileSizeMB", warnings);
+            settings.Logging.MaxTotalSizeMB = MinimumOrDefault(settings.Logging.MaxTotalSizeMB, 1, 512, "Logging.MaxTotalSizeMB", warnings);
+            settings.Logging.DiagnosticMaxTotalSizeMB = MinimumOrDefault(settings.Logging.DiagnosticMaxTotalSizeMB, 1, 2048, "Logging.DiagnosticMaxTotalSizeMB", warnings);
+            settings.Logging.MaxPayloadChars = MinimumOrDefault(settings.Logging.MaxPayloadChars, 1, 16384, "Logging.MaxPayloadChars", warnings);
 
             if (!string.Equals(settings.Logging.GrpcPayloadLogMode, "Summary", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(settings.Logging.GrpcPayloadLogMode, "Full", StringComparison.OrdinalIgnoreCase))
@@ -255,6 +268,21 @@ namespace ControlDoor.Configuration
                 "FaceEventLogging.QueueCapacity",
                 warnings);
 
+            settings.FaceEventLogging.BatchSize = RangeOrDefault(
+                settings.FaceEventLogging.BatchSize,
+                1,
+                FaceEventIngestionService.MaxBatchSize,
+                FaceEventIngestionService.DefaultBatchSize,
+                "FaceEventLogging.BatchSize",
+                warnings);
+
+            settings.FaceEventLogging.FlushIntervalMs = MinimumOrDefault(
+                settings.FaceEventLogging.FlushIntervalMs,
+                10,
+                500,
+                "FaceEventLogging.FlushIntervalMs",
+                warnings);
+
             settings.FaceEnrollment.MaxFaceImageBytes = MinimumOrDefault(
                 settings.FaceEnrollment.MaxFaceImageBytes,
                 1,
@@ -262,9 +290,10 @@ namespace ControlDoor.Configuration
                 "FaceEnrollment.MaxFaceImageBytes",
                 warnings);
 
-            settings.FaceEnrollment.CaptureTimeoutSeconds = MinimumOrDefault(
+            settings.FaceEnrollment.CaptureTimeoutSeconds = RangeOrDefault(
                 settings.FaceEnrollment.CaptureTimeoutSeconds,
                 1,
+                300,
                 60,
                 "FaceEnrollment.CaptureTimeoutSeconds",
                 warnings);

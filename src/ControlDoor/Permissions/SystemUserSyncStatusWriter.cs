@@ -19,7 +19,7 @@ namespace ControlDoor.Permissions
                 return;
             }
 
-            database.ExecuteNonQuery(
+            Check(database.ExecuteNonQuery(
                 "SystemUserSyncStatus.MarkPermissionSynced",
                 @"UPDATE dbo.system_users
 SET access_permission = @permissionLevel,
@@ -28,7 +28,7 @@ SET access_permission = @permissionLevel,
     last_synced_at = SYSDATETIME()
 WHERE username = @employeeId;",
                 new DatabaseParameter("@employeeId", employeeId),
-                new DatabaseParameter("@permissionLevel", permissionLevel));
+                new DatabaseParameter("@permissionLevel", permissionLevel)));
         }
 
         public void MarkPersonSynced(string employeeId)
@@ -38,12 +38,12 @@ WHERE username = @employeeId;",
                 return;
             }
 
-            database.ExecuteNonQuery(
+            Check(database.ExecuteNonQuery(
                 "SystemUserSyncStatus.MarkPersonSynced",
                 @"UPDATE dbo.system_users
 SET last_synced_at = SYSDATETIME()
 WHERE username = @employeeId;",
-                new DatabaseParameter("@employeeId", employeeId));
+                new DatabaseParameter("@employeeId", employeeId)));
         }
 
         public void MarkPersonDeleted(string employeeId)
@@ -53,13 +53,18 @@ WHERE username = @employeeId;",
                 return;
             }
 
-            database.ExecuteNonQuery(
+            Check(database.ExecuteNonQuery(
                 "SystemUserSyncStatus.MarkPersonDeleted",
                 @"UPDATE dbo.system_users
 SET last_synced_level = NULL,
     last_synced_at = SYSDATETIME()
 WHERE username = @employeeId;",
-                new DatabaseParameter("@employeeId", employeeId));
+                new DatabaseParameter("@employeeId", employeeId)));
+        }
+
+        private static void Check(DatabaseCommandRecord record)
+        {
+            if (record.Error != null) throw new InvalidOperationException(record.Error.Message);
         }
     }
 }

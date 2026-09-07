@@ -130,7 +130,7 @@ namespace ControlEntradaSalida.Tests
 
                 service.Run(new HealthCheckContext(runDirectory, settings, logger, CancellationToken.None));
 
-                var text = File.ReadAllText(logger.CurrentLogPath);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
                 Assert.Equal(1, CountOccurrences(text, "message="));
                 Assert.Contains("detail=", text);
             }
@@ -148,7 +148,7 @@ namespace ControlEntradaSalida.Tests
 
                 service.Run(new HealthCheckContext(runDirectory, settings, logger, CancellationToken.None));
 
-                var text = File.ReadAllText(logger.CurrentLogPath);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
                 Assert.Contains("level=Warn", text);
                 Assert.Contains("thresholdMs=\"1\"", text);
                 Assert.Contains("detail=", text);

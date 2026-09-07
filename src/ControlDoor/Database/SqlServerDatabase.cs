@@ -3,16 +3,50 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
+using System.Threading;
 using ControlDoor.Configuration;
 using ControlDoor.Observability;
 
 namespace ControlDoor.Database
 {
-    public sealed class SqlServerDatabase : IDatabaseClient
+    public sealed class SqlServerDatabase : ITransactionalDatabaseClient
     {
         private readonly DatabaseOptions options;
         private readonly ServiceLogger logger;
         private bool disposed;
+        private readonly AsyncLocal<SqlTransaction> currentTransaction = new AsyncLocal<SqlTransaction>();
+
+        public void ExecuteTransaction(Action action)
+        {
+            if (action == null) throw new ArgumentNullException(nameof(action));
+            if (disposed) throw new ObjectDisposedException(nameof(SqlServerDatabase));
+            if (currentTransaction.Value != null)
+            {
+                action();
+                return;
+            }
+            using (var connection = new SqlConnection(options.ConnectionString))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction())
+                {
+                    currentTransaction.Value = transaction;
+                    try
+                    {
+                        action();
+                        transaction.Commit();
+                    }
+                    catch
+                    {
+                        try { transaction.Rollback(); }
+                        catch (InvalidOperationException) { }
+                        catch (SqlException) { }
+                        throw;
+                    }
+                    finally { currentTransaction.Value = null; }
+                }
+            }
+        }
 
         public SqlServerDatabase(DatabaseOptions options, ServiceLogger logger = null)
         {
@@ -94,14 +128,16 @@ namespace ControlDoor.Database
 
             try
             {
-                using (var connection = new SqlConnection(options.ConnectionString))
-                using (var command = connection.CreateCommand())
+                var transaction = currentTransaction.Value;
+                using (var ownedConnection = transaction == null ? new SqlConnection(options.ConnectionString) : null)
+                using (var command = (transaction?.Connection ?? ownedConnection).CreateCommand())
                 {
+                    command.Transaction = transaction;
                     command.CommandText = commandText;
                     command.CommandType = CommandType.Text;
                     command.CommandTimeout = options.CommandTimeoutSeconds;
                     AddParameters(command, parameters);
-                    connection.Open();
+                    ownedConnection?.Open();
                     record.RowsAffected = execute(command);
                 }
 

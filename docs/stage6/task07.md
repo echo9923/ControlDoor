@@ -76,7 +76,17 @@
 | 终态日志 | 能看到 exhaustedAt 和 terminal code。 |
 | 清理日志 | 能看到删除数量和保留天数。 |
 
+## 补偿意图版本回归
+
+代码审查修复新增 `intent_version`，不再适用原阶段 6 的零结构变更约束。升级前执行 `database/专项_20260309_设备操作重试状态表.sql`；已有记录会补齐版本，重复执行不重复添加字段。
+
+本机回归运行 `ControlEntradaSalida.Tests.exe RegressionTests`，验证在线写入失败、人员失败后人脸保留、旧请求延迟失败、旧补偿跳过，以及所有结果回写的版本条件。
+
+真实 SQL 验证使用 `tests/Integration/RetrySqlIntegrationTests.cs`：将 `CONTROLDOOR_RETRY_SQL_INTEGRATION` 设为 `1`，并将 `CONTROLDOOR_STAGE14_CONNECTION_STRING` 指向可丢弃的 Docker 测试数据库后，运行 `ControlEntradaSalida.Tests.exe RetrySqlIntegrationTests`。测试执行两次迁移，再验证旧删除任务、旧退避和旧终态回写均不能改变新意图，最后清理本次生成的测试记录。未设置开关时明确跳过，不使用真实设备。
+
 ## 阶段 6 通过标准
+
+最终审查回归运行 `ControlEntradaSalida.Tests.exe Final`，覆盖跨操作覆盖、迟到成功确认、权限状态事务回滚、终态设备阻塞全局完成、不同工作线程并发，以及设备删除、撤防和服务停止的竞争场景。实际 SQL 集成测试另覆盖完整目标登记、权限 payload 保留和失败事务回滚，未连接 Docker 数据库时不代表这些 SQL 已在真实数据库执行。
 
 | 标准 | 说明 |
 | --- | --- |

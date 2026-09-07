@@ -86,6 +86,8 @@ namespace ControlDoor
             {
                 Console.WriteLine("gRPC 端口: " + result.Settings.Service.GrpcListenPort);
                 Console.WriteLine("日志目录: " + result.Settings.Logging.LogDirectory);
+                Console.WriteLine("日常日志: " + result.Settings.Logging.MinimumLevel + "，最长 " + result.Settings.Logging.RetentionDays + " 天，最多 " + result.Settings.Logging.MaxTotalSizeMB + "MB");
+                Console.WriteLine("诊断日志: " + result.Settings.Logging.DiagnosticMinimumLevel + "，最长 " + result.Settings.Logging.DiagnosticRetentionDays + " 天，最多 " + result.Settings.Logging.DiagnosticMaxTotalSizeMB + "MB");
                 Console.WriteLine("SDK DLL 目录: " + result.Settings.HikvisionSdk.DllDirectory);
                 Console.WriteLine("SDK 平台: " + result.Settings.HikvisionSdk.Platform);
                 Console.WriteLine("抓拍目录: " + result.Settings.FaceEventLogging.SnapshotRootDirectory);
@@ -105,6 +107,7 @@ namespace ControlDoor
                         logger.Info("ValidateConfig", "配置验证模式已完成配置加载。");
                         Console.WriteLine("日志检查: OK");
                         Console.WriteLine("日志文件: " + logger.CurrentLogPath);
+                        Console.WriteLine("诊断日志文件: " + logger.CurrentDiagnosticLogPath);
 
                         var summary = HealthCheckService
                             .CreateStage8(runDirectory, result.Settings, database)

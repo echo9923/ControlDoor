@@ -82,7 +82,7 @@ namespace ControlDoor.CameraDoorInterlock
             {
                 if (!resolver.TryIdentifyCamera(data.DeviceIpAddress, data.UserId, data.AlarmHandle, data.DeviceSerialNumber, out var cameraKey))
                 {
-                    logger?.Info("AiopAlarmEventRouter", "AIOP 报警来源未命中配置摄像头，忽略。", new LogFields
+                    logger?.Debug("AiopAlarmEventRouter", "AIOP 报警来源未命中配置摄像头，忽略。", new LogFields
                     {
                         Extra =
                         {
@@ -126,7 +126,7 @@ namespace ControlDoor.CameraDoorInterlock
                 }
                 else
                 {
-                    logger?.Info("AiopAlarmEventRouter", "AIOP 报警已入队。", new LogFields
+                    logger?.Debug("AiopAlarmEventRouter", "AIOP 报警已入队。", new LogFields
                     {
                         RequestId = rawEvent.InterlockId,
                         OperationName = "AiopAlarmRoute",

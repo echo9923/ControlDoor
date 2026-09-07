@@ -4,5 +4,10 @@
   // 注释不影响配置加载；这里将其识别为 JSONC，避免编辑器把注释报为语法错误（code 521）。
   "files.associations": {
     "**/Configuration/appsettings.json": "jsonc"
-  }
+  },
+  // 关闭 GitHub Copilot 的 AI 代码补全（内联建议）
+  "github.copilot.enable": {
+    "*": false
+  },
+  "editor.inlineSuggest.enabled": false
 }

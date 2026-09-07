@@ -5,6 +5,10 @@ namespace ControlDoor.Permissions
 {
     public sealed class DeviceOperationRetryIntent
     {
+        public Guid IntentVersion { get; set; } = Guid.NewGuid();
+
+        public string RelatedFacePayloadJson { get; set; }
+
         public int DeviceId { get; set; }
 
         public string EmployeeId { get; set; } = string.Empty;

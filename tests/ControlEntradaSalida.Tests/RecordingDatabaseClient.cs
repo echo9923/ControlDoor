@@ -69,7 +69,7 @@ namespace ControlEntradaSalida.Tests
                 };
             }
 
-            Commands.Add(record);
+            lock (Commands) { Commands.Add(record); }
             if (record.Error != null && ThrowOnFailure)
             {
                 throw new System.InvalidOperationException(record.Error.Message);

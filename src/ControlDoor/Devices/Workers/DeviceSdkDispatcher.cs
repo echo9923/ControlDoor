@@ -19,6 +19,19 @@ namespace ControlDoor.Devices.Workers
         private bool stopping;
         private bool stopped;
         private bool disposed;
+        private bool quiescing;
+
+        public void BeginShutdown()
+        {
+            lock (gate)
+            {
+                quiescing = true;
+                foreach (var worker in workers)
+                {
+                    worker.BeginShutdown();
+                }
+            }
+        }
 
         public DeviceSdkDispatcher(DeviceRuntimeRegistry registry, DeviceSdkDispatcherOptions options = null, ServiceLogger logger = null)
         {
@@ -94,7 +107,7 @@ namespace ControlDoor.Devices.Workers
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
 
-                if (stopping)
+                if (stopping || (quiescing && !task.AllowDuringShutdown))
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPING", "Dispatcher is stopping.");
                     task.MarkRejected(rejected);
@@ -139,7 +152,7 @@ namespace ControlDoor.Devices.Workers
                     return DeviceTaskSubmissionResult.Rejected(task, rejected);
                 }
 
-                if (stopping)
+                if (stopping || (quiescing && !task.AllowDuringShutdown))
                 {
                     var rejected = DeviceTaskResult.Rejected(task, "DISPATCHER_STOPPING", "Dispatcher is stopping.");
                     task.MarkRejected(rejected);

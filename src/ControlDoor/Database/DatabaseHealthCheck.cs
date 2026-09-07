@@ -28,7 +28,8 @@ namespace ControlDoor.Database
 
             foreach (var table in RequiredTables)
             {
-                report.Commands.Add(database.ExecuteNonQuery("ReadTable:" + table, "SELECT TOP 0 * FROM " + table));
+                var columns = table == "dbo.device_operation_retry_states" ? "intent_version" : "*";
+                report.Commands.Add(database.ExecuteNonQuery("ReadTable:" + table, "SELECT TOP 0 " + columns + " FROM " + table));
             }
 
             foreach (var table in OptionalTables)

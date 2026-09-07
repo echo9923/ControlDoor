@@ -66,7 +66,7 @@ namespace ControlEntradaSalida.Tests
             var result = lifecycle.StartAsync(TimeSpan.FromMilliseconds(10)).GetAwaiter().GetResult();
 
             Assert.False(result.Success);
-            Assert.True(host.StopCount >= 1);
+            Assert.True(System.Threading.SpinWait.SpinUntil(() => host.StopCount >= 1, 1000));
         }
 
         [TestCase]

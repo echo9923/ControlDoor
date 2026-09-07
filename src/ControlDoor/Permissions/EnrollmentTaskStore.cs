@@ -9,6 +9,18 @@ namespace ControlDoor.Permissions
         private readonly object gate = new object();
         private readonly IDictionary<string, EnrollmentTaskRecord> records = new Dictionary<string, EnrollmentTaskRecord>(StringComparer.OrdinalIgnoreCase);
         private readonly IDictionary<string, string> latestByEmployee = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Queue<string> completedTasks = new Queue<string>();
+        private readonly int maxCompletedTasks;
+        private readonly TimeSpan retention;
+        private readonly Func<DateTime> clock;
+
+        public EnrollmentTaskStore(int maxCompletedTasks = 1000, TimeSpan? retention = null, Func<DateTime> clock = null)
+        {
+            if (maxCompletedTasks < 1) throw new ArgumentOutOfRangeException(nameof(maxCompletedTasks));
+            this.maxCompletedTasks = maxCompletedTasks;
+            this.retention = retention ?? TimeSpan.FromHours(24);
+            this.clock = clock ?? (() => DateTime.Now);
+        }
 
         public EnrollmentTaskRecord Start(string taskId, string employeeId)
         {
@@ -19,12 +31,13 @@ namespace ControlDoor.Permissions
                 Action = "CaptureFaceStream",
                 Status = EnrollmentTaskStatus.Running,
                 Message = "采集中。",
-                CreatedAt = DateTime.Now,
-                UpdatedAt = DateTime.Now
+                CreatedAt = clock(),
+                UpdatedAt = clock()
             };
 
             lock (gate)
             {
+                PruneCompleted();
                 records[record.TaskId] = record.Clone();
                 if (!string.IsNullOrWhiteSpace(record.EmployeeId))
                 {
@@ -54,6 +67,7 @@ namespace ControlDoor.Permissions
 
             lock (gate)
             {
+                PruneCompleted();
                 EnrollmentTaskRecord record;
                 return records.TryGetValue(taskId, out record) ? record.Clone() : null;
             }
@@ -68,6 +82,7 @@ namespace ControlDoor.Permissions
 
             lock (gate)
             {
+                PruneCompleted();
                 string taskId;
                 if (!latestByEmployee.TryGetValue(employeeId, out taskId))
                 {
@@ -83,6 +98,7 @@ namespace ControlDoor.Permissions
         {
             lock (gate)
             {
+                PruneCompleted();
                 return records.Values.Select(item => item.Clone()).ToList();
             }
         }
@@ -102,10 +118,37 @@ namespace ControlDoor.Permissions
                     return;
                 }
 
+                if (record.Status != EnrollmentTaskStatus.Running)
+                {
+                    return;
+                }
                 record.Status = status;
                 record.Message = message ?? string.Empty;
                 record.ErrorCode = errorCode ?? string.Empty;
-                record.UpdatedAt = DateTime.Now;
+                record.UpdatedAt = clock();
+                completedTasks.Enqueue(taskId);
+                PruneCompleted();
+            }
+        }
+
+        private void PruneCompleted()
+        {
+            var cutoff = clock() - retention;
+            while (completedTasks.Count > 0)
+            {
+                var id = completedTasks.Peek();
+                if (!records.TryGetValue(id, out var record))
+                {
+                    completedTasks.Dequeue();
+                    continue;
+                }
+                if (completedTasks.Count <= maxCompletedTasks && record.UpdatedAt > cutoff) break;
+                completedTasks.Dequeue();
+                records.Remove(id);
+                if (latestByEmployee.TryGetValue(record.EmployeeId, out var latest) && latest == id)
+                {
+                    latestByEmployee.Remove(record.EmployeeId);
+                }
             }
         }
     }

@@ -69,7 +69,7 @@ namespace ControlEntradaSalida.Tests
             manager.OnCameraWindowOpened("cam-1", Target("10:1"), now);
             manager.OnCameraWindowClosed("cam-1", "10:1", now.AddSeconds(5));
 
-            manager.MarkRestoreSucceeded("10:1", now.AddSeconds(6));
+            manager.MarkRestoreSucceeded("10:1", generation: 1, taskId: "t1", now: now.AddSeconds(6));
 
             Assert.False(manager.TryGetActivity("10:1", out var activity));
         }
@@ -82,7 +82,7 @@ namespace ControlEntradaSalida.Tests
             manager.OnCameraWindowOpened("cam-1", Target("10:1"), now);
             manager.OnCameraWindowClosed("cam-1", "10:1", now.AddSeconds(5));
 
-            manager.RecordRestoreFailure("10:1", 1, now.AddSeconds(1), now);
+            manager.RecordRestoreFailure("10:1", generation: 1, taskId: "t1", attempt: 1, nextRetryAt: now.AddSeconds(1), now: now);
 
             var due = manager.GetDueRestoreRetries(now.AddSeconds(1));
             Assert.Equal(1, due.Count);
@@ -96,7 +96,7 @@ namespace ControlEntradaSalida.Tests
             manager.OnCameraWindowOpened("cam-1", Target("10:1"), now);
             manager.OnCameraWindowClosed("cam-1", "10:1", now.AddSeconds(5));
 
-            manager.RecordRestoreFailure("10:1", 3, null, now);
+            manager.RecordRestoreFailure("10:1", generation: 1, taskId: "t1", attempt: 3, nextRetryAt: null, now: now);
 
             Assert.Equal(0, manager.GetDueRestoreRetries(now.AddDays(1)).Count);
             Assert.True(manager.TryGetActivity("10:1", out var activity));
@@ -112,7 +112,7 @@ namespace ControlEntradaSalida.Tests
             manager.OnCameraWindowOpened("cam-1", Target("10:1"), now);
             manager.OnCameraWindowOpened("cam-2", Target("20:1"), now);
             manager.OnCameraWindowClosed("cam-2", "20:1", now.AddSeconds(5));
-            manager.RecordRestoreFailure("20:1", 1, now.AddSeconds(10), now.AddSeconds(5));
+            manager.RecordRestoreFailure("20:1", generation: 1, taskId: "t1", attempt: 1, nextRetryAt: now.AddSeconds(10), now: now.AddSeconds(5));
 
             var outstanding = manager.GetOutstandingTargets();
 

@@ -45,6 +45,11 @@ namespace ControlDoor.Permissions
 
         public bool IsCritical => false;
 
+        public Task Completion
+        {
+            get { lock (gate) { return loopTask ?? Task.CompletedTask; } }
+        }
+
         public Task StartAsync(BackgroundTaskContext context)
         {
             lock (gate)
@@ -73,7 +78,7 @@ namespace ControlDoor.Permissions
 
             if (running != null)
             {
-                await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+                await running.ConfigureAwait(false);
             }
 
             lock (gate)
@@ -166,38 +171,57 @@ namespace ControlDoor.Permissions
                 RequestId = string.IsNullOrWhiteSpace(requestId) ? RequestContext.Background("ScanRetryStates").RequestId : requestId,
                 ScannedAt = now
             };
+            using var scanScope = logger?.BeginScope(new LogFields { RequestId = result.RequestId, TraceId = result.RequestId, OperationName = "ScanRetryStates" });
 
             try
             {
                 var states = store.LoadDueStates(now, options.BatchSize);
                 result.Due = states.Count;
-                foreach (var state in states)
+                var lanes = states.GroupBy(state => registry.TryGetWorkerRoute(state.DeviceId).WorkerIndex ?? -1);
+                var scans = await Task.WhenAll(lanes.Select(lane => Task.Run(async () =>
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var key = state.StateKey;
-                    if (!TryEnterInFlight(key))
+                    var laneResult = new DeviceOperationRetryScanResult { RequestId = result.RequestId, ScannedAt = now };
+                    foreach (var state in lane)
                     {
-                        result.InFlightSkipped++;
-                        LogRetryState(result.RequestId, state, "Retry state skipped because it is already in flight.", "IN_FLIGHT");
-                        continue;
-                    }
-
-                    try
-                    {
-                        if (!store.TryClaimDueState(state, now))
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var key = state.StateKey;
+                        if (!TryEnterInFlight(key))
                         {
-                            result.ClaimSkipped++;
-                            LogRetryState(result.RequestId, state, "Retry state claim skipped.", "CLAIM_SKIPPED");
+                            laneResult.InFlightSkipped++;
+                            LogRetryState(result.RequestId, state, "Retry state skipped because it is already in flight.", "IN_FLIGHT");
                             continue;
                         }
 
-                        LogRetryState(result.RequestId, state, "Retry state claimed.", "CLAIMED");
-                        await ProcessStateAsync(state, result, now, cancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            var claimedAt = DateTime.Now;
+                            if (!store.TryClaimDueState(state, claimedAt))
+                            {
+                                laneResult.ClaimSkipped++;
+                                LogRetryState(result.RequestId, state, "Retry state claim skipped.", "CLAIM_SKIPPED");
+                                continue;
+                            }
+
+                            LogRetryState(result.RequestId, state, "Retry state claimed.", "CLAIMED");
+                            await ProcessStateAsync(state, laneResult, claimedAt, cancellationToken).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            LeaveInFlight(key);
+                        }
                     }
-                    finally
-                    {
-                        LeaveInFlight(key);
-                    }
+                    return laneResult;
+                }))).ConfigureAwait(false);
+                foreach (var scan in scans)
+                {
+                    result.InFlightSkipped += scan.InFlightSkipped;
+                    result.ClaimSkipped += scan.ClaimSkipped;
+                    result.Submitted += scan.Submitted;
+                    result.OfflineDeferred += scan.OfflineDeferred;
+                    result.Terminal += scan.Terminal;
+                    result.EmptyDeleted += scan.EmptyDeleted;
+                    result.Succeeded += scan.Succeeded;
+                    result.Failed += scan.Failed;
                 }
 
                 result.CleanupDeleted = store.CleanupExpiredFailures(DateTime.Now, options.BatchSize);
@@ -214,7 +238,9 @@ namespace ControlDoor.Permissions
                 status.Heartbeat();
                 if (HasObservableRetryScanWork(result))
                 {
-                    logger?.Info("DeviceOperationRetry", "补偿扫描完成。", new LogFields
+                    var level = result.Terminal > 0 ? LogLevel.Error : result.Failed > 0 ? LogLevel.Warn
+                        : result.Submitted > 0 || result.Succeeded > 0 ? LogLevel.Info : LogLevel.Debug;
+                    logger?.Write(level, "DeviceOperationRetry", "补偿扫描完成。", new LogFields
                     {
                         RequestId = result.RequestId,
                         OperationName = "ScanRetryStates",
@@ -230,7 +256,8 @@ namespace ControlDoor.Permissions
                             ["failed"] = result.Failed.ToString(),
                             ["terminal"] = result.Terminal.ToString(),
                             ["emptyDeleted"] = result.EmptyDeleted.ToString(),
-                            ["cleanupDeleted"] = result.CleanupDeleted.ToString()
+                            ["cleanupDeleted"] = result.CleanupDeleted.ToString(),
+                            ["countBasis"] = "本轮设备与员工补偿状态条数"
                         }
                     });
                 }
@@ -322,16 +349,16 @@ namespace ControlDoor.Permissions
             else if (WillMarkTerminal(execution))
             {
                 scan.Terminal++;
-                LogRetryState(scan.RequestId, state, "Retry state execution reached terminal failure.", execution.Code);
+                LogRetryState(scan.RequestId, state, "补偿已终止，需要人工处理。", execution.Code, level: LogLevel.Error);
             }
             else
             {
                 scan.Failed++;
-                LogRetryState(scan.RequestId, state, "Retry state execution failed and will retry.", execution.Code);
+                LogRetryState(scan.RequestId, state, "补偿执行失败，将继续重试。", execution.Code, level: LogLevel.Warn);
             }
         }
 
-        private void LogRetryState(string requestId, DeviceOperationRetryState state, string message, string code, Action<LogFields> configure = null)
+        private void LogRetryState(string requestId, DeviceOperationRetryState state, string message, string code, Action<LogFields> configure = null, LogLevel level = LogLevel.Debug)
         {
             if (logger == null || state == null)
             {
@@ -347,6 +374,7 @@ namespace ControlDoor.Permissions
                 ErrorCode = code
             };
             fields.Extra["stateId"] = state.Id.ToString();
+            fields.Extra["intentVersion"] = state.IntentVersion.ToString();
             fields.Extra["attemptCount"] = state.AttemptCount.ToString();
             fields.Extra["nextRetryAt"] = state.NextRetryAt.HasValue ? state.NextRetryAt.Value.ToString("yyyy-MM-dd HH:mm:ss") : string.Empty;
             fields.Extra["lastError"] = state.LastError ?? string.Empty;
@@ -356,7 +384,7 @@ namespace ControlDoor.Permissions
             fields.Extra["deletePersonPending"] = state.DeletePersonPending.ToString();
             fields.Extra["deleteFacePending"] = state.DeleteFacePending.ToString();
             configure?.Invoke(fields);
-            logger.Info("DeviceOperationRetry", message, fields);
+            logger.Write(level, "DeviceOperationRetry", message, fields);
         }
 
         private bool WillMarkTerminal(RetryExecutionResult execution)

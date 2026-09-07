@@ -24,6 +24,9 @@ namespace ControlDoor.Devices.Management
 
         public int FailureThreshold { get; set; } = 3;
 
+        // ReconnectPending 超过 NextReconnectAt 加该宽限期仍无进展时，健康检查自愈补排重连。
+        public int ReconnectSelfHealGraceMs { get; set; } = 60000;
+
         public bool AlarmEnabled { get; set; } = true;
 
         public int AlarmDeployType { get; set; }

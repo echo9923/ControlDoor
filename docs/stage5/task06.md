@@ -104,4 +104,12 @@
 | 图片过大 | 返回 `FACE_TOO_LARGE`。 |
 | 任务状态 | `GetEnrollmentStatus` 可查询成功/失败状态。 |
 | taskId 不存在 | 返回 `NOT_FOUND`。 |
+| 完成记录回收 | 默认保留最近 1000 条且不超过 24 小时的完成记录；查询和更新时清理，运行中的采集任务不被回收。过期 taskId 返回 `NOT_FOUND`。 |
 | 解析失败 | 返回 `INVALID_ARGUMENT` 单帧失败。 |
+
+## 代码复核更新（2026-09-07，R09）
+
+- `FaceEnrollment` 三项配置现已接入实际执行：
+  - `MaxFaceImageBytes`：采集与上传人脸的图片大小上限（原来固定 200KB），错误消息按配置值生成。
+  - `CaptureTimeoutSeconds`：传入 `HikvisionSdkWrapper`，按 100ms 轮询间隔推导采集等待次数（原固定 100 次≈10 秒）；采集设备任务的执行期限同步设为该超时加 5 秒余量，避免 dispatcher 默认超时提前终止。配置校验范围为 1~300 秒。
+  - `TaskRetentionMinutes`：传入 `EnrollmentTaskStore` 作为完成记录保留期（原固定 24 小时）。

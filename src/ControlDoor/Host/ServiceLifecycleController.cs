@@ -52,14 +52,15 @@ namespace ControlDoor.Host
             {
                 using (var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
-                    var startTask = host.StartAsync(timeoutSource.Token);
+                    var token = timeoutSource.Token;
+                    var startTask = Task.Run(() => host.StartAsync(token));
                     var completed = await Task.WhenAny(startTask, Task.Delay(timeout, timeoutSource.Token)).ConfigureAwait(false);
                     if (completed != startTask)
                     {
                         timeoutSource.Cancel();
                         SetState(ServiceLifecycleState.Failed);
                         logger?.Error("ServiceLifecycle", "服务启动超时。", null, new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
-                        await StopBestEffortAsync("StartTimeout", TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                        _ = StopBestEffortAsync("StartTimeout", TimeSpan.FromSeconds(10));
                         return HostStartupResult.Failed("服务启动超时。", new[] { "Host 启动超过 " + timeout.TotalMilliseconds + "ms。" });
                     }
 
@@ -99,13 +100,20 @@ namespace ControlDoor.Host
             {
                 using (var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
-                    var stopTask = host.StopAsync(reason, timeoutSource.Token);
+                    var token = timeoutSource.Token;
+                    var stopTask = Task.Run(() => host.StopAsync(reason, token));
                     var completed = await Task.WhenAny(stopTask, Task.Delay(timeout, timeoutSource.Token)).ConfigureAwait(false);
                     if (completed != stopTask)
                     {
                         timeoutSource.Cancel();
-                        SetState(ServiceLifecycleState.Stopped);
-                        logger?.Warn("ServiceLifecycle", "服务停止超时，继续释放可释放资源。", new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
+                        SetState(ServiceLifecycleState.Stopping);
+                        logger?.Warn("ServiceLifecycle", "服务停止超时，后台继续等待设备调用结束并清理。", new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
+                        _ = stopTask.ContinueWith(finished =>
+                        {
+                            if (finished.IsFaulted) logger?.Error("ServiceLifecycle", "后台停止清理失败。", finished.Exception);
+                            SetState(finished.Status == TaskStatus.RanToCompletion && finished.Result.Success
+                                ? ServiceLifecycleState.Stopped : ServiceLifecycleState.Failed);
+                        }, TaskScheduler.Default);
                         return HostStopResult.Failed(reason, "服务停止超时。");
                     }
 
@@ -132,7 +140,9 @@ namespace ControlDoor.Host
         {
             try
             {
-                await host.StopAsync(reason, CancellationToken.None).ConfigureAwait(false);
+                var stopTask = Task.Run(() => host.StopAsync(reason, CancellationToken.None));
+                await Task.WhenAny(stopTask, Task.Delay(timeout)).ConfigureAwait(false);
+                if (stopTask.IsCompleted) await stopTask.ConfigureAwait(false);
             }
             catch (Exception ex)
             {

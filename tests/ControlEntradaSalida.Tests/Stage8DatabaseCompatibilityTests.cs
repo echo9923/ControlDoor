@@ -68,6 +68,24 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
+        public static void Stage8DatabaseZeroEmployeeCleanup_GuardsDeletionInOneTransactionAndBatch()
+        {
+            var sql = File.ReadAllText(Path.Combine("database", "专项_20260724_清除工号零门禁事件.sql"), Encoding.UTF8).ToLowerInvariant();
+            var batches = System.Text.RegularExpressions.Regex.Split(sql, @"^\s*go\s*$", System.Text.RegularExpressions.RegexOptions.Multiline)
+                .Where(batch => !string.IsNullOrWhiteSpace(batch)).ToList();
+            Assert.Equal(1, batches.Count);
+            Assert.Contains("set xact_abort on", sql);
+            Assert.Contains("begin transaction", sql);
+            Assert.Contains("with (updlock, holdlock)", sql);
+            Assert.Contains("throw 51002", sql);
+            Assert.True(sql.IndexOf("throw 51002", System.StringComparison.Ordinal) < sql.IndexOf("delete from dbo.", System.StringComparison.Ordinal));
+            Assert.Contains("where username = n'0'", sql);
+            Assert.Contains("if xact_state() <> 0 rollback transaction", sql);
+            Assert.False(sql.Contains("drop table"));
+            Assert.False(sql.Contains("truncate table"));
+        }
+
+        [TestCase]
         public static void Stage8DatabaseRetryStateScript_ContainsColumnsAndIndexesUsedByRetryEngine()
         {
             var sql = ReadSqlFileContaining("20260309");
@@ -135,6 +153,7 @@ namespace ControlEntradaSalida.Tests
         private static bool IsSpecialMigrationScript(string path)
         {
             var name = Path.GetFileName(path);
+            if (name == "专项_20260724_清除工号零门禁事件.sql") return false;
             return name != null && name.StartsWith("\u4e13\u9879_", System.StringComparison.OrdinalIgnoreCase);
         }
 

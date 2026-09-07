@@ -82,8 +82,11 @@
 | 配置 | 行为 |
 | --- | --- |
 | `LogDirectory` | 日志输出目录，默认 `D:\ControlDoorData\logs`。 |
-| `RetentionDays` | 日志文件保留天数。 |
-| `MinimumLevel` | 最小记录级别。 |
+| `RetentionDays` / `DiagnosticRetentionDays` | 日常 / 诊断最长保留 30 / 7 天。 |
+| `MinimumLevel` / `DiagnosticMinimumLevel` | 两份输出独立过滤，默认 `Info` / `Debug`。 |
+| `MaxFileSizeMB` | 单文件默认 20MB，按日期和大小滚动。 |
+| `MaxTotalSizeMB` / `DiagnosticMaxTotalSizeMB` | 日常 / 诊断总量默认 512 / 2048MB；达到上限先清理旧文件。 |
+| `MaxPayloadChars` | 脱敏报文正文最多 16384 字符，超限附加截断说明。 |
 | `SlowOperationThresholdMs` | 慢操作告警阈值。 |
 
 模板已暴露并默认开启 gRPC payload 日志开关；SDK trace 仍按 `EnableSdkTrace` 配置控制。SDK 日志目录默认 `D:\ControlDoorData\logs\sdk`，ACS 抓拍目录默认 `D:\ControlDoorData\snapshots`。
@@ -120,6 +123,8 @@
 
 ## gRPC payload 日志补充
 
-当前 `Configuration/appsettings.json` 和 `Configuration/appsettings.deploy.json` 模板默认开启完整 gRPC 请求/响应日志：`EnableGrpcPayloadLogging=true`、`GrpcPayloadLogMode=Full`、`IncludeCredentialFields=true`、`IncludeFaceImageBase64=true`。该模式便于现场按 `requestId` 排查接口调用、离线补偿和设备任务，但日志可能包含密码、API Key 和人脸 Base64 原文。
+当前 `Configuration/appsettings.json` 和 `Configuration/appsettings.deploy.json` 模板默认开启诊断文件中的详细 gRPC 请求/响应日志：`EnableGrpcPayloadLogging=true`、`GrpcPayloadLogMode=Full`、`IncludeCredentialFields=false`、`IncludeFaceImageBase64=false`。凭据打码、人脸只记录长度，再按 `MaxPayloadChars` 截断。无效 JSON 仅记录长度与解析异常类型；关闭开关后不输出报文占位日志。
 
-如现场需要降低日志量或减少敏感内容落盘，可将 `GrpcPayloadLogMode` 改为 `Summary`，或关闭 `IncludeCredentialFields` / `IncludeFaceImageBase64`。
+日常文件沿用 `ControlDoor-yyyyMMdd.log` 名称，改为中文单行摘要；结构化诊断文件为 `diagnostic/ControlDoor-diagnostic-yyyyMMdd.log`，大小滚动追加序号。日常按关键状态及批次结果查看，排错时用 `requestId`、设备和任务编号关联诊断过程。离线补偿同时记录扫描请求编号、`stateId` 和 `intentVersion`。诊断目录纳入运行前可写检查，两份输出分别处理写入失败。
+
+可将 `GrpcPayloadLogMode` 改为 `Summary` 降低诊断报文量。配置在启动时加载；升级已有部署需核对显式配置值，尤其应关闭原来的凭据和图片原文开关。日志留存与现场查看流程参见 `docs/stage8/package-docs/运行前检查.md` 和 `docs/stage8/package-docs/部署说明.md`。

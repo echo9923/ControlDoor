@@ -119,3 +119,9 @@
 | 日志字段完整 | 核心字段可用于追踪一条补偿。 |
 | payload 日志开关 | 开关关闭记录摘要，开启可记录完整内容。 |
 | 扫描异常不退出 | 后台任务下一轮继续。 |
+
+## 代码复核更新（2026-09-07，R03）
+
+- 终态清理 SQL 增加未完成意图保护：任一 `permission_pending`/`permission_sync_completion_blocked`/`person_pending`/`face_pending`/`delete_person_pending`/`delete_face_pending` 为 1 的终态行不会被清理。
+- 原因：这些行是人员全局权限同步完成判断（`HasBlockingPermissionStateForEmployee`）的依据；终态失败行被清理后，其他设备的成功会把人员误标为全局同步完成。
+- 表有 `UNIQUE(device_id, employee_id)`，保留未完成行不会无界增长；`FailureRetentionDays` 继续管辖全部意图已完结的历史行。

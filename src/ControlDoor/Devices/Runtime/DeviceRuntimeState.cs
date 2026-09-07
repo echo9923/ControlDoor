@@ -18,6 +18,7 @@ namespace ControlDoor.Devices.Runtime
         private bool enabled;
         private DeviceConnectionStatus status;
         private int? sdkUserId;
+        private int? staleSdkUserId;
         private int? alarmHandle;
         private int? staleAlarmHandle;
         private bool alarmManuallyDisarmed;
@@ -233,7 +234,8 @@ namespace ControlDoor.Devices.Runtime
                     updatedAt,
                     queueInfo,
                     types,
-                    description);
+                    description,
+                    staleSdkUserId);
             }
         }
 
@@ -292,6 +294,7 @@ namespace ControlDoor.Devices.Runtime
         {
             lock (gate)
             {
+                staleSdkUserId = sdkUserId ?? staleSdkUserId;
                 if (alarmHandle.HasValue)
                 {
                     staleAlarmHandle = alarmHandle;
@@ -409,6 +412,7 @@ namespace ControlDoor.Devices.Runtime
             lock (gate)
             {
                 sdkUserId = null;
+                staleSdkUserId = null;
                 alarmHandle = null;
                 staleAlarmHandle = null;
                 status = DeviceConnectionStatus.Offline;
@@ -421,6 +425,7 @@ namespace ControlDoor.Devices.Runtime
         {
             lock (gate)
             {
+                staleSdkUserId = sdkUserId ?? staleSdkUserId;
                 sdkUserId = null;
                 alarmHandle = null;
                 staleAlarmHandle = null;
@@ -449,6 +454,7 @@ namespace ControlDoor.Devices.Runtime
 
             lock (gate)
             {
+                staleSdkUserId = sdkUserId ?? staleSdkUserId;
                 if (alarmHandle.HasValue)
                 {
                     staleAlarmHandle = alarmHandle;
@@ -533,6 +539,16 @@ namespace ControlDoor.Devices.Runtime
             {
                 isDeleting = true;
                 status = DeviceConnectionStatus.Disconnecting;
+                Touch(now);
+            }
+        }
+
+        public void CancelDeleting(DateTime now)
+        {
+            lock (gate)
+            {
+                isDeleting = false;
+                status = sdkUserId.HasValue ? DeviceConnectionStatus.Online : DeviceConnectionStatus.Offline;
                 Touch(now);
             }
         }

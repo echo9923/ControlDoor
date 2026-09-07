@@ -20,7 +20,7 @@ namespace ControlDoor.Observability
             }
 
             LogLevel parsed;
-            return Enum.TryParse(value.Trim(), ignoreCase: true, result: out parsed) ? parsed : fallback;
+            return Enum.TryParse(value.Trim(), ignoreCase: true, result: out parsed) && Enum.IsDefined(typeof(LogLevel), parsed) ? parsed : fallback;
         }
 
         public static string NormalizeOrDefault(string value, string fallback = "Info")

@@ -4,7 +4,7 @@ namespace ControlDoor.Permissions
     {
         public DeviceOperationRetryWriteResult UpsertIntent(DeviceOperationRetryIntent intent)
         {
-            return DeviceOperationRetryWriteResult.Ok(intent, "补偿意图已记录到内存响应。");
+            return DeviceOperationRetryWriteResult.Failed(intent, "DB_ERROR", "未配置补偿存储，无法持久化补偿意图。");
         }
     }
 }

@@ -113,7 +113,12 @@ namespace ControlEntradaSalida.Tests
         public static void Stage8GrpcCompatibility_BatchAndFaceLimits_StayCompatibleWithStage8Contract()
         {
             Assert.Equal(500, ReadPrivateStaticInt(typeof(PermissionSyncGrpcService), "MaxBatchSize"));
-            Assert.Equal(200 * 1024, ReadPrivateStaticInt(typeof(PermissionSyncGrpcService), "MaxFaceBytes"));
+            // 图片上限来自 FaceEnrollment 配置（复核 R09），未配置时保持契约默认 200KB。
+            Assert.Equal(200 * 1024, new ControlDoor.Configuration.FaceEnrollmentOptions().MaxFaceImageBytes);
+            using (var fixture = new Stage5Fixture())
+            {
+                Assert.Equal(200 * 1024, ReadPrivateInstanceInt(fixture.Service, "maxFaceImageBytes"));
+            }
         }
 
         [TestCase]
@@ -165,6 +170,13 @@ namespace ControlEntradaSalida.Tests
             var field = type.GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);
             Assert.NotNull(field, type.FullName + "." + fieldName);
             return (int)field.GetValue(null);
+        }
+
+        private static int ReadPrivateInstanceInt(object instance, string fieldName)
+        {
+            var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field, instance.GetType().FullName + "." + fieldName);
+            return (int)field.GetValue(instance);
         }
     }
 }

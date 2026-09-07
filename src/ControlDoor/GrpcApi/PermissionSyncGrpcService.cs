@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using ControlDoor.Configuration;
 using ControlDoor.Devices.Management;
 using ControlDoor.Devices.Runtime;
 using ControlDoor.Devices.Tasks;
@@ -27,7 +28,8 @@ namespace ControlDoor.GrpcApi
         public const string GetEnrollmentStatusFullName = "/permission.PermissionSyncService/GetEnrollmentStatus";
 
         private const int MaxBatchSize = 500;
-        private const int MaxFaceBytes = 200 * 1024;
+        private const int DefaultMaxFaceImageBytes = 200 * 1024;
+        private const int DefaultFaceCaptureTimeoutMs = 10000;
 
         private readonly DeviceRuntimeRegistry registry;
         private readonly DeviceSdkDispatcher dispatcher;
@@ -38,6 +40,8 @@ namespace ControlDoor.GrpcApi
         private readonly ServiceLogger logger;
         private readonly GrpcCallLogger grpcLogger;
         private readonly int? defaultFaceCaptureDeviceId;
+        private readonly int maxFaceImageBytes;
+        private readonly int faceCaptureTimeoutMs;
 
         public PermissionSyncGrpcService(
             DeviceRuntimeRegistry registry,
@@ -48,7 +52,8 @@ namespace ControlDoor.GrpcApi
             EnrollmentTaskStore enrollmentStore = null,
             ServiceLogger logger = null,
             int? defaultFaceCaptureDeviceId = null,
-            LogOptions logOptions = null)
+            LogOptions logOptions = null,
+            FaceEnrollmentOptions faceEnrollment = null)
         {
             this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
             this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -59,6 +64,9 @@ namespace ControlDoor.GrpcApi
             this.logger = logger;
             grpcLogger = logger == null ? null : new GrpcCallLogger(logger, logOptions);
             this.defaultFaceCaptureDeviceId = defaultFaceCaptureDeviceId;
+            // 复核 R09：人脸采集配置必须接入实际执行，未配置时保持既有固定值。
+            maxFaceImageBytes = faceEnrollment != null && faceEnrollment.MaxFaceImageBytes > 0 ? faceEnrollment.MaxFaceImageBytes : DefaultMaxFaceImageBytes;
+            faceCaptureTimeoutMs = faceEnrollment != null && faceEnrollment.CaptureTimeoutSeconds > 0 ? faceEnrollment.CaptureTimeoutSeconds * 1000 : DefaultFaceCaptureTimeoutMs;
         }
 
         public IReadOnlyList<string> MethodFullNames { get; } = new[]
@@ -113,37 +121,50 @@ namespace ControlDoor.GrpcApi
 
             foreach (var command in parsed.Items)
             {
-                foreach (var device in onlineDevices)
+                IReadOnlyDictionary<int, DeviceOperationRetryState> prepared = null;
+                if (retryWriter is DeviceOperationRetryStore persistentStore)
                 {
-                    var result = ExecutePermissionTask(device, command, context);
+                    try
+                    {
+                        prepared = persistentStore.PreparePermissionBatch(onlineDevices.Concat(offlineDevices).Select(device =>
+                            CreateRetryIntent(device, command.EmployeeId, PermissionPayload(command), command.PermissionCode, "SyncPermission", context)));
+                    }
+                    catch (Exception ex)
+                    {
+                        return Error(context, "DB_ERROR", ex.Message);
+                    }
+                }
+                var permissionOutcomes = ExecuteAcrossDeviceLanes(onlineDevices, device =>
+                    ExecutePermissionTask(device, command, context, prepared == null ? null : prepared[device.DeviceId]));
+                for (var deviceIndex = 0; deviceIndex < onlineDevices.Count; deviceIndex++)
+                {
+                    var device = onlineDevices[deviceIndex];
+                    var result = permissionOutcomes[deviceIndex];
                     var detail = ToDeviceResult(device, result);
                     var shouldQueueRetry = ShouldQueueSyncPermissionRetry(result);
-                    if (shouldQueueRetry)
-                    {
-                        detail.Queued = true;
-                    }
-
                     employeeResults[command.EmployeeId].DeviceResults.Add(detail);
                     if (!result.Success)
                     {
-                        deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
+                        RecordDeviceError(deviceErrors, dbErrors, device, command.EmployeeId, result);
                     }
 
                     if (shouldQueueRetry)
                     {
-                        var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context);
+                        var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, result.Message, context, detail, dbErrors, result);
                         queuedDetails.Add(queued);
                     }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    var queued = QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode, "设备离线，已生成补偿意图。", context);
-                    queuedDetails.Add(queued);
-                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPermission"));
+                    var detail = ToQueuedDeviceResult(device, "SyncPermission");
+                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPermission", PermissionPayload(command), command.PermissionCode,
+                        "设备离线，已生成补偿意图。", context, detail, dbErrors,
+                        prepared == null ? null : new DeviceTaskResult { RetryPersisted = true, Data = prepared[device.DeviceId] }));
+                    employeeResults[command.EmployeeId].DeviceResults.Add(detail);
                 }
 
-                if (IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
+                if (!(retryWriter is DeviceOperationRetryStore) && IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
                 {
                     TryUpdateUser(dbErrors, () => userSyncWriter.MarkPermissionSynced(command.EmployeeId, command.PermissionCode), command.EmployeeId, "MarkPermissionSynced");
                 }
@@ -153,8 +174,9 @@ namespace ControlDoor.GrpcApi
             var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
             var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
             var code = DetermineCode(parsed.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
+            if (dbErrors.Count > 0 && code == "OK") code = "DB_ERROR";
 
-            return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
+            return JsonResponse.Create(context.RequestId, code != "FAILED" && code != "DB_ERROR", code, BuildMessage(code), new Dictionary<string, object>
             {
                 ["total"] = parsed.Items.Count,
                 ["updated"] = succeededEmployees,
@@ -185,7 +207,7 @@ namespace ControlDoor.GrpcApi
             ParseResult<PersonSyncCommand> parsed;
             try
             {
-                parsed = ParsePersonCommands(requestJson);
+                parsed = ParsePersonCommands(requestJson, maxFaceImageBytes);
             }
             catch (RequestValidationException ex)
             {
@@ -212,36 +234,45 @@ namespace ControlDoor.GrpcApi
 
             foreach (var command in parsed.Items)
             {
-                foreach (var device in onlineDevices)
+                var personOutcomes = ExecuteAcrossDeviceLanes(onlineDevices, device =>
                 {
-                    var personResult = ExecutePersonTask(device, command, context);
-                    var personDetail = ToDeviceResult(device, personResult, "SyncPerson");
-                    if (!personResult.Success && personResult.Retryable)
+                    var personResult = ExecutePersonTask(device, command, context, includeFace: true);
+                    DeviceTaskResult faceResult = null;
+                    if (personResult.Success && command.HasFace)
                     {
-                        personDetail.Queued = true;
+                        faceResult = ExecuteUploadFaceTask(device, command, context, personResult.Data as DeviceOperationRetryState);
                     }
 
+                    return new PersonLaneOutcome { PersonResult = personResult, FaceResult = faceResult };
+                });
+                for (var deviceIndex = 0; deviceIndex < onlineDevices.Count; deviceIndex++)
+                {
+                    var device = onlineDevices[deviceIndex];
+                    var personResult = personOutcomes[deviceIndex].PersonResult;
+                    var faceResult = personOutcomes[deviceIndex].FaceResult;
+                    var personDetail = ToDeviceResult(device, personResult, "SyncPerson");
                     employeeResults[command.EmployeeId].DeviceResults.Add(personDetail);
                     if (!personResult.Success)
                     {
-                        deviceErrors.Add(ToDeviceError(device, command.EmployeeId, personResult));
+                        RecordDeviceError(deviceErrors, dbErrors, device, command.EmployeeId, personResult);
                         if (personResult.Retryable)
                         {
-                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context));
+                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, personResult.Message, context, personDetail, dbErrors, personResult));
+                            if (command.HasFace)
+                            {
+                                var pendingFace = ToQueuedDeviceResult(device, "UploadFace");
+                                employeeResults[command.EmployeeId].DeviceResults.Add(pendingFace);
+                                queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null,
+                                    "人员尚未下发，人脸等待人员补偿完成。", context, pendingFace, dbErrors, personResult));
+                            }
                         }
 
                         continue;
                     }
 
-                    if (command.HasFace)
+                    if (faceResult != null)
                     {
-                        var faceResult = ExecuteUploadFaceTask(device, command, context);
                         var faceDetail = ToDeviceResult(device, faceResult, "UploadFace");
-                        if (!faceResult.Success && faceResult.Retryable)
-                        {
-                            faceDetail.Queued = true;
-                        }
-
                         employeeResults[command.EmployeeId].DeviceResults.Add(faceDetail);
                         if (faceResult.Success)
                         {
@@ -249,10 +280,10 @@ namespace ControlDoor.GrpcApi
                         }
                         else
                         {
-                            deviceErrors.Add(ToDeviceError(device, command.EmployeeId, faceResult));
+                            RecordDeviceError(deviceErrors, dbErrors, device, command.EmployeeId, faceResult);
                             if (faceResult.Retryable)
                             {
-                                queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context));
+                                queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, faceResult.Message, context, faceDetail, dbErrors, faceResult));
                             }
                         }
                     }
@@ -260,12 +291,26 @@ namespace ControlDoor.GrpcApi
 
                 foreach (var device in offlineDevices)
                 {
-                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, "设备离线，已生成补偿意图。", context));
-                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPerson"));
+                    var bundledFace = command.HasFace && retryWriter is IDeviceOperationRetryExecutionStore;
+                    var personDetail = QueueOfflineRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null,
+                        context, queuedDetails, dbErrors, bundledFace ? FacePayload(command) : null);
+                    employeeResults[command.EmployeeId].DeviceResults.Add(personDetail);
                     if (command.HasFace)
                     {
-                        queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, "设备离线，已生成补偿意图。", context));
-                        employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace"));
+                        if (bundledFace)
+                        {
+                            var faceDetail = ToQueuedDeviceResult(device, "UploadFace");
+                            faceDetail.Queued = personDetail.Queued;
+                            faceDetail.Code = personDetail.Code;
+                            faceDetail.Message = personDetail.Message;
+                            employeeResults[command.EmployeeId].DeviceResults.Add(faceDetail);
+                            queuedDetails.Add(CreateRetryIntent(device, command.EmployeeId, FacePayload(command), null,
+                                "UploadFace", context).ToDetail(faceDetail.Code, faceDetail.Message));
+                        }
+                        else
+                        {
+                            employeeResults[command.EmployeeId].DeviceResults.Add(QueueOfflineRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, context, queuedDetails, dbErrors));
+                        }
                     }
                 }
 
@@ -279,8 +324,9 @@ namespace ControlDoor.GrpcApi
             var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
             var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
             var code = DetermineCode(parsed.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
+            if (dbErrors.Count > 0 && code == "OK") code = "DB_ERROR";
 
-            return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
+            return JsonResponse.Create(context.RequestId, code != "FAILED" && code != "DB_ERROR", code, BuildMessage(code), new Dictionary<string, object>
             {
                 ["total"] = parsed.Items.Count,
                 ["succeeded"] = succeededEmployees,
@@ -313,7 +359,7 @@ namespace ControlDoor.GrpcApi
             IReadOnlyList<DeviceRuntimeSnapshot> devices;
             try
             {
-                request = ParseTargetedFaceRequest(requestJson);
+                request = ParseTargetedFaceRequest(requestJson, maxFaceImageBytes);
                 devices = ResolveTargetAcsDevices(request.DeviceIds);
             }
             catch (RequestValidationException ex)
@@ -330,19 +376,17 @@ namespace ControlDoor.GrpcApi
             var employeeResults = CreateEmployeeResults(request.Items.Select(item => item.EmployeeId));
             var queuedDetails = new List<object>();
             var deviceErrors = new List<object>();
+            var dbErrors = new List<object>();
             var facesUploaded = 0;
 
             foreach (var command in request.Items)
             {
-                foreach (var device in onlineDevices)
+                var faceOutcomes = ExecuteAcrossDeviceLanes(onlineDevices, device => ExecuteUploadFaceTask(device, command, context));
+                for (var deviceIndex = 0; deviceIndex < onlineDevices.Count; deviceIndex++)
                 {
-                    var result = ExecuteUploadFaceTask(device, command, context);
+                    var device = onlineDevices[deviceIndex];
+                    var result = faceOutcomes[deviceIndex];
                     var detail = ToDeviceResult(device, result, "UploadFace");
-                    if (!result.Success && result.Retryable)
-                    {
-                        detail.Queued = true;
-                    }
-
                     employeeResults[command.EmployeeId].DeviceResults.Add(detail);
                     if (result.Success)
                     {
@@ -350,18 +394,17 @@ namespace ControlDoor.GrpcApi
                     }
                     else
                     {
-                        deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
+                        RecordDeviceError(deviceErrors, dbErrors, device, command.EmployeeId, result);
                         if (result.Retryable)
                         {
-                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, result.Message, context));
+                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, result.Message, context, detail, dbErrors, result));
                         }
                     }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, "设备离线，已生成补偿意图。", context));
-                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "UploadFace"));
+                    employeeResults[command.EmployeeId].DeviceResults.Add(QueueOfflineRetry(device, command.EmployeeId, "UploadFace", FacePayload(command), null, context, queuedDetails, dbErrors));
                 }
             }
 
@@ -369,8 +412,9 @@ namespace ControlDoor.GrpcApi
             var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
             var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
             var code = DetermineCode(request.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
+            if (dbErrors.Count > 0 && code == "OK") code = "DB_ERROR";
 
-            return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
+            return JsonResponse.Create(context.RequestId, code != "FAILED" && code != "DB_ERROR", code, BuildMessage(code), new Dictionary<string, object>
             {
                 ["total"] = request.Items.Count,
                 ["succeeded"] = succeededEmployees,
@@ -381,7 +425,7 @@ namespace ControlDoor.GrpcApi
                 ["queuedDetails"] = queuedDetails,
                 ["items"] = employeeResults.Values.Select(item => item.ToDictionary()).ToList(),
                 ["deviceErrors"] = deviceErrors,
-                ["dbErrors"] = new List<object>()
+                ["dbErrors"] = dbErrors
             });
         }
 
@@ -403,7 +447,7 @@ namespace ControlDoor.GrpcApi
             IReadOnlyList<DeviceRuntimeSnapshot> devices;
             try
             {
-                request = ParseTargetedPersonRequest(requestJson);
+                request = ParseTargetedPersonRequest(requestJson, maxFaceImageBytes);
                 devices = ResolveTargetAcsDevices(request.DeviceIds);
             }
             catch (RequestValidationException ex)
@@ -420,33 +464,30 @@ namespace ControlDoor.GrpcApi
             var employeeResults = CreateEmployeeResults(request.Items.Select(item => item.EmployeeId));
             var queuedDetails = new List<object>();
             var deviceErrors = new List<object>();
+            var dbErrors = new List<object>();
 
             foreach (var command in request.Items)
             {
-                foreach (var device in onlineDevices)
+                var personOutcomes = ExecuteAcrossDeviceLanes(onlineDevices, device => ExecutePersonTask(device, command, context));
+                for (var deviceIndex = 0; deviceIndex < onlineDevices.Count; deviceIndex++)
                 {
-                    var result = ExecutePersonTask(device, command, context);
+                    var device = onlineDevices[deviceIndex];
+                    var result = personOutcomes[deviceIndex];
                     var detail = ToDeviceResult(device, result, "SyncPerson");
-                    if (!result.Success && result.Retryable)
-                    {
-                        detail.Queued = true;
-                    }
-
                     employeeResults[command.EmployeeId].DeviceResults.Add(detail);
                     if (!result.Success)
                     {
-                        deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
+                        RecordDeviceError(deviceErrors, dbErrors, device, command.EmployeeId, result);
                         if (result.Retryable)
                         {
-                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, result.Message, context));
+                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, result.Message, context, detail, dbErrors, result));
                         }
                     }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, "设备离线，已生成补偿意图。", context));
-                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, "SyncPerson"));
+                    employeeResults[command.EmployeeId].DeviceResults.Add(QueueOfflineRetry(device, command.EmployeeId, "SyncPerson", PersonPayload(command), null, context, queuedDetails, dbErrors));
                 }
             }
 
@@ -454,8 +495,9 @@ namespace ControlDoor.GrpcApi
             var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
             var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
             var code = DetermineCode(request.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
+            if (dbErrors.Count > 0 && code == "OK") code = "DB_ERROR";
 
-            return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
+            return JsonResponse.Create(context.RequestId, code != "FAILED" && code != "DB_ERROR", code, BuildMessage(code), new Dictionary<string, object>
             {
                 ["total"] = request.Items.Count,
                 ["succeeded"] = succeededEmployees,
@@ -465,7 +507,7 @@ namespace ControlDoor.GrpcApi
                 ["queuedDetails"] = queuedDetails,
                 ["items"] = employeeResults.Values.Select(item => item.ToDictionary()).ToList(),
                 ["deviceErrors"] = deviceErrors,
-                ["dbErrors"] = new List<object>()
+                ["dbErrors"] = dbErrors
             });
         }
 
@@ -564,7 +606,7 @@ namespace ControlDoor.GrpcApi
             var succeeded = results.Values.Count(item => item.DeviceResults.Any(device => device.Success));
             var failed = failedEmployees.Count;
             var code = failed > 0 && succeeded > 0 ? "PARTIAL_SUCCESS" : failed > 0 ? "FAILED" : "OK";
-            return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
+            return JsonResponse.Create(context.RequestId, code != "FAILED" && code != "DB_ERROR", code, BuildMessage(code), new Dictionary<string, object>
             {
                 ["total"] = parsed.Items.Count,
                 ["succeeded"] = succeeded,
@@ -675,10 +717,11 @@ namespace ControlDoor.GrpcApi
 
             var capture = result.Data as FaceCaptureResult;
             var imageBytes = capture == null ? new byte[0] : capture.ImageBytes ?? new byte[0];
-            if (imageBytes.Length > MaxFaceBytes)
+            if (imageBytes.Length > maxFaceImageBytes)
             {
-                enrollmentStore.Fail(taskId, "FACE_TOO_LARGE", "采集图片超过 200KB。");
-                frames.Add(JsonResponse.Create(context.RequestId, false, "FACE_TOO_LARGE", "采集图片超过 200KB。", new Dictionary<string, object>
+                var tooLargeMessage = "采集图片超过 " + (maxFaceImageBytes / 1024) + "KB。";
+                enrollmentStore.Fail(taskId, "FACE_TOO_LARGE", tooLargeMessage);
+                frames.Add(JsonResponse.Create(context.RequestId, false, "FACE_TOO_LARGE", tooLargeMessage, new Dictionary<string, object>
                 {
                     ["taskId"] = taskId,
                     ["employeeId"] = employeeId,
@@ -687,7 +730,7 @@ namespace ControlDoor.GrpcApi
                     ["faceImageFormat"] = "jpg",
                     ["qualityScore"] = 0,
                     ["recommend"] = false
-                }, new List<string> { "采集图片超过 200KB。" }));
+                }, new List<string> { tooLargeMessage }));
                 return frames;
             }
 
@@ -801,26 +844,20 @@ namespace ControlDoor.GrpcApi
                         ? ExecuteDeleteFaceTask(device, command.EmployeeId, context)
                         : ExecuteDeletePersonTask(device, command.EmployeeId, context);
                     var detail = ToDeviceResult(device, result, operation);
-                    if (!result.Success && result.Retryable)
-                    {
-                        detail.Queued = true;
-                    }
-
                     employeeResults[command.EmployeeId].DeviceResults.Add(detail);
                     if (!result.Success)
                     {
-                        deviceErrors.Add(ToDeviceError(device, command.EmployeeId, result));
+                        RecordDeviceError(deviceErrors, dbErrors, device, command.EmployeeId, result);
                         if (result.Retryable)
                         {
-                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context));
+                            queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, result.Message, context, detail, dbErrors, result));
                         }
                     }
                 }
 
                 foreach (var device in offlineDevices)
                 {
-                    queuedDetails.Add(QueueRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, "设备离线，已生成补偿意图。", context));
-                    employeeResults[command.EmployeeId].DeviceResults.Add(ToQueuedDeviceResult(device, operation));
+                    employeeResults[command.EmployeeId].DeviceResults.Add(QueueOfflineRetry(device, command.EmployeeId, operation, EmployeePayload(command.EmployeeId), null, context, queuedDetails, dbErrors));
                 }
 
                 if (operation == "DeletePerson" && IsEmployeeOperationComplete(employeeResults[command.EmployeeId]))
@@ -833,7 +870,8 @@ namespace ControlDoor.GrpcApi
             var failedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => !device.Success && !device.Queued));
             var queuedEmployees = employeeResults.Values.Count(item => item.DeviceResults.Any(device => device.Queued));
             var code = DetermineCode(parsed.Items.Count, succeededEmployees, failedEmployees, queuedEmployees);
-            return JsonResponse.Create(context.RequestId, code != "FAILED", code, BuildMessage(code), new Dictionary<string, object>
+            if (dbErrors.Count > 0 && code == "OK") code = "DB_ERROR";
+            return JsonResponse.Create(context.RequestId, code != "FAILED" && code != "DB_ERROR", code, BuildMessage(code), new Dictionary<string, object>
             {
                 ["total"] = parsed.Items.Count,
                 ["succeeded"] = succeededEmployees,
@@ -847,9 +885,10 @@ namespace ControlDoor.GrpcApi
             });
         }
 
-        private DeviceTaskResult ExecutePermissionTask(DeviceRuntimeSnapshot device, PermissionCommand command, GrpcRequestContext context)
+        private DeviceTaskResult ExecutePermissionTask(DeviceRuntimeSnapshot device, PermissionCommand command, GrpcRequestContext context, DeviceOperationRetryState existingState = null)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.SyncPermission, "SyncPermission", context, async taskContext =>
+            return SubmitMutationTask(device, DeviceTaskType.SyncPermission, "SyncPermission", context,
+                CreateRetryIntent(device, command.EmployeeId, PermissionPayload(command), command.PermissionCode, "SyncPermission", context), async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -867,12 +906,13 @@ namespace ControlDoor.GrpcApi
                     ProvisioningMode = PersonProvisioningMode.Permission
                 }, taskContext.CancellationToken).ConfigureAwait(false);
                 return DeviceTaskResult.FromTask(taskContext.Task, true, "OK", "权限同步成功。", snapshot.Status, started, DateTime.Now);
-            });
+            }, existingState);
         }
 
-        private DeviceTaskResult ExecutePersonTask(DeviceRuntimeSnapshot device, PersonSyncCommand command, GrpcRequestContext context)
+        private DeviceTaskResult ExecutePersonTask(DeviceRuntimeSnapshot device, PersonSyncCommand command, GrpcRequestContext context, bool includeFace = false)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.SyncPerson, "SyncPerson", context, async taskContext =>
+            return SubmitMutationTask(device, DeviceTaskType.SyncPerson, "SyncPerson", context,
+                CreateRetryIntent(device, command.EmployeeId, PersonPayload(command), null, "SyncPerson", context, includeFace && command.HasFace ? FacePayload(command) : null), async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -892,9 +932,10 @@ namespace ControlDoor.GrpcApi
             });
         }
 
-        private DeviceTaskResult ExecuteUploadFaceTask(DeviceRuntimeSnapshot device, PersonSyncCommand command, GrpcRequestContext context)
+        private DeviceTaskResult ExecuteUploadFaceTask(DeviceRuntimeSnapshot device, PersonSyncCommand command, GrpcRequestContext context, DeviceOperationRetryState existingState = null)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.UploadFace, "UploadFace", context, async taskContext =>
+            return SubmitMutationTask(device, DeviceTaskType.UploadFace, "UploadFace", context,
+                CreateRetryIntent(device, command.EmployeeId, FacePayload(command), null, "UploadFace", context), async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -908,16 +949,17 @@ namespace ControlDoor.GrpcApi
                 await gateway.UploadFaceAsync(new UploadFaceRequest
                 {
                     UserId = snapshot.SdkUserId.Value,
-                    MaxImageBytes = MaxFaceBytes,
+                    MaxImageBytes = maxFaceImageBytes,
                     Face = command.ToFaceInfo()
                 }, taskContext.CancellationToken).ConfigureAwait(false);
                 return DeviceTaskResult.FromTask(taskContext.Task, true, "OK", "人脸下发成功。", snapshot.Status, started, DateTime.Now);
-            });
+            }, existingState);
         }
 
         private DeviceTaskResult ExecuteDeleteFaceTask(DeviceRuntimeSnapshot device, string employeeId, GrpcRequestContext context)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.DeleteFace, "DeleteFace", context, async taskContext =>
+            return SubmitMutationTask(device, DeviceTaskType.DeleteFace, "DeleteFace", context,
+                CreateRetryIntent(device, employeeId, EmployeePayload(employeeId), null, "DeleteFace", context), async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -935,7 +977,8 @@ namespace ControlDoor.GrpcApi
 
         private DeviceTaskResult ExecuteDeletePersonTask(DeviceRuntimeSnapshot device, string employeeId, GrpcRequestContext context)
         {
-            return SubmitGatewayTask(device, DeviceTaskType.DeletePerson, "DeletePerson", context, async taskContext =>
+            return SubmitMutationTask(device, DeviceTaskType.DeletePerson, "DeletePerson", context,
+                CreateRetryIntent(device, employeeId, EmployeePayload(employeeId), null, "DeletePerson", context), async taskContext =>
             {
                 var started = DateTime.Now;
                 var snapshot = taskContext.SnapshotBeforeExecution;
@@ -1012,6 +1055,7 @@ namespace ControlDoor.GrpcApi
 
         private DeviceTaskResult ExecuteCaptureFaceTask(DeviceRuntimeSnapshot device, string employeeId, GrpcRequestContext context)
         {
+            // 任务期限 = 采集超时 + 5s 余量：避免 dispatcher 默认超时先于采集窗口终止任务（复核 R09）。
             return SubmitGatewayTask(device, DeviceTaskType.CaptureFace, "CaptureFace", context, async taskContext =>
             {
                 var started = DateTime.Now;
@@ -1028,10 +1072,99 @@ namespace ControlDoor.GrpcApi
                 var result = DeviceTaskResult.FromTask(taskContext.Task, true, "OK", "采集成功。", snapshot.Status, started, DateTime.Now);
                 result.Data = capture;
                 return result;
-            });
+            }, faceCaptureTimeoutMs + 5000);
         }
 
-        private DeviceTaskResult SubmitGatewayTask(DeviceRuntimeSnapshot device, DeviceTaskType taskType, string operationName, GrpcRequestContext context, Func<DeviceTaskContext, System.Threading.Tasks.Task<DeviceTaskResult>> executeAsync)
+        private static DeviceOperationRetryIntent CreateRetryIntent(DeviceRuntimeSnapshot device, string employeeId,
+            IDictionary<string, object> payload, int? permissionLevel, string operation, GrpcRequestContext context,
+            IDictionary<string, object> relatedFace = null)
+        {
+            return new DeviceOperationRetryIntent
+            {
+                DeviceId = device.DeviceId,
+                EmployeeId = employeeId,
+                Operation = operation,
+                PermissionLevel = permissionLevel,
+                PayloadJson = payload == null ? null : JsonRequestReader.Serialize(payload),
+                RelatedFacePayloadJson = relatedFace == null ? null : JsonRequestReader.Serialize(relatedFace),
+                RequestId = context.RequestId,
+                NextRetryAt = DateTime.Now.AddMinutes(1)
+            };
+        }
+
+        private DeviceTaskResult SubmitMutationTask(DeviceRuntimeSnapshot device, DeviceTaskType taskType,
+            string operationName, GrpcRequestContext context, DeviceOperationRetryIntent intent,
+            Func<DeviceTaskContext, System.Threading.Tasks.Task<DeviceTaskResult>> executeAsync,
+            DeviceOperationRetryState existingState = null)
+        {
+            var store = retryWriter as IDeviceOperationRetryExecutionStore;
+            if (store == null)
+            {
+                return SubmitGatewayTask(device, taskType, operationName, context, executeAsync);
+            }
+
+            var state = existingState;
+            try
+            {
+                if (state == null)
+                {
+                    var written = store.UpsertIntent(intent);
+                    if (!written.Success)
+                    {
+                        return new DeviceTaskResult { Code = "DB_ERROR", Message = written.Message };
+                    }
+                    state = store.LoadIntent(written.Intent);
+                }
+                if (state == null)
+                {
+                    return new DeviceTaskResult { Code = "SUPERSEDED", Message = "请求已被新意图替代。" };
+                }
+
+                RetryOperationNames.TryParse(operationName, out var operation);
+                var result = SubmitGatewayTask(device, taskType, operationName, context, async taskContext =>
+                {
+                    DeviceTaskResult completed;
+                    try
+                    {
+                        if (!store.IsCurrent(state))
+                        {
+                            return DeviceTaskResult.Rejected(taskContext.Task, "SUPERSEDED", "请求已被新意图替代。");
+                        }
+                        try
+                        {
+                            completed = await executeAsync(taskContext).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            completed = MapGatewayException(taskContext.Task, ex, taskContext.SnapshotBeforeExecution);
+                        }
+                        store.CompleteOnlineOperation(state, operation, completed);
+                    }
+                    catch (Exception ex)
+                    {
+                        completed = DeviceTaskResult.Rejected(taskContext.Task, "DB_ERROR", ex.Message);
+                        completed.Retryable = true;
+                    }
+                    completed.RetryPersisted = true;
+                    completed.Data = state;
+                    return completed;
+                });
+                result.RetryPersisted = true;
+                result.Data = state;
+                if (!result.Success && (result.Code == "TIMEOUT" || result.Code == "CANCELLED" ||
+                    result.Code == "QUEUE_FULL" || result.Code == "DEVICE_OFFLINE" || result.Code == "DEVICE_MANUALLY_DISCONNECTED"))
+                {
+                    result.Retryable = true;
+                }
+                return result;
+            }
+            catch (Exception ex)
+            {
+                return new DeviceTaskResult { Code = "DB_ERROR", Message = ex.Message };
+            }
+        }
+
+        private DeviceTaskResult SubmitGatewayTask(DeviceRuntimeSnapshot device, DeviceTaskType taskType, string operationName, GrpcRequestContext context, Func<DeviceTaskContext, System.Threading.Tasks.Task<DeviceTaskResult>> executeAsync, int? timeoutMilliseconds = null)
         {
             var task = new DeviceSdkTask(device.DeviceId, taskType, operationName, async taskContext =>
             {
@@ -1049,11 +1182,23 @@ namespace ControlDoor.GrpcApi
             task.WaitMode = DeviceTaskWaitMode.WaitForResult;
             task.RequestId = context.RequestId ?? string.Empty;
             task.CorrelationId = context.CorrelationId ?? context.RequestId ?? string.Empty;
+            if (timeoutMilliseconds.HasValue)
+            {
+                task.TimeoutMilliseconds = timeoutMilliseconds.Value;
+            }
+
             return dispatcher.SubmitAndWaitAsync(task, context.CancellationToken).GetAwaiter().GetResult();
         }
 
         private DeviceTaskResult MapGatewayException(DeviceSdkTask task, Exception ex, DeviceRuntimeSnapshot snapshot)
         {
+            logger?.Debug("PermissionSync", "设备接口异常详细信息。", new LogFields
+            {
+                RequestId = task.RequestId,
+                DeviceId = task.DeviceId,
+                OperationName = task.OperationName,
+                Exception = ex?.ToString()
+            });
             var started = task.StartedAt ?? DateTime.Now;
             var status = snapshot == null ? DeviceConnectionStatus.Unknown : snapshot.Status;
             var gatewayEx = ex as DeviceGatewayException;
@@ -1075,7 +1220,28 @@ namespace ControlDoor.GrpcApi
             return DeviceTaskResult.FromTask(task, false, "DEVICE_ERROR", ex == null ? "设备操作失败。" : ex.Message, status, started, DateTime.Now);
         }
 
-        private object QueueRetry(DeviceRuntimeSnapshot device, string employeeId, string operation, IDictionary<string, object> payload, int? permissionLevel, string message, GrpcRequestContext context = null)
+        private static void RecordDeviceError(IList<object> deviceErrors, IList<object> dbErrors,
+            DeviceRuntimeSnapshot device, string employeeId, DeviceTaskResult result)
+        {
+            var error = ToDeviceError(device, employeeId, result);
+            deviceErrors.Add(error);
+            if (result.Code == "DB_ERROR")
+            {
+                dbErrors.Add(error);
+            }
+        }
+
+        private DeviceOperationDetail QueueOfflineRetry(DeviceRuntimeSnapshot device, string employeeId, string operation,
+            IDictionary<string, object> payload, int? permissionLevel, GrpcRequestContext context,
+            IList<object> queuedDetails, IList<object> dbErrors, IDictionary<string, object> relatedFace = null)
+        {
+            var detail = ToQueuedDeviceResult(device, operation);
+            queuedDetails.Add(QueueRetry(device, employeeId, operation, payload, permissionLevel,
+                "设备离线，已生成补偿意图。", context, detail, dbErrors, relatedFace: relatedFace));
+            return detail;
+        }
+
+        private object QueueRetry(DeviceRuntimeSnapshot device, string employeeId, string operation, IDictionary<string, object> payload, int? permissionLevel, string message, GrpcRequestContext context, DeviceOperationDetail detail, IList<object> dbErrors, DeviceTaskResult priorResult = null, IDictionary<string, object> relatedFace = null)
         {
             var payloadJson = payload == null ? null : JsonRequestReader.Serialize(payload);
             var intent = new DeviceOperationRetryIntent
@@ -1088,12 +1254,30 @@ namespace ControlDoor.GrpcApi
                     ? payloadJson
                     : null,
                 PayloadJson = payloadJson,
+                RelatedFacePayloadJson = relatedFace == null ? null : JsonRequestReader.Serialize(relatedFace),
                 RequestId = context == null ? null : context.RequestId,
                 LastError = message,
                 CreatedAt = DateTime.Now,
                 NextRetryAt = DateTime.Now
             };
-            var written = retryWriter.UpsertIntent(intent);
+            DeviceOperationRetryWriteResult written;
+            try
+            {
+                written = priorResult != null && priorResult.RetryPersisted
+                    ? DeviceOperationRetryWriteResult.Ok(intent)
+                    : retryWriter.UpsertIntent(intent);
+            }
+            catch (Exception ex)
+            {
+                written = DeviceOperationRetryWriteResult.Failed(intent, "DB_ERROR", ex.Message);
+            }
+            detail.Queued = written.Success;
+            if (!written.Success)
+            {
+                detail.Code = "DB_ERROR";
+                detail.Message = written.Message;
+                dbErrors.Add(intent.ToDetail("DB_ERROR", written.Message));
+            }
             var fields = new LogFields
             {
                 RequestId = intent.RequestId,
@@ -1106,7 +1290,9 @@ namespace ControlDoor.GrpcApi
             fields.Extra["permissionLevel"] = permissionLevel.HasValue ? permissionLevel.Value.ToString() : string.Empty;
             fields.Extra["message"] = message ?? string.Empty;
             fields.Extra["writeMessage"] = written.Message ?? string.Empty;
-            logger?.Info("DeviceOperationRetry", "Retry intent queued from gRPC.", fields);
+            fields.Extra["intentVersion"] = written.Intent?.IntentVersion.ToString();
+            logger?.Write(written.Success ? LogLevel.Debug : LogLevel.Error, "DeviceOperationRetry",
+                written.Success ? "接口补偿意图已持久化，等待设备执行。" : "接口补偿意图持久化失败。", fields);
             return intent.ToDetail(written.Code, written.Success ? message : written.Message);
         }
 
@@ -1139,7 +1325,7 @@ namespace ControlDoor.GrpcApi
             return ParseResult<PermissionCommand>.Ok(commands);
         }
 
-        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedFaceRequest(string requestJson)
+        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedFaceRequest(string requestJson, int maxFaceImageBytes)
         {
             var deviceIds = ParseRequiredDeviceIds(requestJson);
             var root = JsonRequestReader.ParseAny(requestJson);
@@ -1160,7 +1346,7 @@ namespace ControlDoor.GrpcApi
                 {
                     EmployeeId = employeeId,
                     FaceImageBase64 = NormalizeBase64(faceBase64),
-                    FaceImageBytes = DecodeFaceBytes(faceBase64),
+                    FaceImageBytes = DecodeFaceBytes(faceBase64, maxFaceImageBytes),
                     FaceImageFormat = JsonRequestReader.GetString(values, "face_image_format", "faceImageFormat") ?? InferFormat(faceBase64)
                 });
             }
@@ -1173,7 +1359,7 @@ namespace ControlDoor.GrpcApi
             return new TargetedSyncRequest<PersonSyncCommand>(deviceIds, commands);
         }
 
-        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedPersonRequest(string requestJson)
+        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedPersonRequest(string requestJson, int maxFaceImageBytes)
         {
             var deviceIds = ParseRequiredDeviceIds(requestJson);
             var root = JsonRequestReader.ParseAny(requestJson);
@@ -1195,7 +1381,7 @@ namespace ControlDoor.GrpcApi
                 }
             }
 
-            var people = ParsePersonCommands(requestJson);
+            var people = ParsePersonCommands(requestJson, maxFaceImageBytes);
             if (!people.Success)
             {
                 throw new RequestValidationException(people.Code, people.Message);
@@ -1296,7 +1482,7 @@ namespace ControlDoor.GrpcApi
             return result;
         }
 
-        private static ParseResult<PersonSyncCommand> ParsePersonCommands(string requestJson)
+        private static ParseResult<PersonSyncCommand> ParsePersonCommands(string requestJson, int maxFaceImageBytes)
         {
             var root = JsonRequestReader.ParseAny(requestJson);
             var items = JsonRequestReader.ReadItems(root, "people", "items", "records", "data");
@@ -1314,7 +1500,7 @@ namespace ControlDoor.GrpcApi
                 }
 
                 var faceBase64 = JsonRequestReader.GetString(values, "face_image_base64", "faceImageBase64", "face_base64", "faceBase64", "face_image");
-                var faceBytes = DecodeFaceBytes(faceBase64);
+                var faceBytes = DecodeFaceBytes(faceBase64, maxFaceImageBytes);
                 commands.Add(new PersonSyncCommand
                 {
                     EmployeeId = employeeId,
@@ -1389,6 +1575,86 @@ namespace ControlDoor.GrpcApi
                 .ToList();
         }
 
+        // 按设备工作线程分道并行执行 SDK 任务（复核 R08）：同道（同设备）保持串行和人员先于人脸的顺序，
+        // 跨道并行，一个慢设备不再拖延其他工作线程上的空闲设备。结果按传入设备顺序返回，
+        // 便于后续汇总继续以单线程操作非线程安全的列表；异常抛出首个原始异常，语义与串行一致。
+        private List<T> ExecuteAcrossDeviceLanes<T>(List<DeviceRuntimeSnapshot> devices, Func<DeviceRuntimeSnapshot, T> work)
+        {
+            if (devices.Count <= 1)
+            {
+                return RunSerially(devices, work);
+            }
+
+            var groups = devices.GroupBy(device => ResolveDeviceLane(device.DeviceId)).ToList();
+            if (groups.Count <= 1)
+            {
+                return RunSerially(devices, work);
+            }
+
+            var outputs = new T[devices.Count];
+            var outputIndexByDevice = new Dictionary<int, int>(devices.Count);
+            for (var i = 0; i < devices.Count; i++)
+            {
+                outputIndexByDevice[devices[i].DeviceId] = i;
+            }
+
+            var laneErrors = new List<Exception>();
+            var errorGate = new object();
+            var laneTasks = new List<System.Threading.Tasks.Task>();
+            foreach (var group in groups)
+            {
+                laneTasks.Add(System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        foreach (var device in group)
+                        {
+                            outputs[outputIndexByDevice[device.DeviceId]] = work(device);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        lock (errorGate)
+                        {
+                            laneErrors.Add(ex);
+                        }
+                    }
+                }));
+            }
+
+            System.Threading.Tasks.Task.WaitAll(laneTasks.ToArray());
+            if (laneErrors.Count > 0)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(laneErrors[0]).Throw();
+            }
+
+            return outputs.ToList();
+        }
+
+        private static List<T> RunSerially<T>(List<DeviceRuntimeSnapshot> devices, Func<DeviceRuntimeSnapshot, T> work)
+        {
+            var results = new List<T>(devices.Count);
+            foreach (var device in devices)
+            {
+                results.Add(work(device));
+            }
+
+            return results;
+        }
+
+        private int ResolveDeviceLane(int deviceId)
+        {
+            var route = registry.TryGetWorkerRoute(deviceId);
+            return route.WorkerIndex ?? -1;
+        }
+
+        private sealed class PersonLaneOutcome
+        {
+            public DeviceTaskResult PersonResult;
+
+            public DeviceTaskResult FaceResult;
+        }
+
         private IReadOnlyList<DeviceRuntimeSnapshot> GetFaceCaptureTargetDevices()
         {
             return GetTargetDevices()
@@ -1422,7 +1688,7 @@ namespace ControlDoor.GrpcApi
             return value.Trim();
         }
 
-        private static byte[] DecodeFaceBytes(string value)
+        private static byte[] DecodeFaceBytes(string value, int maxFaceImageBytes)
         {
             var normalized = NormalizeBase64(value);
             if (string.IsNullOrWhiteSpace(normalized))
@@ -1433,9 +1699,9 @@ namespace ControlDoor.GrpcApi
             try
             {
                 var bytes = Convert.FromBase64String(normalized);
-                if (bytes.Length > MaxFaceBytes)
+                if (bytes.Length > maxFaceImageBytes)
                 {
-                    throw new RequestValidationException("FACE_TOO_LARGE", "人脸图片超过 200KB。");
+                    throw new RequestValidationException("FACE_TOO_LARGE", "人脸图片超过 " + (maxFaceImageBytes / 1024) + "KB。");
                 }
 
                 return bytes;
@@ -1646,6 +1912,8 @@ namespace ControlDoor.GrpcApi
                     return "部分处理成功，失败或离线项已在明细中返回。";
                 case "FAILED":
                     return "处理失败。";
+                case "DB_ERROR":
+                    return "设备操作已完成，但同步状态写入失败，请查看 dbErrors 并重试请求。";
                 default:
                     return "处理完成。";
             }

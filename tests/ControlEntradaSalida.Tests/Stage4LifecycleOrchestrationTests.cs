@@ -442,6 +442,8 @@ namespace ControlEntradaSalida.Tests
                 fixture.Lifecycle.SubmitHealthCheck(1, wait: true, requestId: "h3");
                 WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.Status == DeviceConnectionStatus.ReconnectPending, "reconnect was not scheduled.");
                 fixture.Gateway.ConfigureResult("GetDeviceInfoAsync", fixture.Gateway.DeviceInfo);
+                fixture.DelayedScheduler.StartAsync(new ControlDoor.Runtime.BackgroundTaskContext(
+                    "reconnect-test", System.Threading.CancellationToken.None, null)).GetAwaiter().GetResult();
                 WaitUntil(() => fixture.Gateway.Calls.Count(call => call.MethodName == "LoginAsync") >= 2, "reconnect login was not attempted.");
                 WaitUntil(() => fixture.Gateway.Calls.Count(call => call.MethodName == "SetAlarmAsync") >= 2, "rearm was not attempted.");
 
@@ -718,7 +720,7 @@ namespace ControlEntradaSalida.Tests
                 WaitUntil(() => fixture.Registry.TryGetByDeviceId(1).Snapshot.AlarmHandle.HasValue, "alarm was not armed.");
                 var disconnect = fixture.Lifecycle.DisconnectDevice(1, "req-log-disconnect");
 
-                var text = File.ReadAllText(logger.CurrentLogPath);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
                 Assert.True(login.Success);
                 Assert.True(disconnect.Success);
                 Assert.Contains("message=\"设备登录成功。\"", text);

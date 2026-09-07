@@ -58,6 +58,9 @@ namespace ControlDoor.Devices.Workers
 
         public Func<DeviceSdkTask> TaskFactory { get; }
 
+        // 可选完成观察者：投递被接受后由调度器挂接，接收任务最终结果（含执行前过期）。
+        public Action<DeviceSdkTask, DeviceTaskResult> CompletionObserver { get; set; }
+
         public string CancellationReason { get; private set; } = string.Empty;
 
         public string Source { get; }

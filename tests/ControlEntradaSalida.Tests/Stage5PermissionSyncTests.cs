@@ -90,10 +90,17 @@ namespace ControlEntradaSalida.Tests
                 Assert.Equal("OK", response["code"]);
                 Assert.Equal(3, fixture.Gateway.Calls.Count(call => call.MethodName == "UpsertPersonAsync"));
                 Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
-                var persons = fixture.UpsertPersons("10001").ToList();
-                Assert.Equal(true, persons[0].Enabled);
-                Assert.Equal(false, persons[1].Enabled);
-                Assert.Equal(false, persons[2].Enabled);
+                // 设备按工作线程分道并行下发（复核 R08），网关调用顺序不再稳定；
+                // 按设备会话 UserId 断言：设备1（办公区域）启用，设备2/3 禁用。
+                var enabledByDevice = fixture.Gateway.Calls
+                    .Where(call => call.MethodName == "UpsertPersonAsync")
+                    .Select(call => (UpsertPersonRequest)call.Request)
+                    .Where(request => request.Person.EmployeeId == "10001")
+                    .ToDictionary(request => request.UserId, request => request.Person.Enabled);
+                Assert.Equal(3, enabledByDevice.Count);
+                Assert.Equal(true, enabledByDevice[1]);
+                Assert.Equal(false, enabledByDevice[2]);
+                Assert.Equal(false, enabledByDevice[3]);
             }
         }
 
@@ -585,6 +592,8 @@ namespace ControlEntradaSalida.Tests
 
         public ControlDoor.Devices.Runtime.DeviceRuntimeRegistry Registry => inner.Registry;
 
+        public ControlDoor.Devices.Workers.DeviceSdkDispatcher Dispatcher => inner.Dispatcher;
+
         public RecordingRetryWriter RetryWriter { get; }
 
         public RecordingUserSyncStatusWriter UserWriter { get; }
@@ -657,8 +666,8 @@ namespace ControlEntradaSalida.Tests
 
         public string ReadLog()
         {
-            return System.IO.File.Exists(logger.CurrentLogPath)
-                ? System.IO.File.ReadAllText(logger.CurrentLogPath)
+            return System.IO.File.Exists(logger.CurrentDiagnosticLogPath)
+                ? System.IO.File.ReadAllText(logger.CurrentDiagnosticLogPath)
                 : string.Empty;
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ControlDoor.Devices.Tasks;
 using ControlDoor.Observability;
 using ControlDoor.Runtime;
 
@@ -130,7 +131,7 @@ namespace ControlDoor.Devices.Workers
                 Monitor.PulseAll(gate);
             }
 
-            logger?.Info("DelayedDeviceTaskScheduler", "Delayed task cancelled.", new LogFields { DeviceId = task.DeviceId, OperationName = task.TaskType.ToString() });
+            logger?.Debug("DelayedDeviceTaskScheduler", "延迟任务已取消。", new LogFields { DeviceId = task.DeviceId, OperationName = task.TaskType.ToString() });
             return true;
         }
 
@@ -148,7 +149,7 @@ namespace ControlDoor.Devices.Workers
                 Monitor.PulseAll(gate);
             }
 
-            logger?.Info("DelayedDeviceTaskScheduler", "Delayed task cancelled.", new LogFields { DeviceId = task.DeviceId, OperationName = task.TaskType.ToString() });
+            logger?.Debug("DelayedDeviceTaskScheduler", "延迟任务已取消。", new LogFields { DeviceId = task.DeviceId, OperationName = task.TaskType.ToString() });
             return true;
         }
 
@@ -163,25 +164,22 @@ namespace ControlDoor.Devices.Workers
                 }
 
                 dueTasks = queue.TakeDue(now, options.DispatchBatchSize);
-            }
-
-            if (dueTasks.Count == 0)
-            {
-                return new List<DelayedTaskDispatchResult>();
-            }
-
-            var results = dueTasks.Select(task => DispatchOne(task, now)).ToList();
-            lock (gate)
-            {
-                foreach (var result in results)
+                var results = new List<DelayedTaskDispatchResult>();
+                foreach (var task in dueTasks)
                 {
+                    var result = DispatchOne(task, now);
+                    results.Add(result);
+                    if (result.Code == "QUEUE_FULL")
+                    {
+                        task.MoveDueAt(now.AddSeconds(1));
+                        queue.TryEnqueue(task, options.CoalesceByTaskKey);
+                    }
                     RecordDispatchResultLocked(result);
                 }
 
                 Monitor.PulseAll(gate);
+                return results;
             }
-
-            return results;
         }
 
         public Task<IReadOnlyList<DelayedTaskDispatchResult>> DispatchDueTasksAsync(DateTime now)
@@ -401,12 +399,33 @@ namespace ControlDoor.Devices.Workers
             {
                 var task = delayedTask.CreateTask();
                 var submission = dispatcher.Submit(task);
+                if (delayedTask.CompletionObserver != null)
+                {
+                    ObserveCompletion(task, delayedTask.CompletionObserver);
+                }
+
                 return DelayedTaskDispatchResult.FromSubmission(delayedTask, task, submission, now);
             }
             catch (Exception ex)
             {
                 return DelayedTaskDispatchResult.FactoryError(delayedTask, ex, now);
             }
+        }
+
+        // Completion 在接受与拒绝路径上都会被置结果，投递后挂接 continuation 总能观察到最终结果。
+        private void ObserveCompletion(DeviceSdkTask task, Action<DeviceSdkTask, DeviceTaskResult> observer)
+        {
+            task.Completion.Task.ContinueWith(completed =>
+            {
+                try
+                {
+                    observer(task, completed.Result);
+                }
+                catch (Exception ex)
+                {
+                    logger?.Error("DelayedDeviceTaskScheduler", "延迟任务完成回调执行失败。", ex);
+                }
+            }, TaskScheduler.Default);
         }
 
         private void RecordDispatchResultLocked(DelayedTaskDispatchResult result)

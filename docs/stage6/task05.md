@@ -20,7 +20,7 @@
 
 | 成功操作 | 字段变化 |
 | --- | --- |
-| 权限同步成功 | `permission_pending = 0`，`permission_sync_completion_blocked = 0`，`permission_payload = NULL`，必要时更新 `system_users.last_synced_level`、`last_synced_at`。 |
+| 权限同步成功 | 清除权限 pending 和完成阻塞；仍有人员 pending 时保留最新权限 payload，供人员补偿合并姓名、启用状态和有效期，否则清空。必要时更新 `system_users.last_synced_level`、`last_synced_at`。 |
 | 人员下发成功 | `person_pending = 0`，`person_payload = NULL`。 |
 | 人脸下发成功 | `face_pending = 0`，`face_payload = NULL`。 |
 | 删除人脸成功 | `delete_face_pending = 0`。 |
@@ -93,7 +93,11 @@ delay = min(InitialRetryDelaySeconds * 2^(attempt_count - 1), MaxRetryDelaySecon
 | 不覆盖新 payload | 成功回写不得把当前不同的新 payload 清空。 |
 | requestId 日志 | 数据库不新增字段，日志记录旧结果与当前状态差异。 |
 
-由于表中没有版本字段，无法做严格乐观锁。实现时应保持保守：旧任务只清除自己确认成功且当前仍 pending 的操作，不修改无关 pending。
+当前实现使用 `intent_version` 进行版本校验，所有领取、成功、失败和删除操作均不能覆盖新版本意图。已有数据库需执行 `database/专项_20260309_设备操作重试状态表.sql` 补齐该字段。
+
+权限请求先在一个事务中登记该员工的全部目标设备，再执行在线下发。权限成功确认与用户同步标记共用数据库事务；任一写入失败都会回滚，保留 pending 等待重试。检查全局完成状态时包含终态失败设备，不能因为其不再自动重试就将员工标记为全部同步成功。
+
+最新人员请求覆盖更早的权限字段；较早的人员补偿遇到较新的权限请求时，执行前使用最新权限的姓名、启用状态和有效期。后台重试等待实际设备任务完成后回写，调用方等待超时不作为已运行 SDK 任务的最终结果。不同设备工作线程上的补偿可并发，同一工作线程内仍依次执行。
 
 ## 日志
 

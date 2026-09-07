@@ -629,10 +629,18 @@ namespace ControlDoor.Hikvision
             if (behavior != null)
             {
                 await behavior.ApplyAsync(cancellationToken).ConfigureAwait(false);
-                return behavior.Resolve(request, fallback);
+                // 测试脚本配置的 ResultFactory 不触碰 mock 状态（可能故意阻塞以模拟慢设备），锁外执行。
+                if (behavior.ResultFactory != null)
+                {
+                    return behavior.Resolve(request, fallback);
+                }
             }
 
-            return fallback();
+            // 前台同步按设备分道并行（复核 R08）会并发调用网关：默认路径的状态字典与计数器变更必须持锁。
+            lock (gate)
+            {
+                return fallback();
+            }
         }
 
         private void RequireSession(int userId)

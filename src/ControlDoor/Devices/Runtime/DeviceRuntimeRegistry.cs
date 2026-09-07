@@ -335,6 +335,32 @@ namespace ControlDoor.Devices.Runtime
             }
         }
 
+        public DeviceRuntimeMutationResult SetDeleting(int deviceId, bool deleting, DateTime now)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state)) return DeviceRuntimeMutationResult.NotFound();
+                if (deleting && state.IsDeleting) return DeviceRuntimeMutationResult.Invalid("Device is already deleting.");
+                if (deleting) state.MarkDeleting(now);
+                else state.CancelDeleting(now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "OK", "Deletion state updated.");
+            }
+        }
+
+        public DeviceRuntimeMutationResult SetManualDisconnected(int deviceId, bool manualDisconnected, DateTime now)
+        {
+            lock (gate)
+            {
+                if (!devices.TryGetValue(deviceId, out var state))
+                {
+                    return DeviceRuntimeMutationResult.NotFound();
+                }
+
+                state.SetManualDisconnected(manualDisconnected, "ManualDisconnected", now);
+                return DeviceRuntimeMutationResult.Succeeded(state.ToSnapshot(GetQueueInfoLocked(deviceId)), GetWorkerIndexLocked(deviceId), "OK", "Manual disconnect marker updated.");
+            }
+        }
+
         public DeviceRuntimeMutationResult MarkManualDisconnected(int deviceId, DeviceRuntimeError error, DateTime now, DeviceIndexUpdateContext context = null)
         {
             lock (gate)

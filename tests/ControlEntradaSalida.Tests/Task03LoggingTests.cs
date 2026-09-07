@@ -19,10 +19,9 @@ namespace ControlEntradaSalida.Tests
                 logger.Info("Host", "启动完成", new LogFields { RequestId = "req-1", TraceId = "trace-1", OperationName = "Start" });
                 var text = File.ReadAllText(logger.CurrentLogPath);
 
-                Assert.Contains("component=\"Host\"", text);
-                Assert.Contains("message=\"启动完成\"", text);
-                Assert.Contains("requestId=\"req-1\"", text);
-                Assert.Contains("operationName=\"Start\"", text);
+                Assert.Contains("[INFO] 启动完成", text);
+                Assert.Contains("requestId=req-1", text);
+                Assert.Contains("操作=Start", text);
             }
         }
 
@@ -62,7 +61,7 @@ namespace ControlEntradaSalida.Tests
                 logger.Debug("Database", "数据库只读命令执行成功。", new LogFields { OperationName = "ConnectionTest" });
 
                 var text = File.ReadAllText(logger.CurrentLogPath);
-                Assert.Contains("level=Debug", text);
+                Assert.Contains("[DEBUG]", text);
                 Assert.Contains("数据库只读命令执行成功。", text);
             }
         }
@@ -83,7 +82,7 @@ namespace ControlEntradaSalida.Tests
                     }
                 });
 
-                var text = File.ReadAllText(logger.CurrentLogPath);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
                 Assert.Equal(1, CountOccurrences(text, " message="));
                 Assert.Contains("extra_message=\"配置文件可读取并解析。\"", text);
             }
@@ -101,7 +100,7 @@ namespace ControlEntradaSalida.Tests
 
                 logger.Error("Host", "服务启动失败", exception);
 
-                var text = File.ReadAllText(logger.CurrentLogPath);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
                 Assert.Contains("InvalidOperationException", text);
                 Assert.Contains("outer failure", text);
                 Assert.Contains("ApplicationException", text);
@@ -122,7 +121,7 @@ namespace ControlEntradaSalida.Tests
 
                 var lines = File.ReadAllLines(logger.CurrentLogPath);
                 Assert.Equal(1, lines.Length);
-                Assert.Contains("message=\"first second third fourth\"", lines[0]);
+                Assert.Contains("first second third fourth", lines[0]);
             }
         }
 

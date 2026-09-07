@@ -121,10 +121,15 @@ namespace ControlDoor.FaceEvents
                 return results;
             }
 
-            for (var j = 0; j < inserted.Count; j++)
+            for (var j = 0; j < parsedEvents.Count; j++)
             {
-                var insertResult = inserted[j];
                 var targetIndex = parsedIndexes[j];
+                var insertResult = j < inserted.Count ? inserted[j] : null;
+                if (insertResult == null)
+                {
+                    results[targetIndex] = FaceEventBatchItemResult.Failed(parsedEvents[j].EventId, "RETRYABLE_FAILURE", "repository result is missing");
+                    continue;
+                }
                 if (insertResult.Success)
                 {
                     results[targetIndex] = FaceEventBatchItemResult.Ok(insertResult.EventId, insertResult.Code, insertResult.Message);

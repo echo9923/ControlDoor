@@ -20,11 +20,13 @@ namespace ControlDoor.Hikvision
         private const int NetSdkConfigStatusSuccess = 1000;
         private const int NetSdkConfigStatusFinish = 1002;
         private const int NetSdkConfigStatusFailed = 1003;
+        private const int DefaultFaceCaptureTimeoutMs = 10000;
 
         private readonly IHikvisionSdkNativeClient nativeClient;
         private readonly HikvisionIsapiClient isapiClient;
         private readonly SdkTraceLogger traceLogger;
         private readonly object initializationGate = new object();
+        private readonly int faceCaptureTimeoutMs;
         private HikvisionAlarmNativeCallback alarmCallback;
         private volatile bool initialized;
         private bool disposed;
@@ -34,11 +36,29 @@ namespace ControlDoor.Hikvision
         {
         }
 
+        public HikvisionSdkWrapper(SdkTraceLogger traceLogger)
+            : this(new HikvisionSdkNativeClient(), new HikvisionIsapiClient(), traceLogger)
+        {
+        }
+
+        // 复核 R09：采集轮询等待预算来自 FaceEnrollment.CaptureTimeoutSeconds；未配置保持 10s 旧行为。
+        public HikvisionSdkWrapper(SdkTraceLogger traceLogger, int faceCaptureTimeoutMs)
+            : this(new HikvisionSdkNativeClient(), new HikvisionIsapiClient(), traceLogger)
+        {
+            this.faceCaptureTimeoutMs = faceCaptureTimeoutMs > 0 ? faceCaptureTimeoutMs : DefaultFaceCaptureTimeoutMs;
+        }
+
         internal HikvisionSdkWrapper(IHikvisionSdkNativeClient nativeClient, HikvisionIsapiClient isapiClient = null, SdkTraceLogger traceLogger = null)
+            : this(nativeClient, DefaultFaceCaptureTimeoutMs, isapiClient, traceLogger)
+        {
+        }
+
+        internal HikvisionSdkWrapper(IHikvisionSdkNativeClient nativeClient, int faceCaptureTimeoutMs, HikvisionIsapiClient isapiClient = null, SdkTraceLogger traceLogger = null)
         {
             this.nativeClient = nativeClient ?? throw new ArgumentNullException(nameof(nativeClient));
             this.isapiClient = isapiClient ?? new HikvisionIsapiClient();
             this.traceLogger = traceLogger;
+            this.faceCaptureTimeoutMs = faceCaptureTimeoutMs > 0 ? faceCaptureTimeoutMs : DefaultFaceCaptureTimeoutMs;
         }
 
         public event EventHandler<AlarmEventData> OnAlarmEvent;
@@ -79,7 +99,10 @@ namespace ControlDoor.Hikvision
             return Execute("Logout", request, () =>
             {
                 EnsureInitialized();
-                nativeClient.Logout(request.UserId);
+                if (!nativeClient.Logout(request.UserId))
+                {
+                    ThrowLastError("Logout");
+                }
                 return 0;
             });
         }
@@ -402,9 +425,9 @@ namespace ControlDoor.Hikvision
             return Execute("CaptureFace", request, () =>
             {
                 EnsureInitialized();
-                // 100 次 × 100ms = 10s 采集超时，与明眸设备采集窗口一致。
-                const int maxAttempts = 100;
+                // 轮询间隔 100ms，次数由 FaceEnrollment.CaptureTimeoutSeconds 推导；默认 10s 与旧行为一致。
                 const int waitIntervalMs = 100;
+                var maxAttempts = Math.Max(1, (faceCaptureTimeoutMs + waitIntervalMs - 1) / waitIntervalMs);
 
                 byte[] faceImage;
                 byte faceQuality;
@@ -601,14 +624,14 @@ namespace ControlDoor.Hikvision
             catch (DeviceGatewayException ex)
             {
                 watch.Stop();
-                traceLogger?.Trace(operationName, null, false, watch.ElapsedMilliseconds, ex.Error.Code, ex.Message);
+                traceLogger?.Trace(operationName, null, false, watch.ElapsedMilliseconds, ex.Error.Code, ex.Message, ex);
                 throw;
             }
             catch (Exception ex) when (!(ex is ArgumentException) && !(ex is OperationCanceledException))
             {
                 watch.Stop();
                 var error = SdkError.FromException(ex);
-                traceLogger?.Trace(operationName, null, false, watch.ElapsedMilliseconds, error.Code, error.Message);
+                traceLogger?.Trace(operationName, null, false, watch.ElapsedMilliseconds, error.Code, error.Message, ex);
                 throw new DeviceGatewayException(operationName, error, ex);
             }
         }
@@ -675,7 +698,7 @@ namespace ControlDoor.Hikvision
             }
             catch (Exception ex)
             {
-                traceLogger?.Trace("NativeAlarmCallback", null, false, 0, null, ex.Message);
+                traceLogger?.Trace("NativeAlarmCallback", null, false, 0, null, ex.Message, ex);
                 return true;
             }
         }

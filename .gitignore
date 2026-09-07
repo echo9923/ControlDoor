@@ -50,3 +50,7 @@ __pycache__/
 *.temp
 *.swp
 *~
+
+# IDE/工具本地缓存
+.qoder/
+.zcode/

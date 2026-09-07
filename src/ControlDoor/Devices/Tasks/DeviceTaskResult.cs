@@ -6,6 +6,8 @@ namespace ControlDoor.Devices.Tasks
 {
     public sealed class DeviceTaskResult
     {
+        public bool RetryPersisted { get; set; }
+
         public string TaskId { get; set; } = string.Empty;
 
         public string RequestId { get; set; } = string.Empty;
@@ -27,6 +29,9 @@ namespace ControlDoor.Devices.Tasks
         public DeviceConnectionStatus DeviceStatusAfter { get; set; } = DeviceConnectionStatus.Unknown;
 
         public bool Retryable { get; set; }
+
+        // 区分"执行前已过期（委托从未运行）"与"执行中超时"，延迟调度器据此决定是否重新安排。
+        public bool ExpiredBeforeExecution { get; set; }
 
         public object Data { get; set; }
 

@@ -34,6 +34,15 @@ namespace ControlDoor.CameraDoorInterlock
 
         public bool RestoreTerminalFailed { get; set; }
 
+        // 每次新窗口（活动集合从空变非空）递增；迟到的恢复结果据此失效，不覆盖新窗口状态。
+        public int Generation { get; set; }
+
+        // 恢复任务已投递未出结果的在途标记，防止重复投递。
+        public bool RestoreInFlight { get; set; }
+
+        // 当前在途恢复任务的 TaskId：同一窗口内不同恢复任务的完成结果据此区分（复核 G3）。
+        public string RestoreInFlightTaskId { get; set; }
+
         public bool IsActive => ActiveCameraKeys.Count > 0;
     }
 }

@@ -94,7 +94,7 @@ namespace ControlEntradaSalida.Tests
             using (var logger = new ServiceLogger(options))
             {
                 logger.LogPayload("GrpcApi", new RequestContext("req-123", "trace-456", "GetDeviceStatus"), @"{""deviceIds"":[1,2]}");
-                var text = File.ReadAllText(logger.CurrentLogPath);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
 
                 Assert.Contains("requestId=\"req-123\"", text);
                 Assert.Contains("traceId=\"trace-456\"", text);

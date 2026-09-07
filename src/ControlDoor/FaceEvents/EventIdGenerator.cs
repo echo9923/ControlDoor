@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -14,13 +15,15 @@ namespace ControlDoor.FaceEvents
             }
 
             var normalizedDevice = Math.Max(0, deviceId);
-            var value = normalizedDevice * 10000000000L + serialNo;
-            if (value > 0)
+            const long serialRange = 10000000000L;
+            if (serialNo < serialRange && normalizedDevice <= (long.MaxValue - serialNo) / serialRange)
             {
-                return value;
+                return normalizedDevice * serialRange + serialNo;
             }
 
-            return serialNo;
+            // Preserve existing IDs where the legacy mapping fits, and retain both keys on overflow.
+            return CreateFallback("serial:" + normalizedDevice.ToString(CultureInfo.InvariantCulture),
+                DateTime.MinValue, serialNo.ToString(CultureInfo.InvariantCulture), string.Empty, null);
         }
 
         public long CreateFallback(string deviceKey, DateTime eventTime, string employeeId, string cardNo, int? eventType)

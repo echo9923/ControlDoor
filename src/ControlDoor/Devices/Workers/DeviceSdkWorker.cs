@@ -9,6 +9,12 @@ namespace ControlDoor.Devices.Workers
 {
     public sealed class DeviceSdkWorker : IDisposable
     {
+        private volatile bool quiescing;
+
+        internal void BeginShutdown()
+        {
+            quiescing = true;
+        }
         private readonly object gate = new object();
         private readonly DeviceTaskQueue queue;
         private readonly DeviceRuntimeRegistry registry;
@@ -336,6 +342,19 @@ namespace ControlDoor.Devices.Workers
         private async Task ExecuteQueueItemAsync(DeviceTaskQueueItem item, CancellationToken workerCancellationToken)
         {
             var task = item.Task;
+            var requestContext = string.IsNullOrWhiteSpace(task.RequestId)
+                ? RequestContext.Background(task.OperationName)
+                : new RequestContext(task.RequestId, task.CorrelationId, task.OperationName, "device-task");
+            task.RequestId = requestContext.RequestId;
+            using var logScope = logger?.BeginScope(new LogFields
+            {
+                RequestId = requestContext.RequestId,
+                TraceId = requestContext.TraceId,
+                DeviceId = task.DeviceId,
+                OperationName = task.OperationName,
+                Extra = { ["taskId"] = task.TaskId }
+            });
+            logger?.Debug("DeviceWorker", "设备任务开始。", new LogFields { Extra = { ["taskType"] = task.TaskType.ToString() } });
             if (item.Cancelled || workerCancellationToken.IsCancellationRequested)
             {
                 CompleteCancelled(task, string.IsNullOrEmpty(item.CancellationReason) ? "Task was cancelled before execution." : item.CancellationReason);
@@ -343,6 +362,7 @@ namespace ControlDoor.Devices.Workers
             }
 
             var startedAt = DateTime.Now;
+            var executed = false;
             DeviceTaskResult result;
             DeviceRuntimeSnapshot snapshotBeforeExecution;
             DeviceQueueInfo queueInfo;
@@ -361,13 +381,21 @@ namespace ControlDoor.Devices.Workers
 
             try
             {
-                if (snapshotBeforeExecution == null)
+                if (quiescing && !task.AllowDuringShutdown)
+                {
+                    result = DeviceTaskResult.Rejected(task, "SERVICE_STOPPING", "服务正在停止。");
+                }
+                else if (snapshotBeforeExecution == null)
                 {
                     result = DeviceTaskResult.Rejected(task, "DEVICE_NOT_FOUND", "Device runtime was not found.");
                 }
                 else if (snapshotBeforeExecution.IsDeleting && !task.AllowWhenDeleting)
                 {
                     result = DeviceTaskResult.Rejected(task, "DEVICE_DELETING", "Device is deleting.");
+                }
+                else if (snapshotBeforeExecution.Reconnect.ManualDisconnected && !task.AllowWhenManualDisconnected && task.TaskType != DeviceTaskType.HealthCheck)
+                {
+                    result = DeviceTaskResult.Rejected(task, "DEVICE_MANUALLY_DISCONNECTED", "设备已手动断开。");
                 }
                 else if (task.RequiresOnline && !snapshotBeforeExecution.IsConnected)
                 {
@@ -377,12 +405,14 @@ namespace ControlDoor.Devices.Workers
                 else if (task.DeadlineAt.HasValue && task.DeadlineAt.Value <= startedAt)
                 {
                     result = DeviceTaskResult.Timeout(task, "Task expired before execution.");
+                    result.ExpiredBeforeExecution = true;
                 }
                 else
                 {
                     using (var cancellationScope = DeviceTaskCancellationScope.Create(task, workerCancellationToken, startedAt))
                     {
-                        var context = new DeviceTaskContext(task, registry, snapshotBeforeExecution, RequestContext.Background(task.OperationName), logger, cancellationScope.Token);
+                        var context = new DeviceTaskContext(task, registry, snapshotBeforeExecution, requestContext, logger, cancellationScope.Token);
+                        executed = true;
                         result = await task.ExecuteAsync(context).ConfigureAwait(false);
                     }
 
@@ -395,8 +425,27 @@ namespace ControlDoor.Devices.Workers
             catch (Exception ex)
             {
                 result = DeviceTaskExceptionMapper.Map(task, ex, startedAt, DateTime.Now);
+                logger?.Error("DeviceWorker", "设备任务执行异常。", ex);
             }
 
+            var completionFields = new LogFields
+            {
+                ErrorCode = result.Code,
+                ElapsedMs = Math.Max(0, (long)(DateTime.Now - startedAt).TotalMilliseconds),
+                Extra = { ["success"] = result.Success.ToString(), ["reason"] = result.Message }
+            };
+            if (!result.Success && (!executed || (task.TaskType != DeviceTaskType.Login && task.TaskType != DeviceTaskType.HealthCheck && task.TaskType != DeviceTaskType.SetupAlarm)))
+            {
+                logger?.Write(result.Retryable ? LogLevel.Warn : LogLevel.Error, "DeviceWorker", "设备任务未完成。", completionFields);
+            }
+            else if (logger != null && logger.IsSlowOperation(completionFields.ElapsedMs.Value))
+            {
+                logger.Warn("DeviceWorker", "设备任务耗时较长。", completionFields);
+            }
+            else
+            {
+                logger?.Debug("DeviceWorker", "设备任务结束。", completionFields);
+            }
             CompleteTask(task, result.WithCompletionTiming(startedAt, DateTime.Now));
         }
 

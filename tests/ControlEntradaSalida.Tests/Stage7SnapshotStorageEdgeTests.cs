@@ -19,10 +19,9 @@ namespace ControlEntradaSalida.Tests
 
             Assert.True(first.Saved);
             Assert.True(second.Saved);
-            Assert.True(first.SnapshotPath != second.SnapshotPath, "collision must produce a distinct path");
-            Assert.Contains("_1", second.SnapshotPath);
+            // 同一事件重试幂等复用既有文件，不再生成无数据库引用的孤立副本（代码复核 R05）。
+            Assert.Equal(first.SnapshotPath, second.SnapshotPath);
             Assert.True(File.Exists(first.SnapshotPath));
-            Assert.True(File.Exists(second.SnapshotPath));
         }
 
         [TestCase]

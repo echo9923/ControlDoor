@@ -25,6 +25,13 @@ namespace ControlDoor.Permissions
             var sameKind = existing != null && !conflict && HasSamePending(state, operation);
 
             ApplyIntent(state, operation, intent);
+            state.IntentVersion = intent.IntentVersion;
+            if (operation == RetryOperation.Person && intent.RelatedFacePayloadJson != null)
+            {
+                state.FacePending = true;
+                state.DeleteFacePending = false;
+                state.FacePayloadJson = intent.RelatedFacePayloadJson;
+            }
 
             if (existing == null || hadTerminal || conflict)
             {
@@ -74,6 +81,9 @@ namespace ControlDoor.Permissions
                     state.DeletePersonPending = false;
                     break;
                 case RetryOperation.Person:
+                    state.PermissionPending = false;
+                    state.PermissionSyncCompletionBlocked = false;
+                    state.PermissionPayloadJson = null;
                     state.PersonPayloadJson = ResolvePersonPayload(intent);
                     state.PersonPending = true;
                     state.DeletePersonPending = false;

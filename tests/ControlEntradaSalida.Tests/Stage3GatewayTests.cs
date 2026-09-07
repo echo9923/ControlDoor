@@ -721,15 +721,22 @@ namespace ControlEntradaSalida.Tests
         }
 
         [TestCase]
-        public static void SdkWrapper_LogoutFailure_DoesNotThrow()
+        public static void SdkWrapper_LogoutFailure_ThrowsLastError()
         {
-            var native = new FakeNativeClient { LogoutResult = false };
+            var native = new FakeNativeClient { LogoutResult = false, LastError = 7 };
             var gateway = new HikvisionSdkWrapper(native);
             var login = gateway.LoginAsync(new LoginRequest { IpAddress = "127.0.0.1", UserName = "admin", Password = "12345" }).GetAwaiter().GetResult();
 
-            gateway.LogoutAsync(new LogoutRequest { UserId = login.UserId }).GetAwaiter().GetResult();
-
-            Assert.Equal(1, native.LogoutCallCount);
+            try
+            {
+                gateway.LogoutAsync(new LogoutRequest { UserId = login.UserId }).GetAwaiter().GetResult();
+                throw new System.Exception("Expected logout failure.");
+            }
+            catch (DeviceGatewayException ex)
+            {
+                Assert.Equal(7, ex.Error.Code);
+                Assert.Equal(1, native.LogoutCallCount);
+            }
         }
 
         [TestCase]
@@ -900,7 +907,7 @@ namespace ControlEntradaSalida.Tests
 
                 native.EmitAlarm(0x5002, new byte[] { 7, 8 });
 
-                var text = File.ReadAllText(logger.CurrentLogPath);
+                var text = File.ReadAllText(logger.CurrentDiagnosticLogPath);
                 Assert.Contains("operationName=\"NativeAlarmCallback\"", text);
                 Assert.Contains("callback exploded", text);
             }

@@ -26,6 +26,8 @@ namespace ControlDoor.Host
         private readonly string runDirectory;
         private ServiceLifecycleState state = ServiceLifecycleState.Created;
         private bool disposed;
+        private Task<HostStartupResult> startupTask;
+        private Task<HostStopResult> stopTask;
         private AppSettings settings;
         private ServiceLogger logger;
         private SqlServerDatabase database;
@@ -66,6 +68,19 @@ namespace ControlDoor.Host
         }
 
         public Task<HostStartupResult> StartAsync(CancellationToken cancellationToken = default)
+        {
+            lock (gate)
+            {
+                ThrowIfDisposed();
+                if (stopTask != null)
+                {
+                    return Task.FromResult(HostStartupResult.Failed("Host 已停止，请创建新实例。", Array.Empty<string>()));
+                }
+                return startupTask ?? (startupTask = Task.Run(() => StartCoreAsync(cancellationToken)));
+            }
+        }
+
+        private Task<HostStartupResult> StartCoreAsync(CancellationToken cancellationToken)
         {
             lock (gate)
             {
@@ -139,7 +154,7 @@ namespace ControlDoor.Host
                 DefaultTaskTimeoutMilliseconds = settings.DeviceSdkDispatcher.DefaultTaskTimeoutMs
             }, logger);
             delayedScheduler = new DelayedDeviceTaskScheduler(deviceDispatcher, logger: logger);
-            hikvisionGateway = new HikvisionSdkWrapper();
+            hikvisionGateway = new HikvisionSdkWrapper(new SdkTraceLogger(logger, logOptions.EnableSdkTrace), settings.FaceEnrollment.CaptureTimeoutSeconds * 1000);
             var deviceOptions = new DeviceLifecycleOptions
             {
                 LoginTimeoutMs = settings.DeviceConnection.LoginTimeoutMs,
@@ -172,11 +187,11 @@ namespace ControlDoor.Host
 
             deviceLifecycle = new DeviceLifecycleService(deviceRegistry, deviceDispatcher, delayedScheduler, deviceRepository, hikvisionGateway, deviceOptions, logger);
             accessControlGrpcService = new AccessControlGrpcService(deviceLifecycle, deviceRepository, settings.Service.GrpcManagementApiKey, logger, logOptions);
-            retryStore = new DeviceOperationRetryStore(database, settings.DeviceOperationRetry, logger);
+            retryStore = new DeviceOperationRetryStore(database, settings.DeviceOperationRetry, logger, new SystemUserSyncStatusWriter(database));
             retryManager = new DeviceOperationRetryManager(
                 retryStore,
                 deviceRegistry,
-                new RetryExecutionCoordinator(deviceDispatcher, hikvisionGateway, logger),
+                new RetryExecutionCoordinator(deviceDispatcher, hikvisionGateway, logger, retryStore.IsCurrent, settings.FaceEnrollment.MaxFaceImageBytes),
                 settings.DeviceOperationRetry,
                 logger);
             permissionSyncGrpcService = new PermissionSyncGrpcService(
@@ -185,18 +200,20 @@ namespace ControlDoor.Host
                 hikvisionGateway,
                 retryStore,
                 new SystemUserSyncStatusWriter(database),
-                new EnrollmentTaskStore(),
+                new EnrollmentTaskStore(retention: TimeSpan.FromMinutes(settings.FaceEnrollment.TaskRetentionMinutes)),
                 logger,
                 settings.Devices.DefaultFaceCaptureDeviceId,
-                logOptions);
+                logOptions,
+                settings.FaceEnrollment);
             if (settings.FaceEventLogging.Enabled)
             {
                 var snapshotStorage = new SnapshotStorage(runDirectory, settings.FaceEventLogging, logger);
-                var faceRepository = new FaceEventRepository(database, snapshotStorage, settings.Database.ConnectionString);
+                var faceRepository = new FaceEventRepository(database, snapshotStorage, settings.Database.ConnectionString, settings.Database.CommandTimeoutSeconds);
                 faceEventIngestionService = new FaceEventIngestionService(
                     settings.FaceEventLogging,
                     new AcsFaceEventProcessor(new AcsEventParser(), faceRepository, logger),
-                    logger);
+                    logger,
+                    System.IO.Path.Combine(runDirectory, "data", "acs-retry"));
                 acsAlarmEventRouter = new AcsAlarmEventRouter(deviceRegistry, faceEventIngestionService, settings.FaceEventLogging, logger);
                 acsAlarmEventRouter.Attach(hikvisionGateway);
             }
@@ -231,6 +248,7 @@ namespace ControlDoor.Host
             }
             backgroundTaskHost.Register(retryManager, startOrder: 40, stopOrder: 50, isCritical: false);
             backgroundTaskHost.Register(new NoopBackgroundTask("Stage1Bootstrap"), startOrder: 0, stopOrder: 100, isCritical: false);
+            cancellationToken.ThrowIfCancellationRequested();
             var backgroundResult = backgroundTaskHost.StartAsync(cancellationToken).GetAwaiter().GetResult();
             if (!backgroundResult.Success)
             {
@@ -244,6 +262,7 @@ namespace ControlDoor.Host
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 deviceLifecycle.LoadEnabledDevices(enqueueLogin: true);
             }
             catch (Exception ex)
@@ -274,32 +293,47 @@ namespace ControlDoor.Host
         {
             lock (gate)
             {
+                return stopTask ?? (stopTask = Task.Run(() => StopCoreAsync(reason)));
+            }
+        }
+
+        private async Task<HostStopResult> StopCoreAsync(string reason)
+        {
+            var starting = startupTask;
+            if (starting != null)
+            {
+                try { await starting.ConfigureAwait(false); }
+                catch (Exception ex) { logger?.Warn("Host", "启动未完成，继续清理: " + ex.Message); }
+            }
+            lock (gate)
+            {
                 if (disposed)
                 {
-                    return Task.FromResult(HostStopResult.Succeeded(reason, "Host 已释放。"));
+                    return HostStopResult.Succeeded(reason, "Host 已释放。");
                 }
 
                 if (state == ServiceLifecycleState.Stopped || state == ServiceLifecycleState.Created)
                 {
                     state = ServiceLifecycleState.Stopped;
-                    return Task.FromResult(HostStopResult.Succeeded(reason, "Host 已停止。"));
+                    return HostStopResult.Succeeded(reason, "Host 已停止。");
                 }
 
                 state = ServiceLifecycleState.Stopping;
             }
 
             var stopwatch = Stopwatch.StartNew();
-            cancellationToken.ThrowIfCancellationRequested();
-
             logger?.Info("Host", "ControlDoor Host 正在停止。", new LogFields { Extra = { ["reason"] = reason ?? string.Empty } });
+            deviceLifecycle?.BeginStopping();
             aiopAlarmEventRouter?.Dispose();
             StopCameraDoorInterlockBeforeDeviceLogout();
-            deviceLifecycle?.StopAllDevicesBestEffort();
-            backgroundTaskHost?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
-            deviceDispatcher?.StopAsync(TimeSpan.FromMilliseconds(10000)).GetAwaiter().GetResult();
+            if (backgroundTaskHost != null) await backgroundTaskHost.StopAsync(TimeSpan.FromMilliseconds(10000)).ConfigureAwait(false);
+            if (retryManager != null) await retryManager.Completion.ConfigureAwait(false);
+            if (deviceLifecycle != null) await deviceLifecycle.StopAllDevicesAsync(CancellationToken.None).ConfigureAwait(false);
+            if (deviceDispatcher != null) await deviceDispatcher.StopAsync(Timeout.InfiniteTimeSpan).ConfigureAwait(false);
             deviceDispatcher?.Dispose();
             acsAlarmEventRouter?.Dispose();
             cameraDoorInterlockService?.Dispose();
+            if (faceEventIngestionService != null) await faceEventIngestionService.Completion.ConfigureAwait(false);
             faceEventIngestionService?.Dispose();
             database?.Dispose();
 
@@ -310,7 +344,7 @@ namespace ControlDoor.Host
 
             logger?.Info("Host", "ControlDoor Host 停止成功。", new LogFields { ElapsedMs = stopwatch.ElapsedMilliseconds });
 
-            return Task.FromResult(HostStopResult.Succeeded(reason, "Host 停止成功。"));
+            return HostStopResult.Succeeded(reason, "Host 停止成功。");
         }
 
         private void StopCameraDoorInterlockBeforeDeviceLogout()
@@ -334,6 +368,19 @@ namespace ControlDoor.Host
         }
 
         public void Dispose()
+        {
+            var stoppingTask = StopAsync("Dispose");
+            if (stoppingTask.IsCompleted)
+            {
+                DisposeResources();
+            }
+            else
+            {
+                _ = stoppingTask.ContinueWith(_ => DisposeResources(), TaskScheduler.Default);
+            }
+        }
+
+        private void DisposeResources()
         {
             lock (gate)
             {
