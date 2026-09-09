@@ -16,14 +16,18 @@ namespace ControlEntradaSalida.Tests
             var database = new RecordingDatabaseClient();
             var store = new DeviceOperationRetryStore(database, new DeviceOperationRetryOptions { BatchSize = 100 });
 
-            var summaries = store.LoadDueSummaries(new DateTime(2026, 1, 1), 100, new[] { 7, 3, 7 });
+            var summaries = store.LoadDueSummaries(new DateTime(2026, 1, 1), 10, new[] { 7, 3, 7 });
 
             Assert.Equal(0, summaries.Count);
             var command = database.Commands.Single(item => item.OperationName == "DeviceOperationRetryStore.LoadDueSummaries");
             Assert.Contains("device_id IN (@deviceId0, @deviceId1)", command.CommandText);
             Assert.Contains("@deviceId0=3", command.CommandText);
             Assert.Contains("@deviceId1=7", command.CommandText);
-            Assert.Contains("TOP (@batchSize)", command.CommandText);
+            // 复核 L3：配额在数据库侧按设备分区排名施加，先于任何全局截断。
+            Assert.Contains("ROW_NUMBER() OVER (PARTITION BY device_id", command.CommandText);
+            Assert.Contains("WHERE __device_rank <= @perDeviceQuota", command.CommandText);
+            Assert.Contains("@perDeviceQuota=10", command.CommandText);
+            Assert.False(command.CommandText.Contains("SELECT TOP"), "候选查询不得在配额前全局截断。");
             // 摘要不读取三个 payload 大列。
             Assert.False(command.CommandText.Contains("face_payload"));
             Assert.False(command.CommandText.Contains("person_payload"));
@@ -96,6 +100,53 @@ namespace ControlEntradaSalida.Tests
                 var byIdsCommand = fixture.Database.Commands.Single(item => item.OperationName == "DeviceOperationRetryStore.LoadStatesByIds");
                 Assert.Contains("@id0=9001", byIdsCommand.CommandText);
             }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_PerDeviceQuota_OnlineDeviceWithFreshRecordSelectedInFirstScan()
+        {
+            using (var fixture = new Stage6Fixture())
+            {
+                fixture.Options.BatchSize = 100;
+                fixture.AddOnlineDevice(deviceId: 1);
+                fixture.AddOnlineDevice(deviceId: 2);
+
+                // 模拟数据库分区排名后的候选输出（RecordingDatabaseClient 忽略 WHERE/窗口排名，
+                // 返回预置行）：设备 1 有 4000 条更早到期记录，候选窗口内为其配额前 10 条；
+                // 设备 2 只有 1 条新记录。旧实现在全局 TOP(BatchSize*4) 截断下，设备 2 的记录
+                // 排在第 4001 位、约 38 轮后才首次入选。
+                var candidateRows = new List<IReadOnlyDictionary<string, object>>();
+                for (var index = 0; index < 10; index++)
+                {
+                    candidateRows.Add(Row(id: 100 + index, deviceId: 1, employeeId: "E1-" + index, permissionPending: true, permissionLevel: 7));
+                }
+
+                candidateRows.Add(Row(id: 9001, deviceId: 2, employeeId: "E2-fresh", permissionPending: true, permissionLevel: 7));
+                fixture.Database.QueryRowsByOperation["DeviceOperationRetryStore.LoadDueSummaries"] = candidateRows;
+                fixture.Database.QueryRowsByOperation["DeviceOperationRetryStore.LoadStatesByIds"] = candidateRows;
+
+                var result = fixture.Manager.RunOnceAsync("l3-quota").GetAwaiter().GetResult();
+
+                Assert.Equal(11, result.Due);
+                Assert.Equal(11, result.Submitted);
+                // 设备 2 的新记录在第一轮即被领取执行。
+                Assert.True(fixture.Database.Commands.Any(item =>
+                    item.OperationName == "DeviceOperationRetryStore.TryClaimDueState" &&
+                    item.CommandText.Contains("@id=9001")), "设备 2 的新记录未在首轮获得名额（L3）。");
+                var summaryCommand = fixture.Database.Commands.Single(item => item.OperationName == "DeviceOperationRetryStore.LoadDueSummaries");
+                Assert.Contains("PARTITION BY device_id", summaryCommand.CommandText);
+                Assert.Contains("@perDeviceQuota=10", summaryCommand.CommandText);
+            }
+        }
+
+        [TestCase]
+        public static void DeviceOperationRetryManager_GetPerDeviceSummaryQuota_ScalesWithBatchSize()
+        {
+            Assert.Equal(10, DeviceOperationRetryManager.GetPerDeviceSummaryQuota(100));
+            Assert.Equal(5, DeviceOperationRetryManager.GetPerDeviceSummaryQuota(50));
+            Assert.Equal(2, DeviceOperationRetryManager.GetPerDeviceSummaryQuota(20));
+            Assert.Equal(2, DeviceOperationRetryManager.GetPerDeviceSummaryQuota(5));
+            Assert.Equal(2, DeviceOperationRetryManager.GetPerDeviceSummaryQuota(0));
         }
 
         [TestCase]

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using ControlDoor.Configuration;
 using ControlDoor.Database;
@@ -109,6 +110,65 @@ namespace ControlEntradaSalida.Tests
                     Check(database.ExecuteNonQuery("RetrySql.Cleanup",
                         "DELETE FROM dbo.device_operation_retry_states WHERE employee_id = @employeeId;",
                         new DatabaseParameter("@employeeId", employeeId)));
+                }
+            }
+        }
+
+        // 复核 L3：真实 SQL 验证候选查询的按设备分区配额——设备 1 塞入大量更早到期记录后，
+        // 设备 2 的单条新记录仍必须在配额候选内出现（模拟适配器无法执行窗口排名，此用例补齐该语义）。
+        [TestCase]
+        public static void RetrySql_LoadDueSummaries_PerDeviceQuotaKeepsFreshDeviceVisible()
+        {
+            if (Environment.GetEnvironmentVariable("CONTROLDOOR_RETRY_SQL_INTEGRATION") != "1")
+            {
+                Console.WriteLine("[SKIP] Set CONTROLDOOR_RETRY_SQL_INTEGRATION=1 and CONTROLDOOR_STAGE14_CONNECTION_STRING for a disposable Docker database.");
+                return;
+            }
+
+            var connection = Environment.GetEnvironmentVariable("CONTROLDOOR_STAGE14_CONNECTION_STRING");
+            Assert.False(string.IsNullOrWhiteSpace(connection), "A disposable Docker database connection is required.");
+            using (var database = new SqlServerDatabase(new DatabaseOptions { ConnectionString = connection }))
+            {
+                var migration = File.ReadAllText(Path.Combine("database", "专项_20260309_设备操作重试状态表.sql"));
+                foreach (var batch in Regex.Split(migration, @"^\s*GO\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(batch)) continue;
+                    Check(database.ExecuteNonQuery("RetrySql.Migrate", batch, new DatabaseParameter[0]));
+                }
+
+                var employeePrefix = "l3-quota-" + Guid.NewGuid().ToString("N");
+                var store = new DeviceOperationRetryStore(database);
+                try
+                {
+                    for (var index = 0; index < 20; index++)
+                    {
+                        var intent = new DeviceOperationRetryIntent
+                        {
+                            DeviceId = 1, EmployeeId = employeePrefix + "-a" + index, Operation = "SyncPermission", PermissionLevel = 7,
+                            PayloadJson = "{\"name\":\"A\",\"permission_code\":7}", NextRetryAt = DateTime.Now.AddHours(-index - 1)
+                        };
+                        Assert.True(store.UpsertIntent(intent).Success);
+                    }
+
+                    var freshIntent = new DeviceOperationRetryIntent
+                    {
+                        DeviceId = 2, EmployeeId = employeePrefix + "-fresh", Operation = "SyncPermission", PermissionLevel = 7,
+                        PayloadJson = "{\"name\":\"B\",\"permission_code\":7}", NextRetryAt = DateTime.Now.AddMinutes(-1)
+                    };
+                    Assert.True(store.UpsertIntent(freshIntent).Success);
+
+                    var summaries = store.LoadDueSummaries(DateTime.Now, 10, new[] { 1, 2 });
+
+                    // 设备 1 受配额约束（20 条到期只贡献 10 条），设备 2 的单条新记录仍然可见。
+                    Assert.Equal(10, summaries.Count(item => item.DeviceId == 1));
+                    Assert.True(summaries.Any(item => item.DeviceId == 2 && item.EmployeeId == employeePrefix + "-fresh"),
+                        "单台设备的大量更早到期记录不得把其他设备挡在候选窗口外（L3）。");
+                }
+                finally
+                {
+                    Check(database.ExecuteNonQuery("RetrySql.Cleanup",
+                        "DELETE FROM dbo.device_operation_retry_states WHERE employee_id LIKE @employeePrefix;",
+                        new DatabaseParameter("@employeePrefix", employeePrefix + "%")));
                 }
             }
         }

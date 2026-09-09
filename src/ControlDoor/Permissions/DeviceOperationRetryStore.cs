@@ -151,46 +151,52 @@ namespace ControlDoor.Permissions
             return rows.Select(DeviceOperationRetryState.FromRow).ToList();
         }
 
-        // K3：到期扫描先读轻量摘要（不含 permission/person/face 三个 payload 大列）。
-        // deviceIds 非空时按当前可执行设备过滤，离线设备积压不再占用全局扫描名额，
-        // 也不会把离线记录里的人脸 base64 读进内存；命中后再用 LoadStatesByIds 取完整载荷。
-        public IReadOnlyList<DeviceOperationRetryState> LoadDueSummaries(DateTime now, int? limit = null, IReadOnlyCollection<int> deviceIds = null)
+        // K3/L3：到期扫描先读轻量摘要（不含 permission/person/face 三个 payload 大列）。
+        // deviceIds 非空时按当前可执行设备过滤；候选在数据库侧按 device_id 分区排名，每台设备
+        // 最多贡献 perDeviceQuota 条——配额在全局排序之前施加，单台设备的大量更早到期记录
+        // 不再把其他在线设备挡在候选窗口外（全局 TOP 截断是此前饿缺的根源）。
+        // 返回上限自然受 perDeviceQuota × 设备数约束，命中后再用 LoadStatesByIds 取完整载荷。
+        public IReadOnlyList<DeviceOperationRetryState> LoadDueSummaries(DateTime now, int perDeviceQuota, IReadOnlyCollection<int> deviceIds)
         {
-            var size = limit.HasValue && limit.Value > 0 ? limit.Value : Math.Max(1, options.BatchSize);
+            if (perDeviceQuota < 1)
+            {
+                perDeviceQuota = 1;
+            }
+
             var parameters = new List<DatabaseParameter>
             {
                 new DatabaseParameter("@now", now),
-                new DatabaseParameter("@batchSize", size)
+                new DatabaseParameter("@perDeviceQuota", perDeviceQuota)
             };
-            var deviceFilter = string.Empty;
-            if (deviceIds != null)
+            var names = new List<string>();
+            var index = 0;
+            foreach (var deviceId in (deviceIds ?? new List<int>()).Distinct().OrderBy(item => item))
             {
-                var names = new List<string>();
-                var index = 0;
-                foreach (var deviceId in deviceIds.Distinct().OrderBy(item => item))
-                {
-                    var name = "@deviceId" + index++;
-                    names.Add(name);
-                    parameters.Add(new DatabaseParameter(name, deviceId));
-                }
-
-                if (names.Count > 0)
-                {
-                    deviceFilter = "  AND device_id IN (" + string.Join(", ", names) + ")";
-                }
+                var name = "@deviceId" + index++;
+                names.Add(name);
+                parameters.Add(new DatabaseParameter(name, deviceId));
             }
 
-            var sql = "SELECT TOP (@batchSize) " + LoadDueSummaryColumns + @"
-FROM dbo.device_operation_retry_states WITH (UPDLOCK, READPAST, ROWLOCK)
-WHERE exhausted_at IS NULL
-  AND (next_retry_at IS NULL OR next_retry_at <= @now)" + deviceFilter + @"
-  AND (
-      permission_pending = 1
-      OR person_pending = 1
-      OR face_pending = 1
-      OR delete_person_pending = 1
-      OR delete_face_pending = 1
-  )
+            var deviceFilter = names.Count > 0
+                ? "  AND device_id IN (" + string.Join(", ", names) + ")"
+                : "  AND 1 = 0";
+
+            var sql = @"SELECT " + LoadDueSummaryColumns + @"
+FROM (
+    SELECT " + LoadDueSummaryColumns + @",
+        ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY next_retry_at ASC, updated_at ASC, id ASC) AS __device_rank
+    FROM dbo.device_operation_retry_states WITH (UPDLOCK, READPAST, ROWLOCK)
+    WHERE exhausted_at IS NULL
+      AND (next_retry_at IS NULL OR next_retry_at <= @now)" + deviceFilter + @"
+      AND (
+          permission_pending = 1
+          OR person_pending = 1
+          OR face_pending = 1
+          OR delete_person_pending = 1
+          OR delete_face_pending = 1
+      )
+) AS ranked
+WHERE __device_rank <= @perDeviceQuota
 ORDER BY next_retry_at ASC, updated_at ASC, id ASC;";
             var rows = database.ExecuteQuery("DeviceOperationRetryStore.LoadDueSummaries", sql, parameters.ToArray());
             return rows.Select(DeviceOperationRetryState.FromRow).ToList();

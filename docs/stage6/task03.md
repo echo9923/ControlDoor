@@ -123,3 +123,9 @@
 - 领取后设备已离线的竞态仍走 `DeferOffline` 延期；扫描时即离线的记录不再产生任何写（无领取、无延期写抖动）。
 - 积压连续扫描：上轮读满 `BatchSize` 时使用 `BacklogScanIntervalSeconds`（默认 2 秒）短间隔，空闲时维持 `ScanIntervalSeconds`；每轮仍执行真实领取与执行，天然有预算。
 - 维护巡检：每 `MaintenanceIntervalSeconds`（默认 300 秒）按 id 游标扫描到期摘要，仅对设备已从运行时移除、已停用或配置非法的补偿状态标记终态并清理空行；游标保证全表覆盖，不会被长期离线设备的旧到期记录挡住。
+
+## 代码复核更新（2026-09-09，L3）
+
+- 候选摘要查询改为数据库侧按设备分区配额：`ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY next_retry_at, updated_at, id)` + `__device_rank <= @perDeviceQuota`（每设备配额 = BatchSize/10、下限 2，默认 10），并去掉配额前的全局 TOP 截断——此前"全局前 BatchSize×4 条候选"会让一台在线设备的大量更早到期记录把其他在线设备挡在候选窗口外（4000 条积压 + 1 条新记录时新记录需约 38 轮才首次入选）。
+- 配额在全局排序之前施加，任何在线设备的到期记录必然进入候选集合；返回量自然受 perDeviceQuota × 在线设备数约束，内存中仍按设备公平轮转收敛到 BatchSize。领取租约、版本条件与同员工互斥不变。
+- `tests/Integration/RetrySqlIntegrationTests` 新增真实 SQL 配额用例（环境变量门控）：设备 1 塞入 20 条更早到期记录后，设备 2 的单条新记录仍在配额候选内可见——弥补模拟适配器无法执行窗口排名的局限。

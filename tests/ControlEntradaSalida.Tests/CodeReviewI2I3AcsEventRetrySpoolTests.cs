@@ -75,11 +75,16 @@ namespace ControlEntradaSalida.Tests
             service.ItemRetryLimit = 2;
             var context = new BackgroundTaskContext("i3-deadletter", CancellationToken.None, null);
 
+            // 复核 L2：环境宽限窗内有成功时整批 RETRYABLE_FAILURE 不进入环境保护，仍按上限死信。
+            // 先入队一条健康事件（不落盘、成功后即完成），确保毒事件的重试轮始终处于"近期有成功"状态。
+            Assert.True(service.TryEnqueue(NewRawEvent("i3-healthy")).Accepted);
+
             // 先锁住源文件（可读、不可删除）再启动：首次失败进重试道，重试耗尽进入死信时删除必定失败。
             var lockStream = File.Open(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Write);
             try
             {
                 service.StartAsync(context).GetAwaiter().GetResult();
+                WaitUntil(() => processor.SuccessRequestIds.Contains("i3-healthy"), "健康事件未被处理。");
 
                 WaitUntil(
                     () => Directory.Exists(deadLetterDirectory) && Directory.EnumerateFiles(deadLetterDirectory, "*.json").Any(),
@@ -150,8 +155,10 @@ namespace ControlEntradaSalida.Tests
 
         private static FaceEventIngestionService NewService(string retryDirectory, RecordingProcessor processor, int batchSize)
         {
+            // 复核 L2：环境宽限窗 = RetryMaxDelayMs。本组用例依赖"重试耗尽进入死信"的确定性，
+            // 把普通退避封顶（即宽限窗）放大到 60 秒，保证整个用例期间宽限窗始终未过期。
             return new FaceEventIngestionService(
-                new FaceEventLoggingOptions { QueueCapacity = 100, BatchSize = batchSize, FlushIntervalMs = 50 },
+                new FaceEventLoggingOptions { QueueCapacity = 100, BatchSize = batchSize, FlushIntervalMs = 50, RetryMaxDelayMs = 60000 },
                 processor,
                 null,
                 retryDirectory);

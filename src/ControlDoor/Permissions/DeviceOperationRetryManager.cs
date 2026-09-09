@@ -206,8 +206,9 @@ namespace ControlDoor.Permissions
 
             try
             {
-                // K3：先按运行时可执行设备过滤读轻量摘要（不含 payload 大列），再按主键取回
-                // 命中记录的完整载荷。离线设备积压不再占用全局扫描名额，也不产生人脸读取。
+                // K3/L3：先按运行时可执行设备过滤读轻量摘要（不含 payload 大列），数据库侧按设备
+                // 分区配额（每台最多 perDeviceQuota 条）避免单设备积压挤占其他在线设备的候选名额，
+                // 内存中再按设备公平选取后取回完整载荷。
                 var onlineDeviceIds = GetOnlineRetryDeviceIds();
                 IReadOnlyList<DeviceOperationRetryState> states;
                 if (onlineDeviceIds.Count == 0)
@@ -216,7 +217,7 @@ namespace ControlDoor.Permissions
                 }
                 else
                 {
-                    var summaries = store.LoadDueSummaries(now, Math.Max(1, options.BatchSize) * SummaryLoadMultiplier, onlineDeviceIds);
+                    var summaries = store.LoadDueSummaries(now, GetPerDeviceSummaryQuota(options.BatchSize), onlineDeviceIds);
                     var selectedIds = SelectFairlyAcrossDevices(summaries, Math.Max(1, options.BatchSize)).Select(state => state.Id).ToList();
                     states = store.LoadStatesByIds(selectedIds);
                 }
@@ -330,8 +331,12 @@ namespace ControlDoor.Permissions
                 result.CleanupDeleted != 0;
         }
 
-        // 摘要读取倍数（K3）：多读摘要（轻量、无 payload）换取按设备公平选取的可见范围。
-        private const int SummaryLoadMultiplier = 4;
+        // 摘要每设备配额（复核 L3）：默认 BatchSize/10（下限 2），即默认每台在线设备最多贡献 10 条候选；
+        // 配额在数据库分区排名中施加（全局截断之前），保证任何在线设备的到期记录都能进入候选集合。
+        internal static int GetPerDeviceSummaryQuota(int batchSize)
+        {
+            return Math.Max(2, Math.Max(1, batchSize) / 10);
+        }
 
         // 与 ProcessStateAsync 的离线判定保持一致：未连接、无会话、等待重连或连接中的设备都不可执行。
         private List<int> GetOnlineRetryDeviceIds()

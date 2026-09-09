@@ -214,7 +214,9 @@ namespace ControlEntradaSalida.Tests
                 if (PoisonRequestIds.Contains(rawEvent.RequestId))
                 {
                     PoisonAttempts++;
-                    return FaceEventProcessResult.Failed("RETRYABLE_FAILURE", "transient poison");
+                    // 非数据库签名的不可恢复码（复核 L2 后 RETRYABLE_FAILURE 在无成功时进入环境保护不再死信，
+                    // 本用例验证的是死信遗留清理路径，用中性码保证确定性转死信）。
+                    return FaceEventProcessResult.Failed("POISON_UNRECOVERABLE", "unrecoverable poison");
                 }
 
                 return FaceEventProcessResult.Ok("INSERTED", "ok");
