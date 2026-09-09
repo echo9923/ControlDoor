@@ -26,16 +26,20 @@ namespace ControlEntradaSalida.Tests
         [TestCase]
         public static void FaceEventIngestionService_FullQueue_ReturnsQueueFull()
         {
-            var service = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 2 });
+            // 复核 R1：队列满先经溢出通道持久化；溢出通道也满才以 OVERFLOW_FULL 拒绝。
+            var service = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 2, OverflowQueueCapacity = 1 });
 
             var first = service.TryEnqueue(NewRawEvent());
             var second = service.TryEnqueue(NewRawEvent());
             var third = service.TryEnqueue(NewRawEvent());
+            var fourth = service.TryEnqueue(NewRawEvent());
 
             Assert.True(first.Accepted);
             Assert.True(second.Accepted);
-            Assert.False(third.Accepted);
-            Assert.Equal("QUEUE_FULL", third.Code);
+            Assert.True(third.Accepted);
+            Assert.Equal("QUEUE_FULL_PERSISTED", third.Code);
+            Assert.False(fourth.Accepted);
+            Assert.Equal("OVERFLOW_FULL", fourth.Code);
             Assert.Equal(2, service.Capacity);
             Assert.Equal(2, service.Count);
             service.Dispose();

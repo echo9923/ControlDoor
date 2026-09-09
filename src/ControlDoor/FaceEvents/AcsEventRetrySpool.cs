@@ -42,29 +42,48 @@ namespace ControlDoor.FaceEvents
             lock (gate)
             {
                 if (paths.ContainsKey(item)) return;
-                var path = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".json");
-                var temporary = path + ".tmp";
-                var bytes = Encoding.UTF8.GetBytes(new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(new StoredEvent
-                {
-                    Event = item,
-                    ReceivedAtBinary = item.ReceivedAt.ToBinary()
-                }));
-                try
-                {
-                    using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                    {
-                        stream.Write(bytes, 0, bytes.Length);
-                        stream.Flush(true);
-                    }
-                    File.Move(temporary, path);
-                    paths.Add(item, path);
-                    eventsByPath[path] = item;
-                }
-                finally
-                {
-                    if (File.Exists(temporary)) File.Delete(temporary);
-                }
+                var path = WriteEventFile(item);
+                paths.Add(item, path);
+                eventsByPath[path] = item;
             }
+        }
+
+        // 无登记落盘（复核 R1）：溢出写盘线程专用。写入的文件不进入内存登记，
+        // 由 Load 按普通待处理事件发现并回放；调用方对事件的消费互斥（TryTake）保证不会重复落盘。
+        public void Persist(RawAcsAlarmEvent item)
+        {
+            if (string.IsNullOrWhiteSpace(directory)) return;
+            lock (gate)
+            {
+                if (paths.ContainsKey(item)) return;
+                WriteEventFile(item);
+            }
+        }
+
+        private string WriteEventFile(RawAcsAlarmEvent item)
+        {
+            var path = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".json");
+            var temporary = path + ".tmp";
+            var bytes = Encoding.UTF8.GetBytes(new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(new StoredEvent
+            {
+                Event = item,
+                ReceivedAtBinary = item.ReceivedAt.ToBinary()
+            }));
+            try
+            {
+                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    stream.Write(bytes, 0, bytes.Length);
+                    stream.Flush(true);
+                }
+                File.Move(temporary, path);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+
+            return path;
         }
 
         public IReadOnlyList<RawAcsAlarmEvent> Load(int count)

@@ -83,7 +83,7 @@ namespace ControlEntradaSalida.Tests
             var retryDirectory = Path.Combine(runDirectory, "acs-retry");
             var processor = new FollowUpProcessor { FailAllRetryable = true };
             var service = new FaceEventIngestionService(
-                new FaceEventLoggingOptions { QueueCapacity = 3, BatchSize = 1, FlushIntervalMs = 20 },
+                new FaceEventLoggingOptions { QueueCapacity = 3, BatchSize = 1, FlushIntervalMs = 20, OverflowQueueCapacity = 1 },
                 processor, null, retryDirectory);
             service.ItemRetryLimit = 100;
             var context = new BackgroundTaskContext("f01-backpressure", CancellationToken.None, null);
@@ -97,11 +97,13 @@ namespace ControlEntradaSalida.Tests
                     Thread.Sleep(60);
                 }
 
-                // 重试道达容量（3）后停止取件，队列积压到容量并对外形成 QUEUE_FULL 背压。
+                // 重试道达容量（3）后停止取件，队列积压到容量并对外形成背压（F01 核心）。
+                // 复核 R1 后队列满不再直接丢弃：事件经溢出通道持久化，恢复后一并补齐
+                //（OVERFLOW_FULL 最后边界在 CodeReviewR01EventOverflowPersistenceTests 中确定性覆盖）。
                 SpinUntil(() => service.Count == 3, "重试道满后队列未积压到容量。");
-                var rejected = service.TryEnqueue(NewRawEvent("f01b-reject"));
-                Assert.False(rejected.Accepted);
-                Assert.Equal("QUEUE_FULL", rejected.Code);
+                var overflowed = service.TryEnqueue(NewRawEvent("f01b-overflow"));
+                Assert.True(overflowed.Accepted);
+                Assert.Equal("QUEUE_FULL_PERSISTED", overflowed.Code);
 
                 // 故障恢复后自动排空，队列与重试道全部清空。
                 processor.FailAllRetryable = false;

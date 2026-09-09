@@ -194,6 +194,10 @@ namespace ControlDoor.Configuration
 
         // 死信巡检间隔（复核 J3/R2）：补清理死信遗留源文件并输出死信数量告警。
         public int DeadLetterPatrolIntervalMs { get; set; } = 30000;
+
+        // 溢出兜底通道容量（复核 R1）：内存队列满时事件经此通道异步落盘；
+        // 容量即突发期的内存上界（按 200KB 单图估算 500 条约 100MB，典型 50KB 约 25MB）。
+        public int OverflowQueueCapacity { get; set; } = 500;
     }
 
     public sealed class FaceEnrollmentOptions

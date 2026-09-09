@@ -314,6 +314,14 @@ namespace ControlDoor.Configuration
                 "FaceEventLogging.DeadLetterPatrolIntervalMs",
                 warnings);
 
+            settings.FaceEventLogging.OverflowQueueCapacity = RangeOrDefault(
+                settings.FaceEventLogging.OverflowQueueCapacity,
+                1,
+                10000,
+                500,
+                "FaceEventLogging.OverflowQueueCapacity",
+                warnings);
+
             settings.FaceEnrollment.MaxFaceImageBytes = MinimumOrDefault(
                 settings.FaceEnrollment.MaxFaceImageBytes,
                 1,

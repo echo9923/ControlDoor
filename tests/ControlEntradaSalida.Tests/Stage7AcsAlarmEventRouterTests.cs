@@ -89,15 +89,19 @@ namespace ControlEntradaSalida.Tests
         public static void AcsAlarmEventRouter_QueueFull_ReturnsRejectedWithoutThrowing()
         {
             var registry = NewRegistry();
-            var queue = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 1 });
+            // 复核 R1：队列满先经溢出通道持久化；队列与溢出通道同时满时路由得到 OVERFLOW_FULL 拒绝，且不抛异常。
+            var queue = new FaceEventIngestionService(new FaceEventLoggingOptions { QueueCapacity = 1, OverflowQueueCapacity = 1 });
             var router = new AcsAlarmEventRouter(registry, queue);
 
             var first = router.Route(new AlarmEventData { Command = AcsAlarmEventRouter.CommAlarmAcs, DeviceIpAddress = "192.168.1.10" });
             var second = router.Route(new AlarmEventData { Command = AcsAlarmEventRouter.CommAlarmAcs, DeviceIpAddress = "192.168.1.10" });
+            var third = router.Route(new AlarmEventData { Command = AcsAlarmEventRouter.CommAlarmAcs, DeviceIpAddress = "192.168.1.10" });
 
             Assert.True(first.Accepted);
-            Assert.False(second.Accepted);
-            Assert.Equal("QUEUE_FULL", second.Code);
+            Assert.True(second.Accepted);
+            Assert.Equal("QUEUE_FULL_PERSISTED", second.Code);
+            Assert.False(third.Accepted);
+            Assert.Equal("OVERFLOW_FULL", third.Code);
         }
 
         [TestCase]

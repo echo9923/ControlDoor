@@ -25,11 +25,15 @@ namespace ControlDoor.FaceEvents
         // 死信巡检（复核 J3/R2）：补清理死信遗留源文件并输出死信数量，独立于回放节奏且有文件预算。
         public const int DefaultDeadLetterPatrolIntervalMs = 30000;
         private const int DeadLetterPatrolFileBudget = 2000;
+        // 溢出兜底（复核 R1）：内存队列满时事件进入有界溢出通道，由专用写盘线程落盘到现有重试目录，
+        // 由既有磁盘回放自动恢复；SDK 回调线程仍只做零等待 TryAdd，不做同步磁盘 IO。
+        public const int DefaultOverflowQueueCapacity = 500;
 
         // 测试可注入更小的重试上限；生产固定 10 次。
         internal int ItemRetryLimit { private get; set; } = MaxItemRetryAttempts;
 
         private readonly BlockingCollection<RawAcsAlarmEvent> queue;
+        private readonly BlockingCollection<RawAcsAlarmEvent> overflowQueue;
         private readonly IAcsFaceEventProcessor processor;
         private readonly ServiceLogger logger;
         private readonly int capacity;
@@ -37,8 +41,11 @@ namespace ControlDoor.FaceEvents
         private readonly int flushIntervalMs;
         private readonly int deadLetterPatrolIntervalMs;
         private long lastDeadLetterPatrolTicks;
+        private long overflowPersistedCount;
+        private long overflowDroppedCount;
         private CancellationTokenSource cancellationTokenSource;
         private Task worker;
+        private Task overflowWriter;
         private bool accepting = true;
         private bool disposed;
         private long acceptedCount;
@@ -76,6 +83,8 @@ namespace ControlDoor.FaceEvents
             flushIntervalMs = options.FlushIntervalMs < 1 ? DefaultFlushIntervalMs : options.FlushIntervalMs;
             deadLetterPatrolIntervalMs = Math.Max(1000, options.DeadLetterPatrolIntervalMs > 0 ? options.DeadLetterPatrolIntervalMs : DefaultDeadLetterPatrolIntervalMs);
             queue = new BlockingCollection<RawAcsAlarmEvent>(new ConcurrentQueue<RawAcsAlarmEvent>(), capacity);
+            var overflowCapacity = Math.Max(1, options.OverflowQueueCapacity > 0 ? options.OverflowQueueCapacity : DefaultOverflowQueueCapacity);
+            overflowQueue = new BlockingCollection<RawAcsAlarmEvent>(new ConcurrentQueue<RawAcsAlarmEvent>(), overflowCapacity);
             this.processor = processor;
             this.logger = logger;
             spool = new AcsEventRetrySpool(retryDirectory, logger);
@@ -114,18 +123,7 @@ namespace ControlDoor.FaceEvents
             {
                 if (!queue.TryAdd(alarmEvent, 0))
                 {
-                    logger?.Error("FaceEventIngestion", "ACS event queue is full.", null, new LogFields
-                    {
-                        DeviceId = alarmEvent.DeviceId > 0 ? (int?)alarmEvent.DeviceId : null,
-                        RequestId = alarmEvent.RequestId,
-                        Extra =
-                        {
-                            ["command"] = alarmEvent.Command.ToString(),
-                            ["receivedAt"] = alarmEvent.ReceivedAt.ToString("O"),
-                            ["capacity"] = capacity.ToString()
-                        }
-                    });
-                    return FaceEventEnqueueResult.Rejected("QUEUE_FULL", "face event queue is full", Count, capacity);
+                    return HandleQueueFull(alarmEvent);
                 }
 
                 Interlocked.Increment(ref acceptedCount);
@@ -162,8 +160,47 @@ namespace ControlDoor.FaceEvents
             }
             catch (InvalidOperationException)
             {
+                // 与方法入口检查之间的停止竞态：按已停止拒绝，不进入溢出通道。
                 return FaceEventEnqueueResult.Rejected("STOPPED", "face event queue is stopped", Count, capacity);
             }
+        }
+
+        // 队列满处理（复核 R1）：优先进入有界溢出通道，由专用写盘线程持久化到现有重试目录；
+        // 磁盘回放在队列腾出预算后自动恢复。溢出通道也满（内存与磁盘持续写不动的极端场景）
+        // 才最终丢弃并计数——这是文档化的最后边界，强杀窗口（R5）另见运维文档。
+        private FaceEventEnqueueResult HandleQueueFull(RawAcsAlarmEvent alarmEvent)
+        {
+            var fields = new LogFields
+            {
+                DeviceId = alarmEvent.DeviceId > 0 ? (int?)alarmEvent.DeviceId : null,
+                RequestId = alarmEvent.RequestId,
+                Extra =
+                {
+                    ["command"] = alarmEvent.Command.ToString(),
+                    ["receivedAt"] = alarmEvent.ReceivedAt.ToString("O"),
+                    ["capacity"] = capacity.ToString()
+                }
+            };
+
+            if (!overflowQueue.TryAdd(alarmEvent, 0))
+            {
+                Interlocked.Increment(ref overflowDroppedCount);
+                fields.Extra["overflowDroppedTotal"] = Interlocked.Read(ref overflowDroppedCount).ToString();
+                logger?.Error("FaceEventIngestion", "ACS event queue and overflow lane are full; event dropped.", null, fields);
+                return FaceEventEnqueueResult.Rejected("OVERFLOW_FULL", "face event queue and overflow lane are full", Count, capacity);
+            }
+
+            Interlocked.Increment(ref overflowPersistedCount);
+            fields.Extra["overflowQueuedTotal"] = Interlocked.Read(ref overflowPersistedCount).ToString();
+            logger?.WarnRepeated("FaceEventIngestion", "ACS 事件队列已满，事件进入溢出持久化通道。", fields);
+            return new FaceEventEnqueueResult
+            {
+                Accepted = true,
+                Code = "QUEUE_FULL_PERSISTED",
+                Message = "queue full; event persisted via overflow lane",
+                QueueDepth = Count,
+                Capacity = capacity
+            };
         }
 
         public Task StartAsync(BackgroundTaskContext context)
@@ -180,6 +217,7 @@ namespace ControlDoor.FaceEvents
 
             cancellationTokenSource = new CancellationTokenSource();
             worker = Task.Run(() => ProcessLoop(cancellationTokenSource.Token));
+            overflowWriter = Task.Run(() => OverflowWriteLoop(cancellationTokenSource.Token));
             return Task.CompletedTask;
         }
 
@@ -197,6 +235,18 @@ namespace ControlDoor.FaceEvents
             catch (InvalidOperationException)
             {
                 // Already completed by an earlier stop/dispose path.
+            }
+
+            try
+            {
+                // 溢出通道停止接收；写盘线程在排空通道后退出（复核 R1）。
+                overflowQueue.CompleteAdding();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (InvalidOperationException)
+            {
             }
 
             if (worker != null)
@@ -220,6 +270,17 @@ namespace ControlDoor.FaceEvents
                     cancellationTokenSource?.Cancel();
                 }
             }
+
+            if (overflowWriter != null)
+            {
+                var overflowCompleted = await Task.WhenAny(overflowWriter, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+                if (!object.ReferenceEquals(overflowCompleted, overflowWriter))
+                {
+                    logger?.Warn("FaceEventIngestion", "ACS 溢出写盘线程停止超时，剩余事件将由 PersistPending 兜底落盘。");
+                    cancellationTokenSource?.Cancel();
+                }
+            }
+
             PersistPending();
         }
 
@@ -240,11 +301,13 @@ namespace ControlDoor.FaceEvents
             disposed = true;
             accepting = false;
             try { queue.CompleteAdding(); } catch { /* best-effort shutdown */ }
+            try { overflowQueue.CompleteAdding(); } catch { /* best-effort shutdown */ }
             cancellationTokenSource?.Cancel();
             PersistPending();
             if (worker == null || worker.IsCompleted)
             {
                 queue.Dispose();
+                overflowQueue.Dispose();
                 cancellationTokenSource?.Dispose();
             }
             else
@@ -252,6 +315,7 @@ namespace ControlDoor.FaceEvents
                 _ = worker.ContinueWith(_ =>
                 {
                     queue.Dispose();
+                    overflowQueue.Dispose();
                     cancellationTokenSource?.Dispose();
                 }, TaskScheduler.Default);
             }
@@ -264,6 +328,56 @@ namespace ControlDoor.FaceEvents
                 foreach (var item in activeBatch) spool.Save(item);
                 foreach (var entry in retryLane) spool.Save(entry.Event);
                 foreach (var item in queue.ToArray()) spool.Save(item);
+            }
+
+            // 溢出通道兜底排空（复核 R1）：写盘线程未启动或停止超时的场合，停止/释放路径仍把
+            // 已进入溢出通道的事件全部落盘，不让兜底承诺出现空洞。
+            while (overflowQueue.TryTake(out var overflowItem, 0))
+            {
+                spool.Persist(overflowItem);
+            }
+        }
+
+        // 溢出写盘线程（复核 R1）：独立于事件消费循环，把队列满时进入溢出通道的事件尽快落盘，
+        // 使溢出内存占用在有界容量内周转。单个事件落盘失败仅丢弃该事件并计数（磁盘故障的最后边界）。
+        private void OverflowWriteLoop(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    RawAcsAlarmEvent item;
+                    try
+                    {
+                        item = overflowQueue.Take(cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // 通道已 CompleteAdding 且为空或已释放：正常退出。
+                        break;
+                    }
+
+                    try
+                    {
+                        spool.Persist(item);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.Error("FaceEventIngestion", "ACS 溢出事件落盘失败，事件丢弃。", ex, new LogFields
+                        {
+                            RequestId = item.RequestId,
+                            DeviceId = item.DeviceId > 0 ? (int?)item.DeviceId : null
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("FaceEventIngestion", "ACS 溢出写盘线程异常退出。", ex);
             }
         }
 
