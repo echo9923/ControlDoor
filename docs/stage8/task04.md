@@ -128,3 +128,8 @@
 日常文件沿用 `ControlDoor-yyyyMMdd.log` 名称，改为中文单行摘要；结构化诊断文件为 `diagnostic/ControlDoor-diagnostic-yyyyMMdd.log`，大小滚动追加序号。日常按关键状态及批次结果查看，排错时用 `requestId`、设备和任务编号关联诊断过程。离线补偿同时记录扫描请求编号、`stateId` 和 `intentVersion`。诊断目录纳入运行前可写检查，两份输出分别处理写入失败。
 
 可将 `GrpcPayloadLogMode` 改为 `Summary` 降低诊断报文量。配置在启动时加载；升级已有部署需核对显式配置值，尤其应关闭原来的凭据和图片原文开关。日志留存与现场查看流程参见 `docs/stage8/package-docs/运行前检查.md` 和 `docs/stage8/package-docs/部署说明.md`。
+
+## 代码复核更新（2026-09-09，R2）
+
+- 新增 `ControlDoor.exe --replay-dead-letters` 运维模式（与 `--validate-config` 同风格，服务不启动）：把运行目录 `data/acs-retry/dead-letter` 内的死信事件文件以新 Guid 名移回 `data/acs-retry`，输出死信总数、移回数量与失败明细；退出码 0 表示全部移回。建议在服务停止时执行；个别文件被占用导致移动失败会保留在死信目录，可再次执行。
+- `--validate-config` 输出不变；新增配置项（`Service.GrpcMaxReceiveMessageBytes`、`FaceEnrollment.MaxBatchFaceBytes`、`DeviceOperationRetry.BacklogScanIntervalSeconds/MaintenanceIntervalSeconds`、`FaceEventLogging.DeadLetterPatrolIntervalMs/OverflowQueueCapacity/MaxItemRetryAttempts/RetryInitialDelayMs/RetryMaxDelayMs/EnvironmentalRetryMaxDelayMs`）均纳入模板与校验回退范围。

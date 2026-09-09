@@ -26,6 +26,8 @@ namespace ControlDoor
                     return 0;
                 case RunMode.ValidateConfig:
                     return RunValidateConfig();
+                case RunMode.ReplayDeadLetters:
+                    return RunReplayDeadLetters();
                 case RunMode.Console:
                     return RunConsole();
                 default:
@@ -143,7 +145,33 @@ namespace ControlDoor
             Console.WriteLine("ControlDoor 使用方式:");
             Console.WriteLine("  ControlDoor.exe --console");
             Console.WriteLine("  ControlDoor.exe --validate-config");
+            Console.WriteLine("  ControlDoor.exe --replay-dead-letters");
             Console.WriteLine("  ControlDoor.exe --version");
+        }
+
+        // 死信受控回放（复核 R2）：服务不启动，把死信目录事件移回重试目录；随后正常启动即自动重放。
+        // 建议在服务停止时执行；个别文件被占用导致移动失败会保留在死信目录，可再次执行。
+        private static int RunReplayDeadLetters()
+        {
+            Console.WriteLine("ControlDoor 死信回放模式。");
+            var runDirectory = RuntimePaths.GetRunDirectory();
+            var retryDirectory = Path.Combine(runDirectory, "data", "acs-retry");
+            Console.WriteLine("运行目录: " + runDirectory);
+            Console.WriteLine("重试目录: " + retryDirectory);
+
+            var result = ControlDoor.FaceEvents.DeadLetterReplayTool.ReplayToRetryDirectory(retryDirectory);
+            Console.WriteLine("死信文件数: " + result.DeadLetterFilesFound);
+            Console.WriteLine("已移回重试目录: " + result.Replayed);
+            Console.WriteLine("移动失败: " + result.Failed);
+            foreach (var error in result.Errors)
+            {
+                Console.WriteLine("  - " + error);
+            }
+
+            Console.WriteLine(result.Failed == 0
+                ? "回放完成：事件将在服务启动后由磁盘回放自动重投。"
+                : "部分文件未移动：可在服务停止后再次执行本命令。");
+            return result.Failed == 0 ? 0 : 1;
         }
 
         private static void WriteList(string title, System.Collections.Generic.IReadOnlyList<string> values)

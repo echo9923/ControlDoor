@@ -22,6 +22,9 @@ namespace ControlDoor.FaceEvents
         private const int MaxItemRetryAttempts = 10;
         private const int InitialRetryDelayMs = 250;
         private const int MaxRetryDelayMs = 5000;
+        // 环境故障（整轮同构非重试失败，典型为数据库整体不可用）退避封顶（复核 R2）：
+        // 默认 30 秒，不受单条重试上限约束，保持持久积压等待恢复。
+        public const int DefaultEnvironmentalRetryMaxDelayMs = 30000;
         // 死信巡检（复核 J3/R2）：补清理死信遗留源文件并输出死信数量，独立于回放节奏且有文件预算。
         public const int DefaultDeadLetterPatrolIntervalMs = 30000;
         private const int DeadLetterPatrolFileBudget = 2000;
@@ -29,7 +32,7 @@ namespace ControlDoor.FaceEvents
         // 由既有磁盘回放自动恢复；SDK 回调线程仍只做零等待 TryAdd，不做同步磁盘 IO。
         public const int DefaultOverflowQueueCapacity = 500;
 
-        // 测试可注入更小的重试上限；生产固定 10 次。
+        // 测试可注入更小的重试上限；生产由配置 MaxItemRetryAttempts 提供（复核 R2），缺省 10 次。
         internal int ItemRetryLimit { private get; set; } = MaxItemRetryAttempts;
 
         private readonly BlockingCollection<RawAcsAlarmEvent> queue;
@@ -40,9 +43,13 @@ namespace ControlDoor.FaceEvents
         private readonly int batchSize;
         private readonly int flushIntervalMs;
         private readonly int deadLetterPatrolIntervalMs;
+        private readonly int retryInitialDelayMs;
+        private readonly int retryMaxDelayMs;
+        private readonly int environmentalRetryMaxDelayMs;
         private long lastDeadLetterPatrolTicks;
         private long overflowPersistedCount;
         private long overflowDroppedCount;
+        private long lastSuccessTicks;
         private CancellationTokenSource cancellationTokenSource;
         private Task worker;
         private Task overflowWriter;
@@ -82,6 +89,14 @@ namespace ControlDoor.FaceEvents
             batchSize = Math.Min(configuredBatchSize, MaxBatchSize);
             flushIntervalMs = options.FlushIntervalMs < 1 ? DefaultFlushIntervalMs : options.FlushIntervalMs;
             deadLetterPatrolIntervalMs = Math.Max(1000, options.DeadLetterPatrolIntervalMs > 0 ? options.DeadLetterPatrolIntervalMs : DefaultDeadLetterPatrolIntervalMs);
+            retryInitialDelayMs = Math.Max(10, options.RetryInitialDelayMs > 0 ? options.RetryInitialDelayMs : InitialRetryDelayMs);
+            retryMaxDelayMs = Math.Max(retryInitialDelayMs, options.RetryMaxDelayMs > 0 ? options.RetryMaxDelayMs : MaxRetryDelayMs);
+            environmentalRetryMaxDelayMs = Math.Max(retryMaxDelayMs, options.EnvironmentalRetryMaxDelayMs > 0 ? options.EnvironmentalRetryMaxDelayMs : DefaultEnvironmentalRetryMaxDelayMs);
+            if (options.MaxItemRetryAttempts > 0)
+            {
+                ItemRetryLimit = options.MaxItemRetryAttempts;
+            }
+
             queue = new BlockingCollection<RawAcsAlarmEvent>(new ConcurrentQueue<RawAcsAlarmEvent>(), capacity);
             var overflowCapacity = Math.Max(1, options.OverflowQueueCapacity > 0 ? options.OverflowQueueCapacity : DefaultOverflowQueueCapacity);
             overflowQueue = new BlockingCollection<RawAcsAlarmEvent>(new ConcurrentQueue<RawAcsAlarmEvent>(), overflowCapacity);
@@ -428,7 +443,7 @@ namespace ControlDoor.FaceEvents
         {
             var batch = activeBatch;
             var age = Stopwatch.StartNew();
-            var loopRetryDelay = InitialRetryDelayMs;
+            var loopRetryDelay = retryInitialDelayMs;
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
@@ -495,7 +510,7 @@ namespace ControlDoor.FaceEvents
                         }
 
                         FlushRound(batch);
-                        loopRetryDelay = InitialRetryDelayMs;
+                        loopRetryDelay = retryInitialDelayMs;
                     }
                     catch (Exception ex)
                     {
@@ -506,7 +521,7 @@ namespace ControlDoor.FaceEvents
                             logger?.Error("FaceEventIngestion", "ACS 重试文件写入失败，事件继续保留在内存中。", persistenceError);
                         }
                         cancellationToken.WaitHandle.WaitOne(loopRetryDelay);
-                        loopRetryDelay = Math.Min(MaxRetryDelayMs, loopRetryDelay * 2);
+                        loopRetryDelay = Math.Min(retryMaxDelayMs, loopRetryDelay * 2);
                     }
                 }
             }
@@ -586,7 +601,7 @@ namespace ControlDoor.FaceEvents
                 {
                     foreach (var entry in dueRetries)
                     {
-                        entry.NextRetryAt = DateTime.Now.AddMilliseconds(InitialRetryDelayMs);
+                        entry.NextRetryAt = DateTime.Now.AddMilliseconds(retryInitialDelayMs);
                         retryLane.Add(entry);
                     }
                 }
@@ -594,8 +609,10 @@ namespace ControlDoor.FaceEvents
                 throw;
             }
 
-            // 整轮全部以同一非重试错误失败时更像环境故障（如表缺失），按可重试退避而不是死信整批。
-            var environmentalFailure = IsUniformNonRetryableFailure(outcomes);
+            // 整轮全部以同一非重试错误失败时更像环境故障（如表缺失/数据库不可用），按可重试退避而不是死信整批。
+            // 复核 R2：环境故障不受单条重试上限约束，保持持久积压等待恢复；但"近期曾有成功"说明环境并未整体
+            // 故障——此时持续以数据库签名失败的单条事件按坏数据处理（死信），防止毒事件借环境分类无限重试。
+            var environmentalFailure = IsUniformNonRetryableFailure(outcomes) && !HadRecentSuccess();
             for (var index = items.Count - 1; index >= 0; index--)
             {
                 var item = items[index];
@@ -623,7 +640,7 @@ namespace ControlDoor.FaceEvents
                     {
                         lock (batchGate)
                         {
-                            entry.NextRetryAt = DateTime.Now.AddMilliseconds(InitialRetryDelayMs);
+                            entry.NextRetryAt = DateTime.Now.AddMilliseconds(retryInitialDelayMs);
                             if (!retryLane.Contains(entry))
                             {
                                 retryLane.Add(entry);
@@ -680,6 +697,11 @@ namespace ControlDoor.FaceEvents
             LogProcessResult(item, outcome.Success, outcome.Code, outcome.Message, elapsedMs);
             if (outcome.Success || IsPermanentValidationFailure(outcome.Code))
             {
+                if (outcome.Success)
+                {
+                    Interlocked.Exchange(ref lastSuccessTicks, DateTime.Now.Ticks);
+                }
+
                 lock (batchGate)
                 {
                     spool.Complete(item);
@@ -692,11 +714,13 @@ namespace ControlDoor.FaceEvents
 
             var retryable = outcome.Code == "RETRYABLE_FAILURE" || environmentalFailure;
             var attempts = (entry != null ? entry.Attempts : 0) + 1;
-            if (retryable && attempts < ItemRetryLimit)
+            // 环境故障（复核 R2）不受单条重试上限约束：数据库整体故障期间保持持久积压（每次调度均落盘），
+            // 按较长退避无限重试，恢复后自动补齐；单条坏数据与普通瞬时失败仍按上限进入死信区。
+            if (retryable && (environmentalFailure || attempts < ItemRetryLimit))
             {
                 lock (batchGate)
                 {
-                    ScheduleRetryLocked(entry, item, attempts, outcome.Code, outcome.Message);
+                    ScheduleRetryLocked(entry, item, attempts, outcome.Code, outcome.Message, environmentalFailure);
                     if (index < roundBatchCount) batch.RemoveAt(index);
                 }
 
@@ -743,7 +767,7 @@ namespace ControlDoor.FaceEvents
         }
 
         // 调用方持有 batchGate；先回重试道再尽力落盘，保证事件不因 IO 异常丢失。
-        private void ScheduleRetryLocked(RetryEntry entry, RawAcsAlarmEvent item, int attempts, string code, string message)
+        private void ScheduleRetryLocked(RetryEntry entry, RawAcsAlarmEvent item, int attempts, string code, string message, bool environmentalFailure = false)
         {
             if (entry == null)
             {
@@ -753,7 +777,7 @@ namespace ControlDoor.FaceEvents
             entry.Attempts = attempts;
             entry.LastCode = code ?? string.Empty;
             entry.LastMessage = message ?? string.Empty;
-            entry.NextRetryAt = DateTime.Now.AddMilliseconds(RetryDelayMs(attempts));
+            entry.NextRetryAt = DateTime.Now.AddMilliseconds(RetryDelayMs(attempts, environmentalFailure));
             if (!retryLane.Contains(entry))
             {
                 retryLane.Add(entry);
@@ -769,16 +793,31 @@ namespace ControlDoor.FaceEvents
             }
         }
 
-        private static int RetryDelayMs(int attempts)
+        private int RetryDelayMs(int attempts, bool environmentalFailure = false)
         {
-            var shift = Math.Max(0, attempts - 1);
-            if (shift > 4) return MaxRetryDelayMs;
-            return Math.Min(MaxRetryDelayMs, InitialRetryDelayMs << shift);
+            var cap = environmentalFailure ? environmentalRetryMaxDelayMs : retryMaxDelayMs;
+            var shift = Math.Max(0, Math.Min(attempts - 1, 20));
+            var delay = (long)retryInitialDelayMs << shift;
+            return (int)Math.Min(cap, delay);
         }
 
         private static bool IsNonRetryableFailure(string code)
         {
             return code == "DATABASE_FAILURE" || code == "FAILED";
+        }
+
+        // 复核 R2：环境故障宽限窗口内出现过成功即视为"环境未整体故障"。
+        // 窗口取环境退避封顶（默认 30 秒）：数据库整体故障期间不会有成功；部分恢复后
+        // 持续以数据库签名失败的单条事件按坏数据死信，不再享受无限重试保护。
+        private bool HadRecentSuccess()
+        {
+            var last = Interlocked.Read(ref lastSuccessTicks);
+            if (last == 0)
+            {
+                return false;
+            }
+
+            return DateTime.Now.Ticks - last < TimeSpan.FromMilliseconds(environmentalRetryMaxDelayMs).Ticks;
         }
 
         private bool HasDueRetry(DateTime now)

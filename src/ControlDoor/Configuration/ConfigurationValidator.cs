@@ -322,6 +322,35 @@ namespace ControlDoor.Configuration
                 "FaceEventLogging.OverflowQueueCapacity",
                 warnings);
 
+            settings.FaceEventLogging.MaxItemRetryAttempts = RangeOrDefault(
+                settings.FaceEventLogging.MaxItemRetryAttempts,
+                1,
+                1000,
+                10,
+                "FaceEventLogging.MaxItemRetryAttempts",
+                warnings);
+
+            settings.FaceEventLogging.RetryInitialDelayMs = MinimumOrDefault(
+                settings.FaceEventLogging.RetryInitialDelayMs,
+                10,
+                250,
+                "FaceEventLogging.RetryInitialDelayMs",
+                warnings);
+
+            settings.FaceEventLogging.RetryMaxDelayMs = MinimumOrDefault(
+                settings.FaceEventLogging.RetryMaxDelayMs,
+                settings.FaceEventLogging.RetryInitialDelayMs,
+                5000,
+                "FaceEventLogging.RetryMaxDelayMs",
+                warnings);
+
+            settings.FaceEventLogging.EnvironmentalRetryMaxDelayMs = MinimumOrDefault(
+                settings.FaceEventLogging.EnvironmentalRetryMaxDelayMs,
+                settings.FaceEventLogging.RetryMaxDelayMs,
+                30000,
+                "FaceEventLogging.EnvironmentalRetryMaxDelayMs",
+                warnings);
+
             settings.FaceEnrollment.MaxFaceImageBytes = MinimumOrDefault(
                 settings.FaceEnrollment.MaxFaceImageBytes,
                 1,

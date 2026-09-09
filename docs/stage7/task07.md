@@ -148,3 +148,10 @@
 - 溢出通道也满才最终丢弃：返回 `OVERFLOW_FULL` 并记录 Error 与累计计数，这是文档化的最后边界；溢出通道容量即突发期的内存上界（按 200KB 单图估算 500 条约 100MB，典型 50KB 约 25MB）。
 - 停止/释放兜底：`PersistPending` 在排空活动批次、重试道与队列后，继续排空溢出通道并落盘，保证"已接收即已持久化"的兜底承诺在写盘线程未启动或停止超时的场合仍然成立。
 - 接收成功到溢出落盘之间仍有短暂内存窗口（R5）：进程强杀/断电可能丢失溢出通道内尚未写盘的事件，该边界维持文档记录，不在本轮引入全量预写日志。
+
+## 代码复核更新（2026-09-09，R2）
+
+- 环境故障（整轮同构非重试失败，典型为数据库整体不可用）不再受单条重试上限约束：保持持久积压（每次调度均落盘）并按 `FaceEventLogging.EnvironmentalRetryMaxDelayMs`（默认 30 秒）封顶退避无限重试，数据库恢复后自动补齐，不再需要人工补录。
+- 防毒事件滥用：环境宽限窗（= 环境退避封顶）内出现过成功即视为"环境未整体故障"，此时持续以数据库签名失败的单条事件按坏数据死信，不享受无限重试保护。
+- 重试策略转为配置：`FaceEventLogging.MaxItemRetryAttempts`（默认 10）、`RetryInitialDelayMs`（250）、`RetryMaxDelayMs`（5000）、`EnvironmentalRetryMaxDelayMs`（30000），随既有配置校验回退。
+- 死信受控回放：新增 `ControlDoor.exe --replay-dead-letters` 命令行模式（服务不启动，与 `--validate-config` 同风格），把 `data/acs-retry/dead-letter` 内的事件文件以新 Guid 名移回重试目录，随后正常启动即由磁盘回放自动重投；建议在服务停止时执行。死信数量由巡检日志（`DeadLetterPatrol`）持续监控。

@@ -198,6 +198,16 @@ namespace ControlDoor.Configuration
         // 溢出兜底通道容量（复核 R1）：内存队列满时事件经此通道异步落盘；
         // 容量即突发期的内存上界（按 200KB 单图估算 500 条约 100MB，典型 50KB 约 25MB）。
         public int OverflowQueueCapacity { get; set; } = 500;
+
+        // 事件重试策略（复核 R2）：单条事件重试上限与退避；环境故障（整轮同构非重试失败，
+        // 典型为数据库整体不可用）不受上限约束，退避封顶用 EnvironmentalRetryMaxDelayMs。
+        public int MaxItemRetryAttempts { get; set; } = 10;
+
+        public int RetryInitialDelayMs { get; set; } = 250;
+
+        public int RetryMaxDelayMs { get; set; } = 5000;
+
+        public int EnvironmentalRetryMaxDelayMs { get; set; } = 30000;
     }
 
     public sealed class FaceEnrollmentOptions

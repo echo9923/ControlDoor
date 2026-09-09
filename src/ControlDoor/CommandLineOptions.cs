@@ -9,6 +9,7 @@ namespace ControlDoor
         Service,
         Console,
         ValidateConfig,
+        ReplayDeadLetters,
         Version,
         Help
     }
@@ -43,6 +44,11 @@ namespace ControlDoor
             if (normalized.Contains("--validate-config"))
             {
                 return new CommandLineOptions(RunMode.ValidateConfig, args);
+            }
+
+            if (normalized.Contains("--replay-dead-letters"))
+            {
+                return new CommandLineOptions(RunMode.ReplayDeadLetters, args);
             }
 
             if (normalized.Contains("--console") || userInteractive)
