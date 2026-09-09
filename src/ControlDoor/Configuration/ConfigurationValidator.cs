@@ -292,6 +292,27 @@ namespace ControlDoor.Configuration
                 "FaceEventLogging.QueueCapacity",
                 warnings);
 
+            // 复核 R3：保留天数 0 表示不启用（业务决策，不擅自删历史图片）；负数回退 0，启用时提示核对磁盘容量。
+            if (settings.FaceEventLogging.SnapshotRetentionDays < 0)
+            {
+                warnings.Add("FaceEventLogging.SnapshotRetentionDays 非法，已回退为 0（不启用清理）。");
+                settings.FaceEventLogging.SnapshotRetentionDays = 0;
+            }
+
+            if (settings.FaceEventLogging.SnapshotRetentionDays > 0)
+            {
+                warnings.Add("FaceEventLogging.SnapshotRetentionDays 已启用（" + settings.FaceEventLogging.SnapshotRetentionDays +
+                    " 天）：请确认现场磁盘容量与稽核留存要求一致，清理一旦执行不可恢复。");
+            }
+
+            settings.FaceEventLogging.SnapshotCleanupIntervalMinutes = RangeOrDefault(
+                settings.FaceEventLogging.SnapshotCleanupIntervalMinutes,
+                5,
+                1440,
+                60,
+                "FaceEventLogging.SnapshotCleanupIntervalMinutes",
+                warnings);
+
             settings.FaceEventLogging.BatchSize = RangeOrDefault(
                 settings.FaceEventLogging.BatchSize,
                 1,

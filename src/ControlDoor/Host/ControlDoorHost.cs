@@ -42,6 +42,7 @@ namespace ControlDoor.Host
         private AccessControlGrpcService accessControlGrpcService;
         private PermissionSyncGrpcService permissionSyncGrpcService;
         private FaceEventIngestionService faceEventIngestionService;
+        private FaceEvents.SnapshotCleanupBackgroundTask snapshotCleanupTask;
         private AcsAlarmEventRouter acsAlarmEventRouter;
         private CameraDoorInterlockService cameraDoorInterlockService;
         private AiopAlarmEventRouter aiopAlarmEventRouter;
@@ -216,6 +217,8 @@ namespace ControlDoor.Host
                     System.IO.Path.Combine(runDirectory, "data", "acs-retry"));
                 acsAlarmEventRouter = new AcsAlarmEventRouter(deviceRegistry, faceEventIngestionService, settings.FaceEventLogging, logger);
                 acsAlarmEventRouter.Attach(hikvisionGateway);
+                // 复核 R3：历史抓拍按保留天数周期清理；SnapshotRetentionDays=0（默认）时任务空转不删除。
+                snapshotCleanupTask = new FaceEvents.SnapshotCleanupBackgroundTask(snapshotStorage, settings.FaceEventLogging, logger);
             }
 
             if (settings.CameraAlarmDoorInterlock.Enabled)
@@ -241,6 +244,11 @@ namespace ControlDoor.Host
             if (faceEventIngestionService != null)
             {
                 backgroundTaskHost.Register(faceEventIngestionService, startOrder: 35, stopOrder: 55, isCritical: false);
+            }
+
+            if (snapshotCleanupTask != null)
+            {
+                backgroundTaskHost.Register(snapshotCleanupTask, startOrder: 45, stopOrder: 45, isCritical: false);
             }
             if (cameraDoorInterlockService != null)
             {

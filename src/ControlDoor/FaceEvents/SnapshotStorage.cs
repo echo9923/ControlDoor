@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using ControlDoor.Configuration;
@@ -109,6 +110,136 @@ namespace ControlDoor.FaceEvents
             }
 
             return value.Length == 0 ? "unknown" : value;
+        }
+
+        // 历史抓拍清理（复核 R3）：只删除根目录下形如 yyyyMMdd 且日期早于截止日的日期目录内文件，
+        // 不触碰非日期命名的目录（运维自建结构）与保留期内的目录；每轮有删除文件数预算，
+        // 删除失败的文件保留待下一轮，绝不因清理中断而误删保留期内图片。
+        public SnapshotCleanupResult CleanupExpired(DateTime cutoff, int maxFileDeletions)
+        {
+            var result = new SnapshotCleanupResult();
+            if (maxFileDeletions <= 0)
+            {
+                return result;
+            }
+
+            try
+            {
+                if (!Directory.Exists(rootDirectory))
+                {
+                    return result;
+                }
+
+                var dateDirectories = Directory.EnumerateDirectories(rootDirectory)
+                    .Select(path => new { Path = path, Name = Path.GetFileName(path) })
+                    .Where(item => IsDateDirectoryName(item.Name))
+                    .OrderBy(item => item.Name, StringComparer.Ordinal)
+                    .ToList();
+                foreach (var directory in dateDirectories)
+                {
+                    if (result.DeletedFiles >= maxFileDeletions)
+                    {
+                        break;
+                    }
+
+                    var directoryDate = DateTime.ParseExact(directory.Name, "yyyyMMdd", CultureInfo.InvariantCulture);
+                    if (directoryDate >= cutoff.Date)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        var failedBefore = result.FailedFiles;
+                        // 物化文件列表：迭代中删除文件会让惰性枚举器抛异常，导致目录无法收尾移除。
+                        foreach (var file in Directory.EnumerateFiles(directory.Path, "*", SearchOption.AllDirectories).ToList())
+                        {
+                            if (result.DeletedFiles >= maxFileDeletions)
+                            {
+                                break;
+                            }
+
+                            try
+                            {
+                                long length = 0;
+                                try
+                                {
+                                    length = new FileInfo(file).Length;
+                                }
+                                catch (IOException)
+                                {
+                                }
+
+                                File.Delete(file);
+                                result.DeletedFiles++;
+                                result.DeletedBytes += length;
+                            }
+                            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                            {
+                                result.FailedFiles++;
+                                logger?.Warn("SnapshotStorage", "历史抓拍文件暂时无法删除，将在下一轮重试: " + file + "。原因: " + ex.Message);
+                            }
+                        }
+
+                        // 本目录无失败才尝试移除空目录；移除失败不影响数据安全与后续轮次。
+                        if (result.FailedFiles == failedBefore && TryRemoveEmptyDateDirectory(directory.Path))
+                        {
+                            result.RemovedDirectories++;
+                        }
+                    }
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                    {
+                        result.FailedFiles++;
+                        logger?.Warn("SnapshotStorage", "历史抓拍目录暂时无法清理，将在下一轮重试: " + directory.Path + "。原因: " + ex.Message);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("SnapshotStorage", "历史抓拍清理异常。", ex);
+            }
+
+            return result;
+        }
+
+        private static bool IsDateDirectoryName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Length != 8)
+            {
+                return false;
+            }
+
+            DateTime date;
+            return DateTime.TryParseExact(name, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+        }
+
+        private bool TryRemoveEmptyDateDirectory(string directory)
+        {
+            try
+            {
+                RemoveIfEmpty(directory);
+                // 物化子目录列表：迭代中删除目录会让惰性枚举器抛异常。
+                foreach (var sub in Directory.EnumerateDirectories(directory).ToList())
+                {
+                    RemoveIfEmpty(sub);
+                }
+
+                RemoveIfEmpty(directory);
+                // 目录已删除后不能再枚举（DirectoryNotFoundException），用存在性判断收尾。
+                return !Directory.Exists(directory);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
+        private static void RemoveIfEmpty(string directory)
+        {
+            if (!Directory.EnumerateFileSystemEntries(directory).Any())
+            {
+                Directory.Delete(directory);
+            }
         }
 
         private static void ApplySnapshotPayload(AcsFaceEvent faceEvent, SnapshotSaveResult result)

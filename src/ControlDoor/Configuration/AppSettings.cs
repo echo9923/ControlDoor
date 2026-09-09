@@ -186,6 +186,12 @@ namespace ControlDoor.Configuration
 
         public int QueueCapacity { get; set; } = 2000;
 
+        // 历史抓拍保留（复核 R3）：0=不启用清理（默认，保留天数是业务决策，未经确认不删历史图片）；
+        // 启用后每 SnapshotCleanupIntervalMinutes 分钟清理一次超期日期目录，建议 90/180 起评估。
+        public int SnapshotRetentionDays { get; set; }
+
+        public int SnapshotCleanupIntervalMinutes { get; set; } = 60;
+
         public bool EnableHistoryCompensation { get; set; } = false;
 
         public int BatchSize { get; set; } = 50;
