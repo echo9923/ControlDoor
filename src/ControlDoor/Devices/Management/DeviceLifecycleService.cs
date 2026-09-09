@@ -784,7 +784,9 @@ namespace ControlDoor.Devices.Management
         private async System.Threading.Tasks.Task ProbeAlarmDeploymentAsync(DeviceTaskContext context, DeviceRuntimeSnapshot snapshot, DateTime started)
         {
             var deviceId = context.Task.DeviceId;
-            if (!ShouldProbeAlarmDeployment(snapshot))
+            // 本地缺失句柄自愈不依赖 AlarmStatusProbeEnabled（K1）：设备在线却没有布防句柄
+            // 意味着 ACS 事件订阅缺失，健康检查必须补排重布防；该开关只控制设备侧主动探测。
+            if (!ShouldCheckLocalAlarmHandle(snapshot))
             {
                 ClearAlarmProbeFailures(deviceId);
                 return;
@@ -809,6 +811,12 @@ namespace ControlDoor.Devices.Management
                     context.Registry.RecordError(deviceId, missingHandleError, DateTime.Now, DeviceConnectionStatus.Degraded);
                     ScheduleReArm(deviceId, missingHandleError.Message);
                     ClearAlarmProbeFailures(deviceId);
+                    return;
+                }
+
+                // 设备侧主动探测仍受 AlarmStatusProbeEnabled 开关控制。
+                if (!ShouldProbeAlarmDeployment(snapshot))
+                {
                     return;
                 }
 
@@ -867,9 +875,11 @@ namespace ControlDoor.Devices.Management
             }
         }
 
-        private bool ShouldProbeAlarmDeployment(DeviceRuntimeSnapshot snapshot)
+        // 本地布防句柄自愈守卫（K1）：设备在线且启用 ACS 报警即检查本地句柄，
+        // 与 AlarmStatusProbeEnabled 无关——该开关只控制向设备侧主动探测布防状态。
+        private bool ShouldCheckLocalAlarmHandle(DeviceRuntimeSnapshot snapshot)
         {
-            if (!options.AlarmEnabled || !options.AlarmStatusProbeEnabled || snapshot == null)
+            if (!options.AlarmEnabled || snapshot == null)
             {
                 return false;
             }
@@ -882,7 +892,12 @@ namespace ControlDoor.Devices.Management
                 && snapshot.Types.Contains(DeviceType.Acs);
         }
 
-        private DeviceOperationResult SubmitArmAlarm(int deviceId, bool wait, string requestId)
+        private bool ShouldProbeAlarmDeployment(DeviceRuntimeSnapshot snapshot)
+        {
+            return options.AlarmStatusProbeEnabled && ShouldCheckLocalAlarmHandle(snapshot);
+        }
+
+        internal DeviceOperationResult SubmitArmAlarm(int deviceId, bool wait, string requestId)
         {
             var task = CreateArmAlarmTask(deviceId, requestId);
             if (wait)
@@ -890,6 +905,12 @@ namespace ControlDoor.Devices.Management
                 return FromTaskResult(dispatcher.SubmitAndWaitAsync(task).GetAwaiter().GetResult());
             }
 
+            // 异步布防的完成结果必须观察：投递被拒或排队过期时布防委托从未运行，
+            // 委托内部的重试安排不会发生，不观察则设备在线却永久缺失布防句柄（K1）。
+            task.Completion.Task.ContinueWith(completed =>
+            {
+                OnArmAlarmDispatchCompleted(deviceId, completed.Status == System.Threading.Tasks.TaskStatus.RanToCompletion ? completed.Result : null);
+            });
             var submitted = dispatcher.Submit(task);
             return new DeviceOperationResult
             {
@@ -1186,6 +1207,24 @@ namespace ControlDoor.Devices.Management
             ScheduleReconnect(deviceId, "reconnect task expired before execution");
         }
 
+        // 布防任务被设备队列接受后的完成观察（K1）：排队过期或入队被拒意味着布防委托从未运行，
+        // 其内部的失败重试安排（CreateArmAlarmTask 的 catch）不会发生，这里补一次调度。
+        // 其余失败路径由布防委托自己处理；重复调度由 stage4:rearm 延迟任务同键合并去重。
+        private void OnArmAlarmDispatchCompleted(int deviceId, DeviceTaskResult result)
+        {
+            if (stopping || result == null || result.Success)
+            {
+                return;
+            }
+
+            if (!result.ExpiredBeforeExecution && result.Code != "QUEUE_FULL")
+            {
+                return;
+            }
+
+            ScheduleReArm(deviceId, "arm task rejected before execution: " + result.Code);
+        }
+
         // 健康检查/删除补偿自愈入口：为停留在 ReconnectPending 或已登出的自动在线设备幂等补排重连。
         public void EnsureReconnectScheduled(int deviceId, string reason = "health check reconnect self-heal")
         {
@@ -1223,7 +1262,7 @@ namespace ControlDoor.Devices.Management
                 TimeSpan.FromMilliseconds(options.ReArmMaxDelayMs));
             var delay = policy.CalculateDelay(attempt);
             var dueAt = DateTime.Now.Add(delay);
-            delayedScheduler?.Schedule(new DelayedDeviceTask(
+            var delayedTask = new DelayedDeviceTask(
                 deviceId,
                 DeviceTaskType.SetupAlarm,
                 DeviceTaskPriority.Normal,
@@ -1231,7 +1270,11 @@ namespace ControlDoor.Devices.Management
                 "stage4:rearm:" + deviceId,
                 "Stage4ReArm",
                 () => CreateArmAlarmTask(deviceId, string.Empty),
-                DateTime.Now));
+                DateTime.Now);
+            // 延迟重布防派发被拒或再次排队过期同样意味着布防委托从未运行（K1），
+            // 补一次调度形成闭环；退避计数随每次调度递增，不会形成紧密循环。
+            delayedTask.CompletionObserver = (task, result) => OnArmAlarmDispatchCompleted(deviceId, result);
+            delayedScheduler?.Schedule(delayedTask);
             LogDelayedDeviceTaskScheduled("设备重新布防已调度。", deviceId, "Stage4ReArm", snapshot.Status, attempt, delay, dueAt, reason);
         }
 

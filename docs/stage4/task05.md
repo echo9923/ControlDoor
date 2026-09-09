@@ -70,6 +70,7 @@
 | `ReArmMaxDelayMs` | 布防重试最大退避延迟（默认 60000ms）。 |
 
 - 布防任务失败后投递延迟任务（taskKey `stage4:rearm:{deviceId}`，`DeviceTaskType.SetupAlarm`），倍数固定 2，无限重试。
+- 布防任务在队列中排队超过执行期限被拒（`ExpiredBeforeExecution`）、入队被拒（`QUEUE_FULL`）时，布防委托从未运行，委托内部的重试安排不会发生；投递方与延迟任务均挂完成观察器补排 ReArm，保证设备在线后无需再次掉线即可恢复布防（代码复核 K1）。
 - 布防成功后清零重试计数。
 - `DisconnectDevice`、`ReconnectDevice`、`DeleteDevice` 和服务停止清理会取消挂起的 ReArm 任务。门控与重连一致：`Disconnected`/`InvalidConfig`/`Disabled`/手动断开时不调度。
 

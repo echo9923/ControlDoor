@@ -96,3 +96,8 @@
 ## 扩展复核更新（2026-09-07，H1）
 
 - 手动断开在撤防阶段失败后设备仍在线但带手动断开标记（业务任务会被守卫拒绝）。`ReconnectDevice(force=false)` 的"已在线"快速返回现同时要求无手动断开标记：处于该矛盾状态的设备必须走完整恢复流程（清除标记、清理旧会话、重新登录布防），不再返回假成功。
+
+## 代码复核更新（2026-09-09，K1）
+
+- 健康检查中的"本地缺失布防句柄"自愈（`ALARM_HANDLE_MISSING` → 补排 ReArm）不再依赖 `AlarmStatusProbeEnabled` 开关：该开关现在只控制是否向设备侧主动调用 `GetAlarmDeploymentStatusAsync` 探测布防状态。生产配置 `AlarmStatusProbeEnabled=false` 时，在线 ACS 设备缺失布防句柄仍会在健康检查中被发现并自动重布防。
+- 异步布防投递与 ReArm 延迟任务均挂完成观察器：排队过期（`ExpiredBeforeExecution`）或入队被拒（`QUEUE_FULL`）时布防委托从未运行、委托内部重试不会发生，由观察器补排 ReArm（taskKey 同键合并去重，退避计数随调度递增），设备恢复布防不再依赖再次掉线。
