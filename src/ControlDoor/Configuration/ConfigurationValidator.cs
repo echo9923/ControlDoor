@@ -307,6 +307,13 @@ namespace ControlDoor.Configuration
                 "FaceEventLogging.FlushIntervalMs",
                 warnings);
 
+            settings.FaceEventLogging.DeadLetterPatrolIntervalMs = MinimumOrDefault(
+                settings.FaceEventLogging.DeadLetterPatrolIntervalMs,
+                1000,
+                30000,
+                "FaceEventLogging.DeadLetterPatrolIntervalMs",
+                warnings);
+
             settings.FaceEnrollment.MaxFaceImageBytes = MinimumOrDefault(
                 settings.FaceEnrollment.MaxFaceImageBytes,
                 1,

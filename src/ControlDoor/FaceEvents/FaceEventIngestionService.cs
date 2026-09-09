@@ -22,6 +22,9 @@ namespace ControlDoor.FaceEvents
         private const int MaxItemRetryAttempts = 10;
         private const int InitialRetryDelayMs = 250;
         private const int MaxRetryDelayMs = 5000;
+        // 死信巡检（复核 J3/R2）：补清理死信遗留源文件并输出死信数量，独立于回放节奏且有文件预算。
+        public const int DefaultDeadLetterPatrolIntervalMs = 30000;
+        private const int DeadLetterPatrolFileBudget = 2000;
 
         // 测试可注入更小的重试上限；生产固定 10 次。
         internal int ItemRetryLimit { private get; set; } = MaxItemRetryAttempts;
@@ -32,6 +35,8 @@ namespace ControlDoor.FaceEvents
         private readonly int capacity;
         private readonly int batchSize;
         private readonly int flushIntervalMs;
+        private readonly int deadLetterPatrolIntervalMs;
+        private long lastDeadLetterPatrolTicks;
         private CancellationTokenSource cancellationTokenSource;
         private Task worker;
         private bool accepting = true;
@@ -69,6 +74,7 @@ namespace ControlDoor.FaceEvents
             var configuredBatchSize = options.BatchSize < 1 ? DefaultBatchSize : options.BatchSize;
             batchSize = Math.Min(configuredBatchSize, MaxBatchSize);
             flushIntervalMs = options.FlushIntervalMs < 1 ? DefaultFlushIntervalMs : options.FlushIntervalMs;
+            deadLetterPatrolIntervalMs = Math.Max(1000, options.DeadLetterPatrolIntervalMs > 0 ? options.DeadLetterPatrolIntervalMs : DefaultDeadLetterPatrolIntervalMs);
             queue = new BlockingCollection<RawAcsAlarmEvent>(new ConcurrentQueue<RawAcsAlarmEvent>(), capacity);
             this.processor = processor;
             this.logger = logger;
@@ -84,6 +90,8 @@ namespace ControlDoor.FaceEvents
         public int Capacity => capacity;
 
         internal int BatchSizeForTest => batchSize;
+
+        internal AcsEventRetrySpool SpoolForTest => spool;
 
         public FaceEventEnqueueResult TryEnqueue(RawAcsAlarmEvent alarmEvent)
         {
@@ -259,6 +267,49 @@ namespace ControlDoor.FaceEvents
             }
         }
 
+        // 死信巡检（复核 J3/R2）：周期补清理死信遗留源文件；死信目录非空时输出告警（计数监控），
+        // 提示需要人工确认后通过 --replay-dead-letters 回放。巡检自身异常不影响事件处理主循环。
+        private void RunDeadLetterPatrolIfDue()
+        {
+            var now = DateTime.Now;
+            var lastTicks = Interlocked.Read(ref lastDeadLetterPatrolTicks);
+            if (lastTicks != 0 && now.Ticks - lastTicks < TimeSpan.FromMilliseconds(deadLetterPatrolIntervalMs).Ticks)
+            {
+                return;
+            }
+
+            Interlocked.Exchange(ref lastDeadLetterPatrolTicks, now.Ticks);
+            try
+            {
+                var result = spool.Patrol(DeadLetterPatrolFileBudget);
+                if (result.DeadLetterCount > 0)
+                {
+                    var fields = new LogFields
+                    {
+                        OperationName = "DeadLetterPatrol"
+                    };
+                    fields.Extra["deadLetterCount"] = result.DeadLetterCount.ToString();
+                    fields.Extra["leftoverCleaned"] = result.LeftoverCleaned.ToString();
+                    fields.Extra["leftoverPending"] = result.LeftoverPending.ToString();
+                    logger?.WarnRepeated("FaceEventIngestion", "死信目录存在待人工处理事件，确认修复后可用 --replay-dead-letters 回放。", fields);
+                }
+                else if (result.LeftoverCleaned > 0)
+                {
+                    var fields = new LogFields
+                    {
+                        OperationName = "DeadLetterPatrol"
+                    };
+                    fields.Extra["leftoverCleaned"] = result.LeftoverCleaned.ToString();
+                    fields.Extra["leftoverPending"] = result.LeftoverPending.ToString();
+                    logger?.Info("FaceEventIngestion", "死信遗留源文件已补清理。", fields);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Error("FaceEventIngestion", "死信巡检异常，下一周期重试。", ex);
+            }
+        }
+
         private void ProcessLoop(CancellationToken cancellationToken)
         {
             var batch = activeBatch;
@@ -300,6 +351,9 @@ namespace ControlDoor.FaceEvents
                         bool laneEmpty;
                         lock (batchGate) laneEmpty = retryLane.Count == 0;
                         if (batch.Count == 0 && queue.IsCompleted && laneEmpty) break;
+
+                        // 死信巡检在批处理锁外周期执行（复核 J3/R2）：不占用回放预算，不阻塞组批。
+                        RunDeadLetterPatrolIfDue();
 
                         bool flushNow;
                         lock (batchGate)

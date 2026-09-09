@@ -191,6 +191,9 @@ namespace ControlDoor.Configuration
         public int BatchSize { get; set; } = 50;
 
         public int FlushIntervalMs { get; set; } = 500;
+
+        // 死信巡检间隔（复核 J3/R2）：补清理死信遗留源文件并输出死信数量告警。
+        public int DeadLetterPatrolIntervalMs { get; set; } = 30000;
     }
 
     public sealed class FaceEnrollmentOptions
