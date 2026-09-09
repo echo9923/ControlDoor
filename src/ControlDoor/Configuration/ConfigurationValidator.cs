@@ -140,6 +140,21 @@ namespace ControlDoor.Configuration
                 "DeviceSdkDispatcher.DefaultTaskTimeoutMs",
                 warnings);
 
+            // 复核 R4：慢排队告警阈值与通道统计周期。
+            settings.DeviceSdkDispatcher.SlowQueueWaitWarningMs = MinimumOrDefault(
+                settings.DeviceSdkDispatcher.SlowQueueWaitWarningMs,
+                100,
+                5000,
+                "DeviceSdkDispatcher.SlowQueueWaitWarningMs",
+                warnings);
+
+            settings.DeviceSdkDispatcher.StatsLogIntervalSeconds = MinimumOrDefault(
+                settings.DeviceSdkDispatcher.StatsLogIntervalSeconds,
+                10,
+                60,
+                "DeviceSdkDispatcher.StatsLogIntervalSeconds",
+                warnings);
+
             settings.DeviceConnection.StatusCheckIntervalMs = MinimumOrDefault(
                 settings.DeviceConnection.StatusCheckIntervalMs,
                 5000,

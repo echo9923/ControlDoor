@@ -20,6 +20,8 @@ namespace ControlDoor.Devices.Workers
         private readonly DeviceRuntimeRegistry registry;
         private readonly int defaultTaskTimeoutMilliseconds;
         private readonly ServiceLogger logger;
+        private readonly int slowQueueWaitWarningMs;
+        private readonly Timer statsTimer;
         private CancellationTokenSource stopSource;
         private Task loopTask;
         private DeviceWorkerStatus status = DeviceWorkerStatus.Created;
@@ -42,7 +44,9 @@ namespace ControlDoor.Devices.Workers
             int queueCapacity,
             int defaultTaskTimeoutMilliseconds,
             DeviceRuntimeRegistry registry,
-            ServiceLogger logger = null)
+            ServiceLogger logger = null,
+            int slowQueueWaitWarningMs = 0,
+            int statsLogIntervalSeconds = 0)
         {
             if (workerIndex < 0)
             {
@@ -54,6 +58,9 @@ namespace ControlDoor.Devices.Workers
             this.defaultTaskTimeoutMilliseconds = defaultTaskTimeoutMilliseconds;
             this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
             this.logger = logger;
+            this.slowQueueWaitWarningMs = slowQueueWaitWarningMs > 0 ? slowQueueWaitWarningMs : DefaultSlowQueueWaitWarningMs;
+            var interval = statsLogIntervalSeconds > 0 ? statsLogIntervalSeconds : DefaultStatsLogIntervalSeconds;
+            statsTimer = new Timer(_ => LogWorkerStats(), null, TimeSpan.FromSeconds(interval), TimeSpan.FromSeconds(interval));
         }
 
         public int WorkerIndex { get; private set; }
@@ -237,6 +244,7 @@ namespace ControlDoor.Devices.Workers
         {
             Task runningLoop;
             CancellationTokenSource source;
+            statsTimer?.Dispose();
             lock (gate)
             {
                 if (disposed)
@@ -428,12 +436,38 @@ namespace ControlDoor.Devices.Workers
                 logger?.Error("DeviceWorker", "设备任务执行异常。", ex);
             }
 
+            var queueWaitMs = CalculateQueueWaitMilliseconds(task, result);
             var completionFields = new LogFields
             {
                 ErrorCode = result.Code,
                 ElapsedMs = Math.Max(0, (long)(DateTime.Now - startedAt).TotalMilliseconds),
                 Extra = { ["success"] = result.Success.ToString(), ["reason"] = result.Message }
             };
+            if (queueWaitMs.HasValue)
+            {
+                completionFields.Extra["queueWaitMs"] = queueWaitMs.Value.ToString();
+            }
+
+            if (queueWaitMs.HasValue && ShouldWarnSlowQueueWait(task, queueWaitMs.Value, slowQueueWaitWarningMs))
+            {
+                // 复核 R4：排队等待超阈值是共享通道积压的直接信号（慢设备占用、批量下发挤压），
+                // 与任务成败无关单独告警，供现场判断是否需要隔离慢任务或调整线程数。
+                logger?.Warn("DeviceWorker", "设备任务排队等待过长。", new LogFields
+                {
+                    DeviceId = task.DeviceId,
+                    ErrorCode = result.Code,
+                    ElapsedMs = completionFields.ElapsedMs,
+                    Extra =
+                    {
+                        ["success"] = result.Success.ToString(),
+                        ["queueWaitMs"] = queueWaitMs.Value.ToString(),
+                        ["thresholdMs"] = slowQueueWaitWarningMs.ToString(),
+                        ["taskType"] = task.TaskType.ToString(),
+                        ["expiredBeforeExecution"] = result.ExpiredBeforeExecution.ToString()
+                    }
+                });
+            }
+
             if (!result.Success && (!executed || (task.TaskType != DeviceTaskType.Login && task.TaskType != DeviceTaskType.HealthCheck && task.TaskType != DeviceTaskType.SetupAlarm)))
             {
                 logger?.Write(result.Retryable ? LogLevel.Warn : LogLevel.Error, "DeviceWorker", "设备任务未完成。", completionFields);
@@ -547,6 +581,74 @@ namespace ControlDoor.Devices.Workers
                 OldestQueuedTaskAgeMilliseconds = oldest.HasValue ? (long?)Math.Max(0, (DateTime.Now - oldest.Value).TotalMilliseconds) : null,
                 PriorityQueue = queue.GetPrioritySnapshot()
             };
+        }
+
+        // 复核 R4：任务排队等待（入队→开始执行；执行前过期则为入队→拒绝时刻）。
+        internal static long? CalculateQueueWaitMilliseconds(DeviceSdkTask task, DeviceTaskResult result)
+        {
+            if (task == null || !task.EnqueuedAt.HasValue)
+            {
+                return null;
+            }
+
+            DateTime? reference = task.StartedAt;
+            if (!reference.HasValue && result != null)
+            {
+                reference = result.CompletedAt;
+            }
+
+            return Math.Max(0, (long)((reference ?? DateTime.Now) - task.EnqueuedAt.Value).TotalMilliseconds);
+        }
+
+        // 低优先级健康检查按设计会长时间等待（合并去重、空闲补跑），不纳入慢排队告警。
+        internal static bool ShouldWarnSlowQueueWait(DeviceSdkTask task, long queueWaitMs, int thresholdMs)
+        {
+            if (task == null || thresholdMs <= 0 || queueWaitMs <= thresholdMs)
+            {
+                return false;
+            }
+
+            return task.Priority != DeviceTaskPriority.Low;
+        }
+
+        // 周期输出每工作通道的积压与吞吐统计（复核 R4）：队列深度、最老排队任务年龄、
+        // 完成/失败累计与当前执行中的操作，供现场判断共享通道是否被慢设备拖占。
+        private const int DefaultSlowQueueWaitWarningMs = 5000;
+        private const int DefaultStatsLogIntervalSeconds = 60;
+
+        private void LogWorkerStats()
+        {
+            try
+            {
+                DeviceWorkerRuntimeSnapshot snapshot;
+                lock (gate)
+                {
+                    if (disposed)
+                    {
+                        return;
+                    }
+
+                    snapshot = BuildSnapshotLocked();
+                }
+
+                var fields = new LogFields
+                {
+                    OperationName = "DeviceWorkerStats"
+                };
+                fields.Extra["workerIndex"] = WorkerIndex.ToString();
+                fields.Extra["queueLength"] = snapshot.QueueLength.ToString();
+                fields.Extra["oldestQueuedAgeMs"] = snapshot.OldestQueuedTaskAgeMilliseconds.HasValue ? snapshot.OldestQueuedTaskAgeMilliseconds.Value.ToString() : string.Empty;
+                fields.Extra["completedTaskCount"] = snapshot.CompletedTaskCount.ToString();
+                fields.Extra["failedTaskCount"] = snapshot.FailedTaskCount.ToString();
+                fields.Extra["cancelledTaskCount"] = snapshot.CancelledTaskCount.ToString();
+                fields.Extra["currentOperation"] = snapshot.CurrentTaskType.HasValue ? snapshot.CurrentTaskType.Value.ToString() : string.Empty;
+                fields.Extra["currentTaskElapsedMs"] = snapshot.CurrentTaskStartedAt.HasValue ? ((long)(DateTime.Now - snapshot.CurrentTaskStartedAt.Value).TotalMilliseconds).ToString() : string.Empty;
+                logger?.Info("DeviceWorker", "SDK 工作通道周期统计。", fields);
+            }
+            catch (Exception ex)
+            {
+                logger?.Debug("DeviceWorker", "工作通道统计输出失败。", new LogFields { Extra = { ["error"] = ex.GetType().Name } });
+            }
         }
 
         private static void CancelStopSource(CancellationTokenSource source)

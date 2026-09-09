@@ -152,7 +152,9 @@ namespace ControlDoor.Host
             {
                 WorkerCount = settings.DeviceSdkDispatcher.WorkerCount,
                 QueueCapacityPerWorker = settings.DeviceSdkDispatcher.QueueCapacity,
-                DefaultTaskTimeoutMilliseconds = settings.DeviceSdkDispatcher.DefaultTaskTimeoutMs
+                DefaultTaskTimeoutMilliseconds = settings.DeviceSdkDispatcher.DefaultTaskTimeoutMs,
+                SlowQueueWaitWarningMs = settings.DeviceSdkDispatcher.SlowQueueWaitWarningMs,
+                StatsLogIntervalSeconds = settings.DeviceSdkDispatcher.StatsLogIntervalSeconds
             }, logger);
             delayedScheduler = new DelayedDeviceTaskScheduler(deviceDispatcher, logger: logger);
             hikvisionGateway = new HikvisionSdkWrapper(new SdkTraceLogger(logger, logOptions.EnableSdkTrace), settings.FaceEnrollment.CaptureTimeoutSeconds * 1000);

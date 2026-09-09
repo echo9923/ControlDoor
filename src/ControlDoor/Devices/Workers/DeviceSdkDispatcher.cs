@@ -49,7 +49,7 @@ namespace ControlDoor.Devices.Workers
 
             defaultTaskTimeoutMilliseconds = options.DefaultTaskTimeoutMilliseconds;
             workers = Enumerable.Range(0, options.WorkerCount)
-                .Select(index => new DeviceSdkWorker(index, options.QueueCapacityPerWorker, options.DefaultTaskTimeoutMilliseconds, registry, logger))
+                .Select(index => new DeviceSdkWorker(index, options.QueueCapacityPerWorker, options.DefaultTaskTimeoutMilliseconds, registry, logger, options.SlowQueueWaitWarningMs, options.StatsLogIntervalSeconds))
                 .ToArray();
         }
 

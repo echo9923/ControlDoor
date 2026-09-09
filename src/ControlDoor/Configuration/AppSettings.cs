@@ -107,6 +107,11 @@ namespace ControlDoor.Configuration
         public int DefaultTaskTimeoutMs { get; set; } = 30000;
 
         public bool HighPriorityQueueEnabled { get; set; } = true;
+
+        // 观测（复核 R4）：任务排队等待超过阈值输出告警；周期输出每工作通道的积压统计。
+        public int SlowQueueWaitWarningMs { get; set; } = 5000;
+
+        public int StatsLogIntervalSeconds { get; set; } = 60;
     }
 
     public sealed class DeviceConnectionOptions
