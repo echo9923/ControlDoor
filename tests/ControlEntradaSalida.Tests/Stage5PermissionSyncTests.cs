@@ -578,14 +578,14 @@ namespace ControlEntradaSalida.Tests
         {
         }
 
-        public Stage5Fixture(int? defaultFaceCaptureDeviceId, int dispatcherTimeoutMilliseconds = 5000)
+        public Stage5Fixture(int? defaultFaceCaptureDeviceId, int dispatcherTimeoutMilliseconds = 5000, ControlDoor.Configuration.FaceEnrollmentOptions faceEnrollment = null)
         {
             logger = new ServiceLogger(LogOptions.FromSettings(runDirectory, new LoggingOptions { LogDirectory = "logs" }));
             inner = new Stage4Fixture(logger, dispatcherTimeoutMilliseconds);
             RetryWriter = new RecordingRetryWriter();
             UserWriter = new RecordingUserSyncStatusWriter();
             EnrollmentStore = new EnrollmentTaskStore();
-            Service = new PermissionSyncGrpcService(inner.Registry, inner.Dispatcher, inner.Gateway, RetryWriter, UserWriter, EnrollmentStore, logger, defaultFaceCaptureDeviceId);
+            Service = new PermissionSyncGrpcService(inner.Registry, inner.Dispatcher, inner.Gateway, RetryWriter, UserWriter, EnrollmentStore, logger, defaultFaceCaptureDeviceId, faceEnrollment: faceEnrollment);
         }
 
         public PermissionSyncGrpcService Service { get; }

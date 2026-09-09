@@ -30,6 +30,7 @@ namespace ControlDoor.GrpcApi
         private const int MaxBatchSize = 500;
         private const int DefaultMaxFaceImageBytes = 200 * 1024;
         private const int DefaultFaceCaptureTimeoutMs = 10000;
+        private const int DefaultMaxBatchFaceBytes = 6 * 1024 * 1024;
 
         private readonly DeviceRuntimeRegistry registry;
         private readonly DeviceSdkDispatcher dispatcher;
@@ -41,6 +42,7 @@ namespace ControlDoor.GrpcApi
         private readonly GrpcCallLogger grpcLogger;
         private readonly int? defaultFaceCaptureDeviceId;
         private readonly int maxFaceImageBytes;
+        private readonly int maxBatchFaceBytes;
         private readonly int faceCaptureTimeoutMs;
 
         public PermissionSyncGrpcService(
@@ -66,6 +68,9 @@ namespace ControlDoor.GrpcApi
             this.defaultFaceCaptureDeviceId = defaultFaceCaptureDeviceId;
             // 复核 R09：人脸采集配置必须接入实际执行，未配置时保持既有固定值。
             maxFaceImageBytes = faceEnrollment != null && faceEnrollment.MaxFaceImageBytes > 0 ? faceEnrollment.MaxFaceImageBytes : DefaultMaxFaceImageBytes;
+            // 复核 K2：单请求人脸图片总量预算，超过时业务层返回 REQUEST_TOO_LARGE，
+            // 避免合法批量请求先被 gRPC 传输层 ResourceExhausted 拒绝且无法给出拆批提示。
+            maxBatchFaceBytes = faceEnrollment != null && faceEnrollment.MaxBatchFaceBytes > 0 ? faceEnrollment.MaxBatchFaceBytes : DefaultMaxBatchFaceBytes;
             faceCaptureTimeoutMs = faceEnrollment != null && faceEnrollment.CaptureTimeoutSeconds > 0 ? faceEnrollment.CaptureTimeoutSeconds * 1000 : DefaultFaceCaptureTimeoutMs;
         }
 
@@ -207,7 +212,7 @@ namespace ControlDoor.GrpcApi
             ParseResult<PersonSyncCommand> parsed;
             try
             {
-                parsed = ParsePersonCommands(requestJson, maxFaceImageBytes);
+                parsed = ParsePersonCommands(requestJson, maxFaceImageBytes, maxBatchFaceBytes);
             }
             catch (RequestValidationException ex)
             {
@@ -359,7 +364,7 @@ namespace ControlDoor.GrpcApi
             IReadOnlyList<DeviceRuntimeSnapshot> devices;
             try
             {
-                request = ParseTargetedFaceRequest(requestJson, maxFaceImageBytes);
+                request = ParseTargetedFaceRequest(requestJson, maxFaceImageBytes, maxBatchFaceBytes);
                 devices = ResolveTargetAcsDevices(request.DeviceIds);
             }
             catch (RequestValidationException ex)
@@ -447,7 +452,7 @@ namespace ControlDoor.GrpcApi
             IReadOnlyList<DeviceRuntimeSnapshot> devices;
             try
             {
-                request = ParseTargetedPersonRequest(requestJson, maxFaceImageBytes);
+                request = ParseTargetedPersonRequest(requestJson, maxFaceImageBytes, maxBatchFaceBytes);
                 devices = ResolveTargetAcsDevices(request.DeviceIds);
             }
             catch (RequestValidationException ex)
@@ -1325,13 +1330,14 @@ namespace ControlDoor.GrpcApi
             return ParseResult<PermissionCommand>.Ok(commands);
         }
 
-        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedFaceRequest(string requestJson, int maxFaceImageBytes)
+        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedFaceRequest(string requestJson, int maxFaceImageBytes, int maxBatchFaceBytes)
         {
             var deviceIds = ParseRequiredDeviceIds(requestJson);
             var root = JsonRequestReader.ParseAny(requestJson);
             var items = JsonRequestReader.ReadItems(root, "people", "items", "records", "data");
             ValidateBatch(items.Count);
             var commands = new List<PersonSyncCommand>();
+            long batchFaceChars = 0;
             foreach (var item in items)
             {
                 var values = JsonRequestReader.AsObject(item);
@@ -1342,6 +1348,7 @@ namespace ControlDoor.GrpcApi
                     throw new RequestValidationException("INVALID_ARGUMENT", "face_image_base64 必填。");
                 }
 
+                batchFaceChars += faceBase64.Length;
                 commands.Add(new PersonSyncCommand
                 {
                     EmployeeId = employeeId,
@@ -1356,10 +1363,11 @@ namespace ControlDoor.GrpcApi
                 throw new RequestValidationException("INVALID_ARGUMENT", "请求至少包含一条记录。");
             }
 
+            ValidateBatchFaceChars(batchFaceChars, maxBatchFaceBytes);
             return new TargetedSyncRequest<PersonSyncCommand>(deviceIds, commands);
         }
 
-        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedPersonRequest(string requestJson, int maxFaceImageBytes)
+        private static TargetedSyncRequest<PersonSyncCommand> ParseTargetedPersonRequest(string requestJson, int maxFaceImageBytes, int maxBatchFaceBytes)
         {
             var deviceIds = ParseRequiredDeviceIds(requestJson);
             var root = JsonRequestReader.ParseAny(requestJson);
@@ -1381,7 +1389,7 @@ namespace ControlDoor.GrpcApi
                 }
             }
 
-            var people = ParsePersonCommands(requestJson, maxFaceImageBytes);
+            var people = ParsePersonCommands(requestJson, maxFaceImageBytes, maxBatchFaceBytes);
             if (!people.Success)
             {
                 throw new RequestValidationException(people.Code, people.Message);
@@ -1482,12 +1490,13 @@ namespace ControlDoor.GrpcApi
             return result;
         }
 
-        private static ParseResult<PersonSyncCommand> ParsePersonCommands(string requestJson, int maxFaceImageBytes)
+        private static ParseResult<PersonSyncCommand> ParsePersonCommands(string requestJson, int maxFaceImageBytes, int maxBatchFaceBytes)
         {
             var root = JsonRequestReader.ParseAny(requestJson);
             var items = JsonRequestReader.ReadItems(root, "people", "items", "records", "data");
             ValidateBatch(items.Count);
             var commands = new List<PersonSyncCommand>();
+            long batchFaceChars = 0;
             foreach (var item in items)
             {
                 var values = JsonRequestReader.AsObject(item);
@@ -1501,6 +1510,11 @@ namespace ControlDoor.GrpcApi
 
                 var faceBase64 = JsonRequestReader.GetString(values, "face_image_base64", "faceImageBase64", "face_base64", "faceBase64", "face_image");
                 var faceBytes = DecodeFaceBytes(faceBase64, maxFaceImageBytes);
+                if (!string.IsNullOrWhiteSpace(faceBase64))
+                {
+                    batchFaceChars += faceBase64.Length;
+                }
+
                 commands.Add(new PersonSyncCommand
                 {
                     EmployeeId = employeeId,
@@ -1520,7 +1534,23 @@ namespace ControlDoor.GrpcApi
                 throw new RequestValidationException("INVALID_ARGUMENT", "请求至少包含一条记录。");
             }
 
+            ValidateBatchFaceChars(batchFaceChars, maxBatchFaceBytes);
             return ParseResult<PersonSyncCommand>.Ok(commands);
+        }
+
+        // 单请求人脸图片 base64 总长度预算（K2）：超限必须在业务层给出可指导拆批的错误，
+        // 而不是让请求在传输层被 ResourceExhausted 拒绝且无提示。预算以 base64 字符数计，
+        // 约为图片二进制字节数的 4/3，保守方向收紧。
+        private static void ValidateBatchFaceChars(long batchFaceChars, int maxBatchFaceBytes)
+        {
+            if (maxBatchFaceBytes <= 0 || batchFaceChars <= maxBatchFaceBytes)
+            {
+                return;
+            }
+
+            throw new RequestValidationException("REQUEST_TOO_LARGE",
+                "批量人脸图片过大：本批 base64 总长 " + batchFaceChars + " 字符，超过单请求预算 " + maxBatchFaceBytes +
+                " 字符（约 " + (maxBatchFaceBytes / (1024 * 1024)) + " MiB）。请按完整序列化请求字节数拆小批次后重试。");
         }
 
         private static ParseResult<EmployeeCommand> ParseEmployeeCommands(string requestJson)

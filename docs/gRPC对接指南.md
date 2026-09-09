@@ -339,6 +339,10 @@ String resp = client.call(ACCESS, "GetDeviceStatus", "{}");
 - 批量类接口（权限、人员、人脸、删除）**单批最多 500 条**，超限返回 `BATCH_TOO_LARGE`。
 - 人脸图片（下发与采集）**单张最大 200KB**，超限返回 `FACE_TOO_LARGE`。
 - 人脸图片字段传 **Base64 字符串**，支持 data URI 前缀（`data:image/jpeg;base64,...`）。
+- **单请求总大小有两级限制**（重要）：
+  - 业务预算：单个请求内所有人脸图片的 **Base64 字符总长度** 默认不超过 6 MiB（6291456 字符，配置 `FaceEnrollment.MaxBatchFaceBytes`），超限返回 `REQUEST_TOO_LARGE`，并提示拆小批次。Base64 长度约为图片二进制字节数的 4/3（`4 × ceil(图片字节数 / 3)`），另需计入 JSON 结构、员工字段和传输封装的开销。
+  - 传输上限：gRPC 单条消息默认最多接收 **8 MiB**（配置 `Service.GrpcMaxReceiveMessageBytes`，允许 1-64 MiB）。超过传输上限的请求会在进入业务前被 gRPC 直接拒收（`ResourceExhausted`），拿不到业务层错误提示。
+  - **调用方建议**：按完整序列化后的请求字节数拆批，单批控制在 **约 3 MiB 以内** 最稳妥。例如 200KB 的图片（Base64 约 267KB）每批不超过 10 张；50KB 的图片（Base64 约 67KB）每批不超过 40 张。拆批之间无需等待，各批结果独立返回。
 - `code=PARTIAL_SUCCESS` 通常表示**部分设备离线已入补偿队列**，**不代表设备端已执行完成**，需后续确认。
 
 ### 3.4 错误码表
@@ -350,6 +354,7 @@ String resp = client.call(ACCESS, "GetDeviceStatus", "{}");
 | `FAILED` | 业务失败 |
 | `INVALID_ARGUMENT` | 请求体为空、JSON 格式错误、字段缺失或字段非法 |
 | `BATCH_TOO_LARGE` | 批量数量超过 500 |
+| `REQUEST_TOO_LARGE` | 单请求人脸图片 Base64 总量超过预算（默认 6 MiB），需拆小批次 |
 | `NOT_FOUND` | 设备、任务或目标资源不存在 |
 | `INTERNAL_ERROR` | 服务端未知异常 |
 | `DEVICE_ERROR` | 设备侧操作失败（如设备未在线） |

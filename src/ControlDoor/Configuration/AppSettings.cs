@@ -48,6 +48,10 @@ namespace ControlDoor.Configuration
         public int GrpcListenPort { get; set; } = 5001;
 
         public string GrpcManagementApiKey { get; set; } = string.Empty;
+
+        // gRPC 服务端最大接收消息字节数（K2）：默认 8 MiB，必须大于 FaceEnrollment.MaxBatchFaceBytes，
+        // 否则合法批量请求会在进入业务校验前被传输层 ResourceExhausted 拒绝。
+        public int GrpcMaxReceiveMessageBytes { get; set; } = 8 * 1024 * 1024;
     }
 
     public sealed class DatabaseOptions
@@ -190,6 +194,10 @@ namespace ControlDoor.Configuration
         public int CaptureTimeoutSeconds { get; set; } = 60;
 
         public int TaskRetentionMinutes { get; set; } = 30;
+
+        // 单请求人脸图片 base64 总长度预算（K2）：超过预算在业务层返回 REQUEST_TOO_LARGE
+        // 而不是等传输层拒收。必须小于 Service.GrpcMaxReceiveMessageBytes。
+        public int MaxBatchFaceBytes { get; set; } = 6 * 1024 * 1024;
     }
 
     public sealed class CameraAlarmDoorInterlockOptions

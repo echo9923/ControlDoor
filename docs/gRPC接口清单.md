@@ -41,6 +41,7 @@
 | `FAILED` | 业务失败 |
 | `INVALID_ARGUMENT` | 请求体为空、JSON 格式错误、字段缺失或字段非法 |
 | `BATCH_TOO_LARGE` | 批量数量超过 500 |
+| `REQUEST_TOO_LARGE` | 单请求人脸图片 Base64 总量超过预算（默认 6 MiB，配置 `FaceEnrollment.MaxBatchFaceBytes`），需拆小批次 |
 | `NOT_FOUND` | 设备、任务或目标资源不存在 |
 | `INTERNAL_ERROR` | 服务端未知异常 |
 | `UNAUTHENTICATED` | 门禁管理接口缺少或传入错误 `x-api-key` |
@@ -212,6 +213,7 @@
 - `deviceIds` 的必填、去重和原子校验规则与 `SyncPersonsToDevices` 相同。
 - `employee_id` 与 `face_image_base64` 必填；员工编号别名沿用 `SyncPersons`，人脸字段别名沿用现有接口。
 - 人脸支持 data URI 前缀，解码后最大 200KB；Base64 非法返回 `INVALID_ARGUMENT`，超限返回 `FACE_TOO_LARGE`。
+- 单请求内所有人脸图片的 Base64 字符总长度默认不超过 6 MiB（配置 `FaceEnrollment.MaxBatchFaceBytes`），超限返回 `REQUEST_TOO_LARGE`；gRPC 传输层单条消息默认最多 8 MiB（配置 `Service.GrpcMaxReceiveMessageBytes`），超过会被传输层直接拒收（`ResourceExhausted`）。调用方应按完整序列化请求字节数拆批，单批控制在约 3 MiB 内。
 - 该接口只执行 `UploadFace`，不会查询、创建或更新人员。设备端人员不存在时返回设备维度失败。
 - 在线设备立即上传；离线设备或可重试失败只为对应指定设备写入 `UploadFace` 补偿。
 - 接口不调用全局 `MarkPersonSynced`，也不会操作未指定设备。
@@ -706,3 +708,4 @@ x-api-key: 配置的APIKey
 4. 权限、人员、人脸、删除接口最大 500 条，超出会失败。
 5. 离线设备操作可能返回 `PARTIAL_SUCCESS`，这表示操作已进入补偿队列，不等于最终设备端已完成。
 6. 人脸图片下发与采集存在 200KB 限制，超过时会返回 `FACE_TOO_LARGE` 或设备错误。
+7. 人脸批量请求受单请求总量两级限制：业务层 Base64 总长默认 6 MiB（`REQUEST_TOO_LARGE`）与 gRPC 传输层默认 8 MiB（`ResourceExhausted`）。批量下发按完整序列化请求字节数拆批，单批建议控制在约 3 MiB 内；Base64 长度约为图片字节数的 4/3。

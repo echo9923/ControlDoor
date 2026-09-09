@@ -36,6 +36,14 @@ namespace ControlDoor.Configuration
                 "Service.GrpcListenPort",
                 warnings);
 
+            settings.Service.GrpcMaxReceiveMessageBytes = RangeOrDefault(
+                settings.Service.GrpcMaxReceiveMessageBytes,
+                1024 * 1024,
+                64 * 1024 * 1024,
+                8 * 1024 * 1024,
+                "Service.GrpcMaxReceiveMessageBytes",
+                warnings);
+
             settings.Database.CommandTimeoutSeconds = MinimumOrDefault(
                 settings.Database.CommandTimeoutSeconds,
                 1,
@@ -304,6 +312,19 @@ namespace ControlDoor.Configuration
                 30,
                 "FaceEnrollment.TaskRetentionMinutes",
                 warnings);
+
+            // 复核 K2：业务层人脸批量预算必须落在 gRPC 传输上限之内，否则预算形同虚设。
+            settings.FaceEnrollment.MaxBatchFaceBytes = RangeOrDefault(
+                settings.FaceEnrollment.MaxBatchFaceBytes,
+                128 * 1024,
+                512 * 1024 * 1024,
+                6 * 1024 * 1024,
+                "FaceEnrollment.MaxBatchFaceBytes",
+                warnings);
+            if (settings.FaceEnrollment.MaxBatchFaceBytes >= settings.Service.GrpcMaxReceiveMessageBytes)
+            {
+                errors.Add("FaceEnrollment.MaxBatchFaceBytes 必须小于 Service.GrpcMaxReceiveMessageBytes，否则批量请求会在业务校验前被传输层拒绝。");
+            }
 
             ValidateCameraAlarmDoorInterlock(settings, warnings);
 
