@@ -551,7 +551,10 @@ namespace ControlDoor.CameraDoorInterlock
                         ["manualActionRequired"] = "False"
                     }
                 });
-                RecordRestoreOutcome(activity, attempt, generation, taskId: null, success: false, retryable: true, now);
+                // 投递层 DEVICE_NOT_FOUND 意味着设备已从运行时移除（删除成功，J1）：恢复命令永远无法
+                // 通过该设备下发，转终态等待人工确认；其余投递拒绝（队列满等）保持可重试。
+                var retryableSubmissionFailure = rejected == null || rejected.Code != "DEVICE_NOT_FOUND";
+                RecordRestoreOutcome(activity, attempt, generation, taskId: null, success: false, retryable: retryableSubmissionFailure, now);
                 return;
             }
 
@@ -720,15 +723,18 @@ namespace ControlDoor.CameraDoorInterlock
             RecordRestoreOutcome(activity, attempt, generation, taskId, success: false, retryable: retryable, now);
         }
 
-        // 暂时性阻塞分类（复核 I1）：手动断开期间设备被操作员接管，排队过期说明任务委托从未运行，
-        // 两者都没有把恢复命令发到设备，门保持常闭不是配置缺陷，重连或通道空闲后必须继续恢复。
+        // 暂时性阻塞分类（复核 I1/J1）：手动断开期间设备被操作员接管，排队过期说明任务委托从未运行，
+        // 删除进行中（DEVICE_DELETING）意味着设备清单写入或回滚尚未落定——三者都没有把恢复命令
+        // 发到设备，门保持常闭不是配置缺陷，设备恢复可用后必须继续恢复。
         // 手动断开守卫本身不绕过：重试仍走正常投递，由设备工作线程按当前状态裁决。
-        // 只有设备删除（DEVICE_NOT_FOUND/DEVICE_DELETING）、不可恢复 SDK 错误等明确终态才停止自动恢复。
+        // 删除成功后设备从运行时移除，后续恢复按 DEVICE_NOT_FOUND 终态处理（确认删除完成后才按设备不存在处理）；
+        // 删除失败回滚后设备重新在线，到期扫描自然恢复门。只有不可恢复 SDK 错误等明确终态才停止自动恢复。
         private static bool IsTemporarilyBlockedRestoreFailure(Devices.Tasks.DeviceTaskResult result)
         {
             if (result == null) return false;
             if (result.Code == "DEVICE_MANUALLY_DISCONNECTED") return true;
             if (result.Code == "TIMEOUT" && result.ExpiredBeforeExecution) return true;
+            if (result.Code == "DEVICE_DELETING") return true;
             return false;
         }
 
