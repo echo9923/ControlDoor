@@ -22,7 +22,8 @@ namespace ControlEntradaSalida.Tests
             string secondCameraIp = null,
             int[] doorNos = null,
             bool enabled = true,
-            ServiceLogger logger = null)
+            ServiceLogger logger = null,
+            int? taskTimeoutMs = null)
         {
             inner = new Stage4Fixture(logger);
             DoorDeviceId = doorDeviceId;
@@ -67,7 +68,9 @@ namespace ControlEntradaSalida.Tests
             Resolver = new InterlockMappingResolver(Options, inner.Registry, logger);
             WindowManager = new CameraAlarmWindowManager(Options.WindowSeconds);
             TargetManager = new DoorTargetStateManager();
-            TaskFactory = new DoorControlTaskFactory(inner.Gateway, logger);
+            TaskFactory = taskTimeoutMs.HasValue
+                ? new DoorControlTaskFactory(inner.Gateway, logger, taskTimeoutMs.Value)
+                : new DoorControlTaskFactory(inner.Gateway, logger);
             Service = new CameraDoorInterlockService(
                 Options,
                 Resolver,
@@ -94,6 +97,8 @@ namespace ControlEntradaSalida.Tests
         public MockHikvisionGateway Gateway => inner.Gateway;
 
         public ControlDoor.Devices.Management.DeviceLifecycleService Lifecycle => inner.Lifecycle;
+
+        public ControlDoor.Devices.Runtime.DeviceRuntimeRegistry Registry => inner.Registry;
 
         public ControlDoor.Devices.Workers.DeviceSdkDispatcher Dispatcher => inner.Dispatcher;
 

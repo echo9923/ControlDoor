@@ -23,11 +23,14 @@ namespace ControlDoor.CameraDoorInterlock
 
         private readonly IHikvisionGateway gateway;
         private readonly ServiceLogger logger;
+        private readonly int taskTimeoutMs;
 
-        public DoorControlTaskFactory(IHikvisionGateway gateway, ServiceLogger logger = null)
+        public DoorControlTaskFactory(IHikvisionGateway gateway, ServiceLogger logger = null, int defaultTimeoutMs = DefaultTimeoutMs)
         {
             this.gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
             this.logger = logger;
+            // 生产固定 10 秒；测试可注入短期限以快速构造"任务在队列中过期"场景。
+            this.taskTimeoutMs = defaultTimeoutMs > 0 ? defaultTimeoutMs : DefaultTimeoutMs;
         }
 
         public DeviceSdkTask CreateAlwaysClose(int doorDeviceId, int doorNo, string targetKey, string requestId, Func<bool> canExecute = null)
@@ -111,7 +114,7 @@ namespace ControlDoor.CameraDoorInterlock
                         UserId = snapshot.SdkUserId.Value,
                         GateIndex = doorNo,
                         Command = command,
-                        TimeoutMilliseconds = DefaultTimeoutMs
+                        TimeoutMilliseconds = taskTimeoutMs
                     };
 
                     var response = await gateway.ControlGatewayAsync(request, taskContext.CancellationToken).ConfigureAwait(false);
@@ -127,7 +130,7 @@ namespace ControlDoor.CameraDoorInterlock
                 AllowDuringShutdown = command == GateControlCommand.Restore,
                 Priority = priority,
                 WaitMode = DeviceTaskWaitMode.WaitForResult,
-                TimeoutMilliseconds = DefaultTimeoutMs,
+                TimeoutMilliseconds = taskTimeoutMs,
                 RequestId = safeRequestId,
                 CorrelationId = safeRequestId,
                 IdempotencyKey = safeTargetKey + idempotencySuffix,

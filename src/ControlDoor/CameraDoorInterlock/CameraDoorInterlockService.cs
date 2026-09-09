@@ -693,7 +693,9 @@ namespace ControlDoor.CameraDoorInterlock
             }
 
             var code = result == null ? "UNKNOWN" : result.Code;
-            var retryable = result != null && result.Retryable;
+            // 执行前被拒绝的任务（手动断开、排队过期）没有触达设备，属于暂时性阻塞而非配置类错误，
+            // 必须并入可重试分类：恢复意图保留，重连或设备通道空闲后由到期扫描重新投递（复核 I1）。
+            var retryable = result != null && (result.Retryable || IsTemporarilyBlockedRestoreFailure(result));
             logger?.Warn("CameraDoorInterlock", "恢复任务失败。", new LogFields
             {
                 RequestId = interlockId,
@@ -716,6 +718,18 @@ namespace ControlDoor.CameraDoorInterlock
             });
 
             RecordRestoreOutcome(activity, attempt, generation, taskId, success: false, retryable: retryable, now);
+        }
+
+        // 暂时性阻塞分类（复核 I1）：手动断开期间设备被操作员接管，排队过期说明任务委托从未运行，
+        // 两者都没有把恢复命令发到设备，门保持常闭不是配置缺陷，重连或通道空闲后必须继续恢复。
+        // 手动断开守卫本身不绕过：重试仍走正常投递，由设备工作线程按当前状态裁决。
+        // 只有设备删除（DEVICE_NOT_FOUND/DEVICE_DELETING）、不可恢复 SDK 错误等明确终态才停止自动恢复。
+        private static bool IsTemporarilyBlockedRestoreFailure(Devices.Tasks.DeviceTaskResult result)
+        {
+            if (result == null) return false;
+            if (result.Code == "DEVICE_MANUALLY_DISCONNECTED") return true;
+            if (result.Code == "TIMEOUT" && result.ExpiredBeforeExecution) return true;
+            return false;
         }
 
         private void RecordRestoreOutcome(DoorTargetActivity activity, int attempt, int generation, string taskId, bool success, bool retryable, DateTime now)
