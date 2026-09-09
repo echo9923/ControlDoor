@@ -365,6 +365,12 @@ namespace ControlDoor.Configuration
                 10,
                 "FaceEventLogging.MaxItemRetryAttempts",
                 warnings);
+            if (settings.FaceEventLogging.MaxItemRetryAttempts > 0 && settings.FaceEventLogging.MaxItemRetryAttempts < 6)
+            {
+                // 复核 L1：数据库转故障的过渡保护依赖"有界重试累计时长 > 环境宽限窗"，
+                // 上限过小会在宽限窗到期前耗尽次数，重新出现过渡期误入死信。
+                warnings.Add("FaceEventLogging.MaxItemRetryAttempts 小于 6，数据库故障过渡到环境保护的窗口变窄，建议保持默认 10。");
+            }
 
             settings.FaceEventLogging.RetryInitialDelayMs = MinimumOrDefault(
                 settings.FaceEventLogging.RetryInitialDelayMs,

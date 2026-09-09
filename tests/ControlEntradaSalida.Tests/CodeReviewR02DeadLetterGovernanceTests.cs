@@ -63,8 +63,8 @@ namespace ControlEntradaSalida.Tests
             var runDirectory = TestWorkspace.Create();
             var retryDirectory = Path.Combine(runDirectory, "acs-retry");
             var processor = new EnvironmentalProcessor { Recovered = true };
-            // 环境宽限窗（= 环境退避封顶）取默认 30 秒：健康事件成功后 30 秒内发生的
-            // 同构数据库失败不按环境故障处理，毒事件立即死信。
+            // 复核 L1：环境宽限窗 = 普通退避封顶（RetryMaxDelayMs，此处 5 秒）。健康事件成功后 5 秒内
+            // 的同构数据库失败不按环境故障处理：毒事件先有界重试（上限 2 次），耗尽后死信。
             var service = new FaceEventIngestionService(
                 new FaceEventLoggingOptions
                 {
@@ -72,7 +72,7 @@ namespace ControlEntradaSalida.Tests
                     BatchSize = 5,
                     FlushIntervalMs = 20,
                     RetryInitialDelayMs = 10,
-                    RetryMaxDelayMs = 10,
+                    RetryMaxDelayMs = 5000,
                     EnvironmentalRetryMaxDelayMs = 30000,
                     MaxItemRetryAttempts = 2
                 },
@@ -82,7 +82,7 @@ namespace ControlEntradaSalida.Tests
             try
             {
                 // 先处理成功一批（环境健康），再持续投递以 DATABASE_FAILURE 失败的毒事件：
-                // 近期有成功说明环境未整体故障，毒事件不得借环境分类无限重试。
+                // 宽限窗内持续有成功说明环境未整体故障，毒事件不得借环境分类无限重试。
                 Assert.True(service.TryEnqueue(NewRawEvent("r02-healthy")).Accepted);
                 WaitUntil(() => processor.SuccessRequestIds.Contains("r02-healthy"), "健康事件未被处理。");
 
@@ -90,7 +90,76 @@ namespace ControlEntradaSalida.Tests
                 Assert.True(service.TryEnqueue(NewRawEvent("r02-poison")).Accepted);
 
                 var deadLetterDir = Path.Combine(retryDirectory, "dead-letter");
-                WaitUntil(() => Directory.Exists(deadLetterDir) && Directory.EnumerateFiles(deadLetterDir, "*.json").Any(), "近期有成功时数据库签名毒事件未死信。");
+                WaitUntil(() => Directory.Exists(deadLetterDir) && Directory.EnumerateFiles(deadLetterDir, "*.json").Any(), "宽限窗内有成功时数据库签名毒事件未按上限死信。");
+            }
+            finally
+            {
+                service.StopAsync(context).GetAwaiter().GetResult();
+                service.Dispose();
+            }
+        }
+
+        [TestCase]
+        public static void FaceEventIngestion_DatabaseOutageAfterRecentSuccess_KeepsRetryingBeyondLimitAndRecovers()
+        {
+            RunOutageTransitionTest("DATABASE_FAILURE", "l1-outage-transition");
+        }
+
+        [TestCase]
+        public static void FaceEventIngestion_RetryableFailureOutageAfterRecentSuccess_KeepsRetryingBeyondLimitAndRecovers()
+        {
+            // 复核 L2：仓储预查询失败/超时/暂态 SQL 错误返回 RETRYABLE_FAILURE，整轮同签名
+            // 也必须进入环境保护，不得按单条 10 次上限死信。
+            RunOutageTransitionTest("RETRYABLE_FAILURE", "l2-outage-transition");
+        }
+
+        // 复核 L1/L2 验收：先成功一批（宽限窗被刷新）→ 数据库立即整体故障 → 事件先有界重试，
+        // 成功停止、宽限窗（普通退避封顶）到期后自动升级环境保护，重试次数超过上限仍不死信；
+        // 数据库恢复后全部自动补齐。时序约束：有界重试累计跨度（initial + 2×initial = 600ms）
+        // 必须大于宽限窗（500ms），保证第 3 次（上限）尝试发生时环境保护已介入。
+        private static void RunOutageTransitionTest(string failureCode, string requestIdPrefix)
+        {
+            var runDirectory = TestWorkspace.Create();
+            var retryDirectory = Path.Combine(runDirectory, "acs-retry");
+            var deadLetterDirectory = Path.Combine(retryDirectory, "dead-letter");
+            var processor = new EnvironmentalProcessor { Recovered = true, FailureCode = failureCode };
+            var service = new FaceEventIngestionService(
+                new FaceEventLoggingOptions
+                {
+                    QueueCapacity = 100,
+                    BatchSize = 5,
+                    FlushIntervalMs = 20,
+                    RetryInitialDelayMs = 200,
+                    RetryMaxDelayMs = 500,
+                    EnvironmentalRetryMaxDelayMs = 500,
+                    MaxItemRetryAttempts = 3
+                },
+                processor, null, retryDirectory);
+            var context = new BackgroundTaskContext(requestIdPrefix, CancellationToken.None, null);
+            service.StartAsync(context).GetAwaiter().GetResult();
+            try
+            {
+                var requestIds = new[] { requestIdPrefix + "-1", requestIdPrefix + "-2", requestIdPrefix + "-3" };
+
+                // 正常运行：先成功一条，随后数据库整体故障（宽限窗内首败是 L1 的关键过渡点）。
+                Assert.True(service.TryEnqueue(NewRawEvent(requestIdPrefix + "-healthy")).Accepted);
+                WaitUntil(() => processor.SuccessRequestIds.Contains(requestIdPrefix + "-healthy"), "健康事件未被处理。");
+                processor.Recovered = false;
+                foreach (var requestId in requestIds)
+                {
+                    Assert.True(service.TryEnqueue(NewRawEvent(requestId)).Accepted);
+                }
+
+                // 重试次数超过单条上限（3 次）仍无死信：环境保护在宽限窗到期后必然介入。
+                WaitUntil(() => processor.FailureCount > 3, "故障重试次数未超过单条上限，环境保护未介入。");
+                Assert.False(Directory.Exists(deadLetterDirectory) && Directory.EnumerateFiles(deadLetterDirectory, "*.json").Any(),
+                    "数据库整体故障过渡期不得把事件按上限死信。");
+
+                // 数据库恢复：旧事件全部自动补齐，始终不产生死信。
+                processor.Recovered = true;
+                WaitUntil(() => requestIds.All(id => processor.SuccessRequestIds.Contains(id)), "恢复后未自动补齐故障期间事件。");
+                Assert.False(Directory.Exists(deadLetterDirectory) && Directory.EnumerateFiles(deadLetterDirectory, "*.json").Any(),
+                    "整体故障场景不应产生死信。");
             }
             finally
             {
@@ -172,13 +241,15 @@ namespace ControlEntradaSalida.Tests
             Assert.True(condition(), message);
         }
 
-        // 可切换的处理器：默认整批以 DATABASE_FAILURE 失败（模拟数据库整体故障），
-        // Recovered 后全部成功；PoisonRequestIds 始终以 DATABASE_FAILURE 失败（模拟坏数据）。
+        // 可切换的处理器：未恢复时整批以指定失败码失败（模拟数据库整体故障，默认 DATABASE_FAILURE，
+        // 可切换 RETRYABLE_FAILURE 模拟仓储超时/暂态 SQL 错误路径），Recovered 后全部成功；
+        // PoisonRequestIds 始终失败（模拟坏数据）。
         private sealed class EnvironmentalProcessor : IAcsFaceEventProcessor
         {
             public readonly HashSet<string> PoisonRequestIds = new HashSet<string>(StringComparer.Ordinal);
             public readonly HashSet<string> SuccessRequestIds = new HashSet<string>(StringComparer.Ordinal);
             public volatile bool Recovered;
+            public string FailureCode = "DATABASE_FAILURE";
             public int FailureCount;
 
             public FaceEventProcessResult Process(RawAcsAlarmEvent rawEvent)
@@ -186,7 +257,7 @@ namespace ControlEntradaSalida.Tests
                 if (!Recovered || PoisonRequestIds.Contains(rawEvent.RequestId))
                 {
                     FailureCount++;
-                    return FaceEventProcessResult.Failed("DATABASE_FAILURE", "database unavailable");
+                    return FaceEventProcessResult.Failed(FailureCode, "database unavailable");
                 }
 
                 SuccessRequestIds.Add(rawEvent.RequestId);

@@ -19,6 +19,8 @@ namespace ControlEntradaSalida.Tests
             var retryDirectory = Path.Combine(runDirectory, "acs-retry");
             var processor = new ScriptedProcessor { RetryablePoison = false };
             var service = NewService(retryDirectory, processor, batchSize: 10);
+            // 复核 L1/L2：数据库签名失败改为有界重试后耗尽上限才死信；注入小上限保持用例快速收敛。
+            service.ItemRetryLimit = 2;
             var context = new BackgroundTaskContext("r02-poison", CancellationToken.None, null);
             service.StartAsync(context).GetAwaiter().GetResult();
             try

@@ -155,3 +155,10 @@
 - 防毒事件滥用：环境宽限窗（= 环境退避封顶）内出现过成功即视为"环境未整体故障"，此时持续以数据库签名失败的单条事件按坏数据死信，不享受无限重试保护。
 - 重试策略转为配置：`FaceEventLogging.MaxItemRetryAttempts`（默认 10）、`RetryInitialDelayMs`（250）、`RetryMaxDelayMs`（5000）、`EnvironmentalRetryMaxDelayMs`（30000），随既有配置校验回退。
 - 死信受控回放：新增 `ControlDoor.exe --replay-dead-letters` 命令行模式（服务不启动，与 `--validate-config` 同风格），把 `data/acs-retry/dead-letter` 内的事件文件以新 Guid 名移回重试目录，随后正常启动即由磁盘回放自动重投；建议在服务停止时执行。死信数量由巡检日志（`DeadLetterPatrol`）持续监控。
+
+## 代码复核更新（2026-09-09，L1/L2）
+
+- 环境故障判定重构：统一签名集合从 {DATABASE_FAILURE, FAILED} 扩展为 {RETRYABLE_FAILURE, DATABASE_FAILURE, FAILED}——三者都源自仓储的数据库调用失败路径（预查询失败、超时、暂态 SQL 错误返回 RETRYABLE_FAILURE），整轮同签名的 RETRYABLE_FAILURE 也进入环境保护，不再按单条 10 次上限死信（L2）。
+- 数据库签名失败不再"非环境即死信"：一律先有界重试（`MaxItemRetryAttempts`），环境轮（整轮同构 + 宽限窗内无成功）才升级为无限持久积压。数据库刚从正常转故障时（宽限窗内首败），条目先有界重试，成功停止、宽限窗到期后自动升级环境保护，不会在过渡期按次数耗尽误入死信（L1）。
+- 环境宽限窗从环境退避封顶（默认 30 秒）改为普通退避封顶（`RetryMaxDelayMs`，默认 5 秒）：有界重试的累计时长（默认约 28 秒）必然跨过宽限窗，数学上保证过渡保护在次数耗尽前介入。配置校验对 `MaxItemRetryAttempts < 6` 输出告警（上限过小会重新出现过渡期误死信）。
+- 毒数据语义不变：周边持续有成功（宽限窗不断被刷新）时，数据库签名毒事件按上限死信，不无限占用处理能力。

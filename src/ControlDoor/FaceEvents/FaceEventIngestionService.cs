@@ -609,10 +609,11 @@ namespace ControlDoor.FaceEvents
                 throw;
             }
 
-            // 整轮全部以同一非重试错误失败时更像环境故障（如表缺失/数据库不可用），按可重试退避而不是死信整批。
-            // 复核 R2：环境故障不受单条重试上限约束，保持持久积压等待恢复；但"近期曾有成功"说明环境并未整体
-            // 故障——此时持续以数据库签名失败的单条事件按坏数据处理（死信），防止毒事件借环境分类无限重试。
-            var environmentalFailure = IsUniformNonRetryableFailure(outcomes) && !HadRecentSuccess();
+            // 整轮全部以同一数据库签名失败时疑似环境故障（复核 L1/L2）：配合宽限窗判定是否进入环境保护；
+            // 环境保护不受单条重试上限约束，保持持久积压等待恢复。宽限窗内仍有成功说明环境未整体故障，
+            // 但 DB 签名失败也绝不首次失败即死信（复核 L1 过渡语义）：先有界重试，成功停止、宽限窗
+            // （普通退避封顶）到期后自动升级为环境保护；真正的毒数据在耗尽上限后进入死信区。
+            var environmentalFailure = IsUniformDatabaseFailureRound(outcomes) && !HadRecentSuccess();
             for (var index = items.Count - 1; index >= 0; index--)
             {
                 var item = items[index];
@@ -667,7 +668,10 @@ namespace ControlDoor.FaceEvents
             return outcomes;
         }
 
-        private static bool IsUniformNonRetryableFailure(RoundOutcome[] outcomes)
+        // 整轮数据库签名失败判定（复核 L2）：RETRYABLE_FAILURE / DATABASE_FAILURE / FAILED 三码都源自
+        // 仓储的数据库调用失败路径（含预查询失败、超时与暂态 SQL 错误）。整轮全部以同签名失败
+        // （无成功、无永久校验失败）即视为疑似数据库整体故障，配合宽限窗判定是否进入环境保护。
+        private static bool IsUniformDatabaseFailureRound(RoundOutcome[] outcomes)
         {
             if (outcomes == null || outcomes.Length == 0) return false;
             string signature = null;
@@ -675,7 +679,7 @@ namespace ControlDoor.FaceEvents
             {
                 if (outcome == null || outcome.Success) return false;
                 if (IsPermanentValidationFailure(outcome.Code)) return false;
-                if (IsNonRetryableFailure(outcome.Code))
+                if (IsDatabaseSignatureFailure(outcome.Code))
                 {
                     var current = outcome.Code + "|" + outcome.Message;
                     if (signature == null) signature = current;
@@ -712,7 +716,10 @@ namespace ControlDoor.FaceEvents
                 return;
             }
 
-            var retryable = outcome.Code == "RETRYABLE_FAILURE" || environmentalFailure;
+            // 数据库签名失败（RETRYABLE_FAILURE/DATABASE_FAILURE/FAILED，复核 L1/L2）不再"非环境即死信"：
+            // 一律先有界重试；环境轮（整轮同构 + 宽限窗内无成功）升级为无限持久积压，恢复后自动补齐。
+            // 单条坏数据在周边持续成功（宽限窗不断刷新）时耗尽上限进入死信，不无限占用处理能力。
+            var retryable = IsDatabaseSignatureFailure(outcome.Code) || environmentalFailure;
             var attempts = (entry != null ? entry.Attempts : 0) + 1;
             // 环境故障（复核 R2）不受单条重试上限约束：数据库整体故障期间保持持久积压（每次调度均落盘），
             // 按较长退避无限重试，恢复后自动补齐；单条坏数据与普通瞬时失败仍按上限进入死信区。
@@ -806,9 +813,18 @@ namespace ControlDoor.FaceEvents
             return code == "DATABASE_FAILURE" || code == "FAILED";
         }
 
-        // 复核 R2：环境故障宽限窗口内出现过成功即视为"环境未整体故障"。
-        // 窗口取环境退避封顶（默认 30 秒）：数据库整体故障期间不会有成功；部分恢复后
-        // 持续以数据库签名失败的单条事件按坏数据死信，不再享受无限重试保护。
+        // 数据库签名失败（复核 L1/L2）：三个展示码都来自仓储的数据库调用失败路径。
+        // 仓储的 FaceEventInsertResult.Status 在进入服务层前已折叠为这些码，行为判别
+        // （整轮同构 + 宽限窗内无成功）才是"整体故障 vs 单条坏数据"的真实区分器。
+        private static bool IsDatabaseSignatureFailure(string code)
+        {
+            return code == "RETRYABLE_FAILURE" || IsNonRetryableFailure(code);
+        }
+
+        // 复核 L1：环境故障宽限窗取普通退避封顶（默认 5 秒），而不是环境退避封顶（30 秒）。
+        // 有界重试的累计时长（默认约 28 秒）必然跨过宽限窗：数据库刚转故障时条目先有界重试，
+        // 成功停止后 5 秒内环境保护必然介入，不会在过渡期按次数耗尽误入死信；
+        // 反之真正毒数据（周边持续有成功，宽限窗不断被刷新）会按上限死信，不无限占用。
         private bool HadRecentSuccess()
         {
             var last = Interlocked.Read(ref lastSuccessTicks);
@@ -817,7 +833,7 @@ namespace ControlDoor.FaceEvents
                 return false;
             }
 
-            return DateTime.Now.Ticks - last < TimeSpan.FromMilliseconds(environmentalRetryMaxDelayMs).Ticks;
+            return DateTime.Now.Ticks - last < TimeSpan.FromMilliseconds(retryMaxDelayMs).Ticks;
         }
 
         private bool HasDueRetry(DateTime now)
