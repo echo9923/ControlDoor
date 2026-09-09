@@ -187,7 +187,11 @@ namespace ControlEntradaSalida.Tests
                     return 0;
                 });
                 var database = new RecordingDatabaseClient { RowsAffected = 1 };
-                database.QueryRowsByOperation["DeviceOperationRetryStore.LoadDueStates"] = new List<IReadOnlyDictionary<string, object>>
+                database.QueryRowsByOperation["DeviceOperationRetryStore.LoadDueSummaries"] = new List<IReadOnlyDictionary<string, object>>
+                {
+                    RetryRow(1), RetryRow(2)
+                };
+                database.QueryRowsByOperation["DeviceOperationRetryStore.LoadStatesByIds"] = new List<IReadOnlyDictionary<string, object>>
                 {
                     RetryRow(1), RetryRow(2)
                 };

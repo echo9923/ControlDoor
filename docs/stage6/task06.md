@@ -125,3 +125,9 @@
 - 终态清理 SQL 增加未完成意图保护：任一 `permission_pending`/`permission_sync_completion_blocked`/`person_pending`/`face_pending`/`delete_person_pending`/`delete_face_pending` 为 1 的终态行不会被清理。
 - 原因：这些行是人员全局权限同步完成判断（`HasBlockingPermissionStateForEmployee`）的依据；终态失败行被清理后，其他设备的成功会把人员误标为全局同步完成。
 - 表有 `UNIQUE(device_id, employee_id)`，保留未完成行不会无界增长；`FailureRetentionDays` 继续管辖全部意图已完结的历史行。
+
+## 代码复核更新（2026-09-09，K3）
+
+- 新增配置项 `DeviceOperationRetry.BacklogScanIntervalSeconds`（默认 2，范围 1 至 `ScanIntervalSeconds`）与 `DeviceOperationRetry.MaintenanceIntervalSeconds`（默认 300，最小 30），随既有配置校验回退。
+- 扫描日志的 `due` 语义调整为"本轮按主键取回并处理的到期状态条数"（先经在线过滤与按设备公平选取），离线设备不再计入本轮 `due`，也不再产生 `offlineDeferred` 写。
+- 维护巡检新增 `MaintainRetryStates` 日志（terminal/emptyDeleted/examined），用于核对已移除设备补偿终态的清理进度。

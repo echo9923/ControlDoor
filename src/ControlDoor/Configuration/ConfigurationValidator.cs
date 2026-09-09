@@ -207,6 +207,22 @@ namespace ControlDoor.Configuration
                 "DeviceOperationRetry.ScanIntervalSeconds",
                 warnings);
 
+            // K3：积压短间隔必须小于常规间隔才有意义；维护间隔至少 30 秒，避免与主扫描互相干扰。
+            settings.DeviceOperationRetry.BacklogScanIntervalSeconds = RangeOrDefault(
+                settings.DeviceOperationRetry.BacklogScanIntervalSeconds,
+                1,
+                Math.Max(1, settings.DeviceOperationRetry.ScanIntervalSeconds),
+                2,
+                "DeviceOperationRetry.BacklogScanIntervalSeconds",
+                warnings);
+
+            settings.DeviceOperationRetry.MaintenanceIntervalSeconds = MinimumOrDefault(
+                settings.DeviceOperationRetry.MaintenanceIntervalSeconds,
+                30,
+                300,
+                "DeviceOperationRetry.MaintenanceIntervalSeconds",
+                warnings);
+
             settings.DeviceOperationRetry.InitialRetryDelaySeconds = MinimumOrDefault(
                 settings.DeviceOperationRetry.InitialRetryDelaySeconds,
                 1,

@@ -151,6 +151,103 @@ namespace ControlDoor.Permissions
             return rows.Select(DeviceOperationRetryState.FromRow).ToList();
         }
 
+        // K3：到期扫描先读轻量摘要（不含 permission/person/face 三个 payload 大列）。
+        // deviceIds 非空时按当前可执行设备过滤，离线设备积压不再占用全局扫描名额，
+        // 也不会把离线记录里的人脸 base64 读进内存；命中后再用 LoadStatesByIds 取完整载荷。
+        public IReadOnlyList<DeviceOperationRetryState> LoadDueSummaries(DateTime now, int? limit = null, IReadOnlyCollection<int> deviceIds = null)
+        {
+            var size = limit.HasValue && limit.Value > 0 ? limit.Value : Math.Max(1, options.BatchSize);
+            var parameters = new List<DatabaseParameter>
+            {
+                new DatabaseParameter("@now", now),
+                new DatabaseParameter("@batchSize", size)
+            };
+            var deviceFilter = string.Empty;
+            if (deviceIds != null)
+            {
+                var names = new List<string>();
+                var index = 0;
+                foreach (var deviceId in deviceIds.Distinct().OrderBy(item => item))
+                {
+                    var name = "@deviceId" + index++;
+                    names.Add(name);
+                    parameters.Add(new DatabaseParameter(name, deviceId));
+                }
+
+                if (names.Count > 0)
+                {
+                    deviceFilter = "  AND device_id IN (" + string.Join(", ", names) + ")";
+                }
+            }
+
+            var sql = "SELECT TOP (@batchSize) " + LoadDueSummaryColumns + @"
+FROM dbo.device_operation_retry_states WITH (UPDLOCK, READPAST, ROWLOCK)
+WHERE exhausted_at IS NULL
+  AND (next_retry_at IS NULL OR next_retry_at <= @now)" + deviceFilter + @"
+  AND (
+      permission_pending = 1
+      OR person_pending = 1
+      OR face_pending = 1
+      OR delete_person_pending = 1
+      OR delete_face_pending = 1
+  )
+ORDER BY next_retry_at ASC, updated_at ASC, id ASC;";
+            var rows = database.ExecuteQuery("DeviceOperationRetryStore.LoadDueSummaries", sql, parameters.ToArray());
+            return rows.Select(DeviceOperationRetryState.FromRow).ToList();
+        }
+
+        // 维护轮（K3）：按 id 游标扫描全部到期摘要，保证对设备已从运行时移除的补偿状态
+        // 的终态清理可以完整覆盖，不会被长时间离线设备的旧到期记录挡在 TOP 窗口外。
+        public IReadOnlyList<DeviceOperationRetryState> LoadMaintenanceSummaries(DateTime now, long afterId, int? limit = null)
+        {
+            var size = limit.HasValue && limit.Value > 0 ? limit.Value : Math.Max(1, options.BatchSize);
+            var sql = "SELECT TOP (@batchSize) " + LoadDueSummaryColumns + @"
+FROM dbo.device_operation_retry_states WITH (UPDLOCK, READPAST, ROWLOCK)
+WHERE exhausted_at IS NULL
+  AND (next_retry_at IS NULL OR next_retry_at <= @now)
+  AND id > @afterId
+  AND (
+      permission_pending = 1
+      OR person_pending = 1
+      OR face_pending = 1
+      OR delete_person_pending = 1
+      OR delete_face_pending = 1
+  )
+ORDER BY id ASC;";
+            var rows = database.ExecuteQuery(
+                "DeviceOperationRetryStore.LoadMaintenanceSummaries",
+                sql,
+                new DatabaseParameter("@now", now),
+                new DatabaseParameter("@afterId", afterId),
+                new DatabaseParameter("@batchSize", size));
+            return rows.Select(DeviceOperationRetryState.FromRow).ToList();
+        }
+
+        // K3：摘要命中并按设备公平选取后，按主键取回完整状态（含 payload）。
+        public IReadOnlyList<DeviceOperationRetryState> LoadStatesByIds(IReadOnlyCollection<long> ids)
+        {
+            if (ids == null || ids.Count == 0)
+            {
+                return new List<DeviceOperationRetryState>();
+            }
+
+            var parameters = new List<DatabaseParameter>();
+            var names = new List<string>();
+            var index = 0;
+            foreach (var id in ids.Distinct().OrderBy(item => item))
+            {
+                var name = "@id" + index++;
+                names.Add(name);
+                parameters.Add(new DatabaseParameter(name, id));
+            }
+
+            var rows = database.ExecuteQuery(
+                "DeviceOperationRetryStore.LoadStatesByIds",
+                "SELECT * FROM dbo.device_operation_retry_states WHERE id IN (" + string.Join(", ", names) + ");",
+                parameters.ToArray());
+            return rows.Select(DeviceOperationRetryState.FromRow).ToList();
+        }
+
         public bool TryClaimDueState(DeviceOperationRetryState state, DateTime now)
         {
             if (state == null)
@@ -716,6 +813,9 @@ WHERE exhausted_at IS NULL
       OR delete_face_pending = 1
   )
 ORDER BY next_retry_at ASC, updated_at ASC, id ASC;";
+
+        // 摘要列（K3）：与 FromRow 兼容，但排除三个 payload 大列，离线积压记录不再读取人脸内容。
+        private const string LoadDueSummaryColumns = "id, intent_version, device_id, employee_id, permission_level, permission_pending, permission_sync_completion_blocked, person_pending, face_pending, delete_person_pending, delete_face_pending, attempt_count, next_retry_at, last_error, last_attempt_at, exhausted_at, created_at, updated_at";
 
         private const string ClaimDueSql = @"
 UPDATE dbo.device_operation_retry_states

@@ -149,6 +149,12 @@ namespace ControlDoor.Configuration
     {
         public int ScanIntervalSeconds { get; set; } = 30;
 
+        // K3：上轮扫描读满一批（仍有到期积压）时使用的短间隔，实现有预算的连续扫描。
+        public int BacklogScanIntervalSeconds { get; set; } = 2;
+
+        // K3：维护巡检间隔，按 id 游标清理设备已移除/停用/配置非法的补偿终态。
+        public int MaintenanceIntervalSeconds { get; set; } = 300;
+
         public int InitialRetryDelaySeconds { get; set; } = 60;
 
         public int MaxRetryDelaySeconds { get; set; } = 3600;

@@ -133,11 +133,13 @@ namespace ControlDoor.Permissions
             {
                 var delay = TimeSpan.FromSeconds(Math.Max(1, options.ScanIntervalSeconds));
                 await Task.Delay(TimeSpan.FromSeconds(Math.Min(5, Math.Max(1, options.ScanIntervalSeconds))), cancellationToken).ConfigureAwait(false);
+                var lastMaintenanceAt = DateTime.Now;
                 while (!cancellationToken.IsCancellationRequested)
                 {
+                    DeviceOperationRetryScanResult scan = null;
                     try
                     {
-                        await RunOnceAsync(RequestContext.Background("ScanRetryStates").RequestId, cancellationToken).ConfigureAwait(false);
+                        scan = await RunOnceAsync(RequestContext.Background("ScanRetryStates").RequestId, cancellationToken).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
@@ -148,7 +150,22 @@ namespace ControlDoor.Permissions
                         logger?.Error("DeviceOperationRetry", "补偿后台单轮扫描失败，将等待下一轮恢复。", ex);
                     }
 
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                    // 维护轮（K3）：低频按 id 游标巡检，对设备已从运行时移除/停用/配置非法的
+                    // 补偿状态做终态清理；只读摘要，离线设备的记录不做任何写。
+                    if ((DateTime.Now - lastMaintenanceAt).TotalSeconds >= Math.Max(30, options.MaintenanceIntervalSeconds))
+                    {
+                        lastMaintenanceAt = DateTime.Now;
+                        try
+                        {
+                            RunMaintenanceScan(RequestContext.Background("MaintainRetryStates").RequestId);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.Error("DeviceOperationRetry", "补偿维护巡检失败，将等待下一轮恢复。", ex);
+                        }
+                    }
+
+                    await Task.Delay(GetScanDelay(options, scan != null && scan.Due >= Math.Max(1, options.BatchSize)), cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -160,6 +177,20 @@ namespace ControlDoor.Permissions
                 status.MarkFailed(ex);
                 logger?.Error("DeviceOperationRetry", "补偿后台扫描循环异常。", ex);
             }
+        }
+
+        // K3：上轮读满一批说明仍有到期积压，用短间隔连续扫描（每轮仍执行真实领取与执行，有天然预算）；
+        // 空闲或未读满时维持常规间隔。
+        internal static TimeSpan GetScanDelay(DeviceOperationRetryOptions options, bool hasBacklog)
+        {
+            if (options == null)
+            {
+                return TimeSpan.FromSeconds(30);
+            }
+
+            return TimeSpan.FromSeconds(hasBacklog
+                ? Math.Max(1, options.BacklogScanIntervalSeconds)
+                : Math.Max(1, options.ScanIntervalSeconds));
         }
 
         private async Task<DeviceOperationRetryScanResult> RunScanAsync(string requestId, CancellationToken cancellationToken)
@@ -175,7 +206,21 @@ namespace ControlDoor.Permissions
 
             try
             {
-                var states = store.LoadDueStates(now, options.BatchSize);
+                // K3：先按运行时可执行设备过滤读轻量摘要（不含 payload 大列），再按主键取回
+                // 命中记录的完整载荷。离线设备积压不再占用全局扫描名额，也不产生人脸读取。
+                var onlineDeviceIds = GetOnlineRetryDeviceIds();
+                IReadOnlyList<DeviceOperationRetryState> states;
+                if (onlineDeviceIds.Count == 0)
+                {
+                    states = new List<DeviceOperationRetryState>();
+                }
+                else
+                {
+                    var summaries = store.LoadDueSummaries(now, Math.Max(1, options.BatchSize) * SummaryLoadMultiplier, onlineDeviceIds);
+                    var selectedIds = SelectFairlyAcrossDevices(summaries, Math.Max(1, options.BatchSize)).Select(state => state.Id).ToList();
+                    states = store.LoadStatesByIds(selectedIds);
+                }
+
                 result.Due = states.Count;
                 var lanes = states.GroupBy(state => registry.TryGetWorkerRoute(state.DeviceId).WorkerIndex ?? -1);
                 var scans = await Task.WhenAll(lanes.Select(lane => Task.Run(async () =>
@@ -283,6 +328,125 @@ namespace ControlDoor.Permissions
                 result.Terminal != 0 ||
                 result.EmptyDeleted != 0 ||
                 result.CleanupDeleted != 0;
+        }
+
+        // 摘要读取倍数（K3）：多读摘要（轻量、无 payload）换取按设备公平选取的可见范围。
+        private const int SummaryLoadMultiplier = 4;
+
+        // 与 ProcessStateAsync 的离线判定保持一致：未连接、无会话、等待重连或连接中的设备都不可执行。
+        private List<int> GetOnlineRetryDeviceIds()
+        {
+            return registry.GetAllSnapshots()
+                .Where(snapshot => snapshot != null
+                    && snapshot.Enabled
+                    && !snapshot.IsDeleting
+                    && snapshot.IsConnected
+                    && snapshot.SdkUserId.HasValue
+                    && snapshot.Status != DeviceConnectionStatus.ReconnectPending
+                    && snapshot.Status != DeviceConnectionStatus.Connecting)
+                .Select(snapshot => snapshot.DeviceId)
+                .ToList();
+        }
+
+        // 按设备轮转交错选取（K3）：单个设备的大量到期记录不会连续占满整批，
+        // 多设备在每轮扫描中都能获得配额；每设备内部保持 SQL 返回的到期先后顺序。
+        internal static IEnumerable<DeviceOperationRetryState> SelectFairlyAcrossDevices(IReadOnlyList<DeviceOperationRetryState> summaries, int batchSize)
+        {
+            if (summaries == null || summaries.Count == 0 || batchSize <= 0)
+            {
+                return new List<DeviceOperationRetryState>();
+            }
+
+            var queues = summaries
+                .GroupBy(state => state.DeviceId)
+                .Select(group => new Queue<DeviceOperationRetryState>(group))
+                .ToList();
+            var selected = new List<DeviceOperationRetryState>(Math.Min(batchSize, summaries.Count));
+            var anyRemaining = true;
+            while (selected.Count < batchSize && anyRemaining)
+            {
+                anyRemaining = false;
+                foreach (var queue in queues)
+                {
+                    if (selected.Count >= batchSize)
+                    {
+                        break;
+                    }
+
+                    if (queue.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    selected.Add(queue.Dequeue());
+                    anyRemaining = true;
+                }
+            }
+
+            return selected;
+        }
+
+        // 维护轮（K3）：按 id 游标低频巡检到期摘要，只对设备已从运行时移除、已停用或配置非法的
+        // 补偿状态标记终态；离线设备记录不做任何写（主扫描的在线过滤已排除，等待设备恢复在线）。
+        // 游标保证全表可覆盖，不会被长期离线设备的旧到期记录挡住；不足一批时回卷到表头。
+        private long maintenanceCursorId;
+
+        internal void RunMaintenanceScan(string requestId)
+        {
+            var now = DateTime.Now;
+            var summaries = store.LoadMaintenanceSummaries(now, maintenanceCursorId, options.BatchSize);
+            maintenanceCursorId = summaries.Count >= Math.Max(1, options.BatchSize)
+                ? summaries[summaries.Count - 1].Id
+                : 0;
+            var terminal = 0;
+            var emptyDeleted = 0;
+            foreach (var state in summaries)
+            {
+                var lookup = registry.TryGetByDeviceId(state.DeviceId);
+                if (!lookup.Found || lookup.Snapshot == null)
+                {
+                    store.MarkTerminalFailure(state, "DEVICE_NOT_FOUND", "设备运行时不存在。", now);
+                    terminal++;
+                    LogRetryState(requestId, state, "设备已移除，补偿状态转终态。", "DEVICE_NOT_FOUND", level: LogLevel.Warn);
+                    continue;
+                }
+
+                var snapshot = lookup.Snapshot;
+                if (!snapshot.Enabled || snapshot.Status == DeviceConnectionStatus.Disabled)
+                {
+                    store.MarkTerminalFailure(state, "DEVICE_DISABLED", "设备已停用。", now);
+                    terminal++;
+                    LogRetryState(requestId, state, "设备已停用，补偿状态转终态。", "DEVICE_DISABLED", level: LogLevel.Warn);
+                    continue;
+                }
+
+                if (snapshot.Status == DeviceConnectionStatus.InvalidConfig)
+                {
+                    store.MarkTerminalFailure(state, "DEVICE_CONFIG_INVALID", "设备配置非法。", now);
+                    terminal++;
+                    LogRetryState(requestId, state, "设备配置非法，补偿状态转终态。", "DEVICE_CONFIG_INVALID", level: LogLevel.Warn);
+                    continue;
+                }
+
+                if (!state.HasPending)
+                {
+                    store.DeleteEmptyState(state);
+                    emptyDeleted++;
+                }
+            }
+
+            if (terminal > 0 || emptyDeleted > 0)
+            {
+                var fields = new LogFields
+                {
+                    RequestId = requestId,
+                    OperationName = "MaintainRetryStates"
+                };
+                fields.Extra["terminal"] = terminal.ToString();
+                fields.Extra["emptyDeleted"] = emptyDeleted.ToString();
+                fields.Extra["examined"] = summaries.Count.ToString();
+                logger?.Info("DeviceOperationRetry", "补偿维护巡检完成。", fields);
+            }
         }
 
         private async Task ProcessStateAsync(DeviceOperationRetryState state, DeviceOperationRetryScanResult scan, DateTime now, CancellationToken cancellationToken)

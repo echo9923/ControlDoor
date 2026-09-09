@@ -330,11 +330,12 @@ namespace ControlEntradaSalida.Tests
             using (var fixture = new Stage6Fixture())
             {
                 fixture.Options.ScanIntervalSeconds = 1;
-                fixture.Database.FailOperationName = "DeviceOperationRetryStore.LoadDueStates";
+                fixture.AddOnlineDevice();
+                fixture.Database.FailOperationName = "DeviceOperationRetryStore.LoadDueSummaries";
                 fixture.Database.ThrowOnFailure = true;
 
                 fixture.Manager.StartAsync(new ControlDoor.Runtime.BackgroundTaskContext("stage6-loop", System.Threading.CancellationToken.None, null)).GetAwaiter().GetResult();
-                WaitUntil(() => fixture.Database.Commands.Count(command => command.OperationName == "DeviceOperationRetryStore.LoadDueStates") >= 2, "retry manager did not run a second scan after the first scan failed.");
+                WaitUntil(() => fixture.Database.Commands.Count(command => command.OperationName == "DeviceOperationRetryStore.LoadDueSummaries") >= 2, "retry manager did not run a second scan after the first scan failed.");
                 var status = fixture.Manager.GetStatus();
 
                 Assert.True(status.IsRunning);
@@ -456,9 +457,12 @@ namespace ControlEntradaSalida.Tests
 
                 var result = fixture.Manager.RunOnceAsync("stage6-offline").GetAwaiter().GetResult();
 
-                Assert.Equal(1, result.OfflineDeferred);
+                // K3：扫描时设备已离线 → 记录被在线过滤排除，不再领取、不再写离线延期。
+                Assert.Equal(0, result.Due);
+                Assert.Equal(0, result.OfflineDeferred);
                 Assert.False(fixture.Gateway.Calls.Any(call => call.MethodName == "SetPermissionAsync"));
-                Assert.True(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeferOffline"));
+                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.TryClaimDueState"));
+                Assert.False(fixture.Database.Commands.Any(item => item.OperationName == "DeviceOperationRetryStore.DeferOffline"));
             }
         }
 
@@ -524,11 +528,15 @@ namespace ControlEntradaSalida.Tests
             using (var fixture = new Stage6Fixture())
             {
                 fixture.AddDisabledDevice();
-                fixture.Database.QueryRows.Add(Row(id: 5, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7));
+                fixture.AddOnlineDevice("在线设备", deviceId: 3);
+                // 停用设备被主扫描的在线过滤排除；终态清理由维护巡检负责（K3）。
+                fixture.Database.QueryRowsByOperation["DeviceOperationRetryStore.LoadMaintenanceSummaries"] = new List<IReadOnlyDictionary<string, object>>
+                {
+                    Row(id: 5, deviceId: 1, employeeId: "10001", permissionPending: true, permissionLevel: 7)
+                };
 
-                var result = fixture.Manager.RunOnceAsync("stage6-disabled").GetAwaiter().GetResult();
+                fixture.Manager.RunMaintenanceScan("stage6-disabled");
 
-                Assert.Equal(1, result.Terminal);
                 Assert.True(fixture.Database.Commands.Any(item =>
                     item.OperationName == "DeviceOperationRetryStore.MarkTerminalFailure" &&
                     item.CommandText.Contains("@lastError=DEVICE_DISABLED")));
@@ -704,13 +712,13 @@ namespace ControlEntradaSalida.Tests
                 : string.Empty;
         }
 
-        public void AddOnlineDevice(string description = "测试设备")
+        public void AddOnlineDevice(string description = "测试设备", int deviceId = 1)
         {
-            inner.AddRecord(1, description: description);
+            inner.AddRecord(deviceId, ipAddress: "192.168.1." + (63 + deviceId), description: description);
             inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
-            var login = inner.Lifecycle.SubmitLogin(1, wait: true, requestId: "stage6-login");
+            var login = inner.Lifecycle.SubmitLogin(deviceId, wait: true, requestId: "stage6-login");
             Assert.True(login.Success, login.Message);
-            inner.Registry.UpdateCapabilities(1, new ControlDoor.Devices.Runtime.DeviceCapabilities
+            inner.Registry.UpdateCapabilities(deviceId, new ControlDoor.Devices.Runtime.DeviceCapabilities
             {
                 Known = true,
                 SupportsFaceConfig = true,
@@ -719,9 +727,9 @@ namespace ControlEntradaSalida.Tests
             }, DateTime.Now);
         }
 
-        public void AddOfflineDevice(string description = "测试设备")
+        public void AddOfflineDevice(string description = "测试设备", int deviceId = 1)
         {
-            inner.AddRecord(1, description: description);
+            inner.AddRecord(deviceId, ipAddress: "192.168.1." + (63 + deviceId), description: description);
             inner.Lifecycle.LoadEnabledDevices(enqueueLogin: false);
         }
 
