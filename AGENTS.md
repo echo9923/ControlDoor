@@ -81,6 +81,8 @@
 - `docs/superpowers/plans/2026-07-29-targeted-person-face-sync.md`：指定设备人员与人脸下发接口 TDD 实施计划，适用于实现新 gRPC 方法、定向设备原子校验、补偿行为、契约文档和回归测试。
 - `docs/superpowers/plans/2026-07-16-acs-employee-id-zero-source.md`: TDD implementation plan for ACS employee ID zero handling; use when modifying the SDK callback, parser, and regression coverage.
 
+- `docs/当前项目业务与性能问题清单-20260909.md`：按约 27 台门禁、4000 员工、频繁掉线及偶尔全量下发评定的统一问题清单，包含已确认缺陷、容量与恢复边界、复现证据、解决方案、修复优先级和可暂缓条件，适用于后续修复排期及现场验收。
+
 在 `docs/` 下每新增一个文档，必须在本节同步增加一条目录指引项。目录项应包含文档路径、核心用途和适用场景，确保后续查阅和实施时能快速定位。
 
 ## 设备 SDK 使用要求
