@@ -131,3 +131,7 @@
 - 新增配置项 `DeviceOperationRetry.BacklogScanIntervalSeconds`（默认 2，范围 1 至 `ScanIntervalSeconds`）与 `DeviceOperationRetry.MaintenanceIntervalSeconds`（默认 300，最小 30），随既有配置校验回退。
 - 扫描日志的 `due` 语义调整为"本轮按主键取回并处理的到期状态条数"（先经在线过滤与按设备公平选取），离线设备不再计入本轮 `due`，也不再产生 `offlineDeferred` 写。
 - 维护巡检新增 `MaintainRetryStates` 日志（terminal/emptyDeleted/examined），用于核对已移除设备补偿终态的清理进度。
+
+## 代码复核更新（2026-09-09，M1）
+
+- `ScanRetryStates` 日志新增 `hasMoreDue` 字段（候选摘要读到第 BatchSize+1 条即置位）：这是补偿积压节奏的唯一判据，配合 `BacklogScanIntervalSeconds`（默认 2 秒）连续扫描；现场观察"每轮处理量、轮次间隔、最老记录等待时间"时直接检索该字段。

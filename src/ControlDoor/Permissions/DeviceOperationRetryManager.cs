@@ -165,7 +165,9 @@ namespace ControlDoor.Permissions
                         }
                     }
 
-                    await Task.Delay(GetScanDelay(options, scan != null && scan.Due >= Math.Max(1, options.BatchSize)), cancellationToken).ConfigureAwait(false);
+                    // 复核 M1：积压节奏由明确的 HasMoreDue 标志决定（候选摘要读到第 101 条），
+                    // 不再用本轮 Due/提交数推断；扫描异常保持常规间隔退避，避免故障期间高频查询。
+                    await Task.Delay(GetScanDelay(options, scan != null && scan.HasMoreDue), cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -179,8 +181,8 @@ namespace ControlDoor.Permissions
             }
         }
 
-        // K3：上轮读满一批说明仍有到期积压，用短间隔连续扫描（每轮仍执行真实领取与执行，有天然预算）；
-        // 空闲或未读满时维持常规间隔。
+        // 复核 M1：HasMoreDue=true（仍有到期积压）时用短间隔连续扫描（每轮仍执行真实领取与执行，
+        // 有天然预算）；无更多到期记录时维持常规间隔。
         internal static TimeSpan GetScanDelay(DeviceOperationRetryOptions options, bool hasBacklog)
         {
             if (options == null)
@@ -206,9 +208,10 @@ namespace ControlDoor.Permissions
 
             try
             {
-                // K3/L3：先按运行时可执行设备过滤读轻量摘要（不含 payload 大列），数据库侧按设备
-                // 分区配额（每台最多 perDeviceQuota 条）避免单设备积压挤占其他在线设备的候选名额，
-                // 内存中再按设备公平选取后取回完整载荷。
+                // K3/L3/M1：先按运行时可执行设备过滤读轻量摘要（不含 payload 大列）；候选在数据库侧
+                // 按"各设备第 1 条、各设备第 2 条……"交错排序后全局取前 BatchSize+1 条——单台积压
+                // 可取满整批、多台设备各先获名额再轮转剩余名额。第 101 条仅用于判定积压（HasMoreDue），
+                // 确定本轮 BatchSize 条记录后才读取人脸等完整载荷。
                 var onlineDeviceIds = GetOnlineRetryDeviceIds();
                 IReadOnlyList<DeviceOperationRetryState> states;
                 if (onlineDeviceIds.Count == 0)
@@ -217,8 +220,10 @@ namespace ControlDoor.Permissions
                 }
                 else
                 {
-                    var summaries = store.LoadDueSummaries(now, GetPerDeviceSummaryQuota(options.BatchSize), onlineDeviceIds);
-                    var selectedIds = SelectFairlyAcrossDevices(summaries, Math.Max(1, options.BatchSize)).Select(state => state.Id).ToList();
+                    var batchSize = Math.Max(1, options.BatchSize);
+                    var candidates = store.LoadDueSummaries(now, batchSize + 1, onlineDeviceIds);
+                    result.HasMoreDue = candidates.Count > batchSize;
+                    var selectedIds = candidates.Take(batchSize).Select(state => state.Id).ToList();
                     states = store.LoadStatesByIds(selectedIds);
                 }
 
@@ -294,6 +299,7 @@ namespace ControlDoor.Permissions
                         Extra =
                         {
                             ["due"] = result.Due.ToString(),
+                            ["hasMoreDue"] = result.HasMoreDue.ToString(),
                             ["submitted"] = result.Submitted.ToString(),
                             ["offlineDeferred"] = result.OfflineDeferred.ToString(),
                             ["inFlightSkipped"] = result.InFlightSkipped.ToString(),
@@ -320,6 +326,7 @@ namespace ControlDoor.Permissions
             }
 
             return result.Due != 0 ||
+                result.HasMoreDue ||
                 result.Submitted != 0 ||
                 result.OfflineDeferred != 0 ||
                 result.InFlightSkipped != 0 ||
@@ -329,13 +336,6 @@ namespace ControlDoor.Permissions
                 result.Terminal != 0 ||
                 result.EmptyDeleted != 0 ||
                 result.CleanupDeleted != 0;
-        }
-
-        // 摘要每设备配额（复核 L3）：默认 BatchSize/10（下限 2），即默认每台在线设备最多贡献 10 条候选；
-        // 配额在数据库分区排名中施加（全局截断之前），保证任何在线设备的到期记录都能进入候选集合。
-        internal static int GetPerDeviceSummaryQuota(int batchSize)
-        {
-            return Math.Max(2, Math.Max(1, batchSize) / 10);
         }
 
         // 与 ProcessStateAsync 的离线判定保持一致：未连接、无会话、等待重连或连接中的设备都不可执行。
@@ -351,44 +351,6 @@ namespace ControlDoor.Permissions
                     && snapshot.Status != DeviceConnectionStatus.Connecting)
                 .Select(snapshot => snapshot.DeviceId)
                 .ToList();
-        }
-
-        // 按设备轮转交错选取（K3）：单个设备的大量到期记录不会连续占满整批，
-        // 多设备在每轮扫描中都能获得配额；每设备内部保持 SQL 返回的到期先后顺序。
-        internal static IEnumerable<DeviceOperationRetryState> SelectFairlyAcrossDevices(IReadOnlyList<DeviceOperationRetryState> summaries, int batchSize)
-        {
-            if (summaries == null || summaries.Count == 0 || batchSize <= 0)
-            {
-                return new List<DeviceOperationRetryState>();
-            }
-
-            var queues = summaries
-                .GroupBy(state => state.DeviceId)
-                .Select(group => new Queue<DeviceOperationRetryState>(group))
-                .ToList();
-            var selected = new List<DeviceOperationRetryState>(Math.Min(batchSize, summaries.Count));
-            var anyRemaining = true;
-            while (selected.Count < batchSize && anyRemaining)
-            {
-                anyRemaining = false;
-                foreach (var queue in queues)
-                {
-                    if (selected.Count >= batchSize)
-                    {
-                        break;
-                    }
-
-                    if (queue.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    selected.Add(queue.Dequeue());
-                    anyRemaining = true;
-                }
-            }
-
-            return selected;
         }
 
         // 维护轮（K3）：按 id 游标低频巡检到期摘要，只对设备已从运行时移除、已停用或配置非法的

@@ -129,3 +129,9 @@
 - 候选摘要查询改为数据库侧按设备分区配额：`ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY next_retry_at, updated_at, id)` + `__device_rank <= @perDeviceQuota`（每设备配额 = BatchSize/10、下限 2，默认 10），并去掉配额前的全局 TOP 截断——此前"全局前 BatchSize×4 条候选"会让一台在线设备的大量更早到期记录把其他在线设备挡在候选窗口外（4000 条积压 + 1 条新记录时新记录需约 38 轮才首次入选）。
 - 配额在全局排序之前施加，任何在线设备的到期记录必然进入候选集合；返回量自然受 perDeviceQuota × 在线设备数约束，内存中仍按设备公平轮转收敛到 BatchSize。领取租约、版本条件与同员工互斥不变。
 - `tests/Integration/RetrySqlIntegrationTests` 新增真实 SQL 配额用例（环境变量门控）：设备 1 塞入 20 条更早到期记录后，设备 2 的单条新记录仍在配额候选内可见——弥补模拟适配器无法执行窗口排名的局限。
+
+## 代码复核更新（2026-09-09，M1）
+
+- 候选取数改为"公平取满一批"：沿用按设备分区排名（`ROW_NUMBER() OVER (PARTITION BY device_id ...)`），最终按"各设备第 1 条、各设备第 2 条……"交错排序后全局取前 `BatchSize + 1` 条轻量摘要；默认前 100 条进入本轮执行，第 101 条仅用于判定是否仍有积压，确定本轮记录后才读取人脸等完整载荷。全局取数上限位于跨设备交错排序之后：单台积压设备可取满整批，多台设备各先获名额再轮转剩余名额（取代上一轮"每设备 10 条配额"，消除"配额 × 慢扫描"下 4000 条需约 400 轮 × 30 秒的回退）。
+- 扫描节奏改用明确的积压标志：`DeviceOperationRetryScanResult.HasMoreDue` 由候选摘要是否读到第 101 条直接决定（不用 Due/成功数/提交数推断，记录在查询后被更新或领取不影响节奏判定）。HasMoreDue=true → 2 秒快速间隔（`BacklogScanIntervalSeconds`）；无更多到期 → 30 秒常规间隔；扫描异常保持常规间隔退避。
+- 扫描日志新增 `hasMoreDue` 字段；版本条件、领取租约、同员工互斥、离线过滤不变。本轮保持 BatchSize=100、worker=4，未新增配置项、未变更表结构。

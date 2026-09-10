@@ -152,21 +152,23 @@ namespace ControlDoor.Permissions
         }
 
         // K3/L3：到期扫描先读轻量摘要（不含 permission/person/face 三个 payload 大列）。
-        // deviceIds 非空时按当前可执行设备过滤；候选在数据库侧按 device_id 分区排名，每台设备
-        // 最多贡献 perDeviceQuota 条——配额在全局排序之前施加，单台设备的大量更早到期记录
-        // 不再把其他在线设备挡在候选窗口外（全局 TOP 截断是此前饿缺的根源）。
-        // 返回上限自然受 perDeviceQuota × 设备数约束，命中后再用 LoadStatesByIds 取完整载荷。
-        public IReadOnlyList<DeviceOperationRetryState> LoadDueSummaries(DateTime now, int perDeviceQuota, IReadOnlyCollection<int> deviceIds)
+        // deviceIds 非空时按当前可执行设备过滤；候选在数据库侧按 device_id 分区排名后，以
+        // "各设备第 1 条、各设备第 2 条……"的交错顺序全局取前 take 条（复核 M1）。
+        // 全局截断位于跨设备交错排序之后：单台设备的积压可以取满整批；多台设备时每台先获得
+        // 名额、再轮转分配剩余名额——任何在线设备的到期记录都不会被其他设备挡在候选窗口外。
+        // take = BatchSize + 1：第 101 条摘要仅用于判定是否仍有积压（HasMoreDue），
+        // 确定本轮记录后才用 LoadStatesByIds 读取人脸等完整载荷。
+        public IReadOnlyList<DeviceOperationRetryState> LoadDueSummaries(DateTime now, int take, IReadOnlyCollection<int> deviceIds)
         {
-            if (perDeviceQuota < 1)
+            if (take < 1)
             {
-                perDeviceQuota = 1;
+                take = 1;
             }
 
             var parameters = new List<DatabaseParameter>
             {
                 new DatabaseParameter("@now", now),
-                new DatabaseParameter("@perDeviceQuota", perDeviceQuota)
+                new DatabaseParameter("@take", take)
             };
             var names = new List<string>();
             var index = 0;
@@ -181,7 +183,7 @@ namespace ControlDoor.Permissions
                 ? "  AND device_id IN (" + string.Join(", ", names) + ")"
                 : "  AND 1 = 0";
 
-            var sql = @"SELECT " + LoadDueSummaryColumns + @"
+            var sql = @"SELECT TOP (@take) " + LoadDueSummaryColumns + @"
 FROM (
     SELECT " + LoadDueSummaryColumns + @",
         ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY next_retry_at ASC, updated_at ASC, id ASC) AS __device_rank
@@ -196,8 +198,7 @@ FROM (
           OR delete_face_pending = 1
       )
 ) AS ranked
-WHERE __device_rank <= @perDeviceQuota
-ORDER BY next_retry_at ASC, updated_at ASC, id ASC;";
+ORDER BY __device_rank ASC, next_retry_at ASC, updated_at ASC, id ASC;";
             var rows = database.ExecuteQuery("DeviceOperationRetryStore.LoadDueSummaries", sql, parameters.ToArray());
             return rows.Select(DeviceOperationRetryState.FromRow).ToList();
         }

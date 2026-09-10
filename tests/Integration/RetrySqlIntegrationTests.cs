@@ -114,10 +114,11 @@ namespace ControlEntradaSalida.Tests
             }
         }
 
-        // 复核 L3：真实 SQL 验证候选查询的按设备分区配额——设备 1 塞入大量更早到期记录后，
-        // 设备 2 的单条新记录仍必须在配额候选内出现（模拟适配器无法执行窗口排名，此用例补齐该语义）。
+        // 复核 L3/M1：真实 SQL 验证候选查询的跨设备交错取数——设备 1 塞入大量更早到期记录后，
+        // 设备 2 的单条新记录仍必须在候选内出现；只查询单台设备时可以取满 take 条（模拟适配器
+        // 无法执行窗口排名，此用例补齐该语义）。
         [TestCase]
-        public static void RetrySql_LoadDueSummaries_PerDeviceQuotaKeepsFreshDeviceVisible()
+        public static void RetrySql_LoadDueSummaries_InterleavedOrderKeepsFreshDeviceVisibleAndFillsSingleDevice()
         {
             if (Environment.GetEnvironmentVariable("CONTROLDOOR_RETRY_SQL_INTEGRATION") != "1")
             {
@@ -136,7 +137,7 @@ namespace ControlEntradaSalida.Tests
                     Check(database.ExecuteNonQuery("RetrySql.Migrate", batch, new DatabaseParameter[0]));
                 }
 
-                var employeePrefix = "l3-quota-" + Guid.NewGuid().ToString("N");
+                var employeePrefix = "m1-interleave-" + Guid.NewGuid().ToString("N");
                 var store = new DeviceOperationRetryStore(database);
                 try
                 {
@@ -157,12 +158,15 @@ namespace ControlEntradaSalida.Tests
                     };
                     Assert.True(store.UpsertIntent(freshIntent).Success);
 
-                    var summaries = store.LoadDueSummaries(DateTime.Now, 10, new[] { 1, 2 });
+                    // 两台设备：交错排序保证设备 2 的唯一记录入选（设备 1 贡献其余名额）。
+                    var interleaved = store.LoadDueSummaries(DateTime.Now, 11, new[] { 1, 2 });
+                    Assert.Equal(10, interleaved.Count(item => item.DeviceId == 1));
+                    Assert.True(interleaved.Any(item => item.DeviceId == 2 && item.EmployeeId == employeePrefix + "-fresh"),
+                        "单台设备的大量更早到期记录不得把其他设备挡在候选窗口外（L3/M1）。");
 
-                    // 设备 1 受配额约束（20 条到期只贡献 10 条），设备 2 的单条新记录仍然可见。
-                    Assert.Equal(10, summaries.Count(item => item.DeviceId == 1));
-                    Assert.True(summaries.Any(item => item.DeviceId == 2 && item.EmployeeId == employeePrefix + "-fresh"),
-                        "单台设备的大量更早到期记录不得把其他设备挡在候选窗口外（L3）。");
+                    // 只查单台设备：无其他设备竞争时可以取满 take 条（不再受每设备配额限制）。
+                    var singleDevice = store.LoadDueSummaries(DateTime.Now, 11, new[] { 1 });
+                    Assert.Equal(11, singleDevice.Count(item => item.DeviceId == 1), "单台积压设备应取满整批（M1）。");
                 }
                 finally
                 {

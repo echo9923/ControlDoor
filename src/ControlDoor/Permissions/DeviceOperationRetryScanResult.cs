@@ -8,6 +8,11 @@ namespace ControlDoor.Permissions
 
         public int Due { get; set; }
 
+        // 复核 M1：本轮候选摘要读到第 BatchSize+1 条即置位——明确的积压标志，
+        // 由候选查询结果直接判定，不用成功数、提交数或完整记录加载数推断；
+        // 记录在查询后被更新或领取不应让扫描节奏失真。
+        public bool HasMoreDue { get; set; }
+
         public int Submitted { get; set; }
 
         public int InFlightSkipped { get; set; }
