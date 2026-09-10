@@ -531,7 +531,7 @@ namespace ControlEntradaSalida.Tests
             var native = new Stage3FakeNativeClient
             {
                 FaceUploadStatus = 1003,
-                FaceUploadResponse = @"{""statusCode"":2,""statusString"":""failed"",""subStatusCode"":""badFace"",""errorMsg"":""invalid picture""}"
+                FaceUploadResponse = @"{""statusCode"":6,""statusString"":""Invalid Content"",""subStatusCode"":""badFace"",""errorMsg"":""invalid picture""}"
             };
             var gateway = new HikvisionSdkWrapper(native);
             var login = Login(gateway);
@@ -542,7 +542,9 @@ namespace ControlEntradaSalida.Tests
                 Face = Face("10001")
             }).GetAwaiter().GetResult());
 
-            Assert.Equal(1003, ex.Error.Code);
+            Assert.Equal(6, ex.Error.Code);
+            Assert.Equal("ISAPI", ex.Error.Source);
+            Assert.False(ex.Error.Retryable);
             Assert.Contains("badFace", ex.Error.Message);
             Assert.Contains("invalid picture", ex.Error.Message);
         }
@@ -663,6 +665,10 @@ namespace ControlEntradaSalida.Tests
         public int FaceUploadStatus { get; set; } = 1000;
 
         public string FaceUploadResponse { get; set; } = @"{""statusCode"":1}";
+
+        public Exception FaceUploadException { get; set; }
+
+        public CancellationToken LastFaceUploadCancellationToken { get; private set; }
 
         public int FaceCaptureStatus { get; set; } = 1000;
 
@@ -788,8 +794,10 @@ namespace ControlEntradaSalida.Tests
             return StdXmlResult;
         }
 
-        public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody)
+        public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, CancellationToken cancellationToken, out string responseBody)
         {
+            LastFaceUploadCancellationToken = cancellationToken;
+            if (FaceUploadException != null) throw FaceUploadException;
             LastFaceUploadUserId = userId;
             LastFaceUploadUrl = requestUrl;
             LastFaceUploadJson = jsonPayload;

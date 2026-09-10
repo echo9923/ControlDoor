@@ -235,9 +235,20 @@ namespace ControlDoor.Devices.Management
         {
             if (stopping) return new DeviceOperationResult { DeviceId = deviceId, Code = "SERVICE_STOPPING", Message = "服务正在停止。" };
             var task = CreateLoginTask(deviceId, requestId);
+            // Initial login can be rejected before its delegate gets a chance to arrange recovery.
+            task.Completion.Task.ContinueWith(completed =>
+            {
+                OnReconnectDispatchCompleted(deviceId, completed.Status == System.Threading.Tasks.TaskStatus.RanToCompletion ? completed.Result : null);
+            }, CancellationToken.None, System.Threading.Tasks.TaskContinuationOptions.None, System.Threading.Tasks.TaskScheduler.Default);
             if (wait)
             {
                 var result = dispatcher.SubmitAndWaitAsync(task).GetAwaiter().GetResult();
+                if (result.Code == "TIMEOUT" && task.ExecutionState == DeviceTaskExecutionState.Cancelled && !task.StartedAt.HasValue)
+                {
+                    // SubmitAndWait cancels expired queued work instead of letting the worker expire it.
+                    result.ExpiredBeforeExecution = true;
+                    OnReconnectDispatchCompleted(deviceId, result);
+                }
                 return FromTaskResult(result);
             }
 
@@ -1195,16 +1206,22 @@ namespace ControlDoor.Devices.Management
             LogDelayedDeviceTaskScheduled("设备重连已调度。", deviceId, "Stage4Reconnect", snapshot.Status, snapshot.Reconnect.AttemptCount, delay, dueAt, reason);
         }
 
-        // 重连任务被设备队列接受后的完成观察：执行前过期意味着登录委托从未运行，
-        // 其内部的失败重连安排不会发生，这里补一次调度；其余失败路径由登录委托自己处理。
+        // 初次登录和重连共用完成观察；登录委托未执行时补排，执行后的失败由委托处理。
         private void OnReconnectDispatchCompleted(int deviceId, DeviceTaskResult result)
         {
-            if (stopping || result == null || result.Success || !result.ExpiredBeforeExecution)
+            if (stopping || disposed || result == null || result.Success ||
+                (!result.ExpiredBeforeExecution && result.Code != "QUEUE_FULL"))
             {
                 return;
             }
 
-            ScheduleReconnect(deviceId, "reconnect task expired before execution");
+            var snapshot = registry.TryGetByDeviceId(deviceId).Snapshot;
+            if (snapshot == null || snapshot.IsConnected || snapshot.Status == DeviceConnectionStatus.Connecting)
+            {
+                return;
+            }
+
+            ScheduleReconnect(deviceId, "login task rejected before execution: " + result.Code);
         }
 
         // 布防任务被设备队列接受后的完成观察（K1）：排队过期或入队被拒意味着布防委托从未运行，

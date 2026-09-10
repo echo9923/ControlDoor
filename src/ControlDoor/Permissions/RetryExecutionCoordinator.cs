@@ -250,10 +250,10 @@ namespace ControlDoor.Permissions
             var gatewayEx = ex as DeviceGatewayException;
             if (gatewayEx != null)
             {
-                var result = DeviceTaskResult.FromTask(task, false, gatewayEx.Error.Code == 23 ? "DEVICE_UNSUPPORTED" : "SDK_ERROR", gatewayEx.Error.Message, status, started, DateTime.Now);
+                var result = DeviceTaskResult.FromTask(task, false, gatewayEx.Error.DeviceUnsupported ? "DEVICE_UNSUPPORTED" : "SDK_ERROR", gatewayEx.Error.Message, status, started, DateTime.Now);
                 result.OperationName = RetryOperationNames.ToStage5OperationName(operation);
                 result.SdkErrorCode = gatewayEx.Error.Code;
-                result.Retryable = IsRetryableSdkError(gatewayEx.Error.Code);
+                result.Retryable = gatewayEx.Error.Retryable;
                 return result;
             }
 
@@ -291,9 +291,5 @@ namespace ControlDoor.Permissions
             }
         }
 
-        private static bool IsRetryableSdkError(int code)
-        {
-            return code == 7 || code == 41 || code == 43 || code == 52 || code == 408 || code == 500;
-        }
     }
 }

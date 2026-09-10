@@ -58,7 +58,7 @@ namespace ControlDoor.Hikvision
                 }
                 catch (HttpRequestException ex)
                 {
-                    throw new DeviceGatewayException("SendIsapiRequest", SdkError.FromCode(7, ex.Message, "ISAPI"), ex);
+                    throw new DeviceGatewayException("SendIsapiRequest", SdkError.FromCode(7, ex.Message, "ISAPI_TRANSPORT"), ex);
                 }
             }
         }

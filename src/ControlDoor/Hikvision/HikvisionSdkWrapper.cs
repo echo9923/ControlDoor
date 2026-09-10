@@ -6,6 +6,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
+using System.Xml.Linq;
 using ControlDoor.Observability;
 
 namespace ControlDoor.Hikvision
@@ -286,7 +288,7 @@ namespace ControlDoor.Hikvision
                 EnsureInitialized();
                 var body = BuildFaceSetupPayload(request.Face.EmployeeId);
                 string responseBody;
-                var status = nativeClient.UploadFaceData(request.UserId, FaceSetupUrl, body, pictureBytes, out responseBody);
+                var status = nativeClient.UploadFaceData(request.UserId, FaceSetupUrl, body, pictureBytes, cancellationToken, out responseBody);
                 if (status < 0)
                 {
                     ThrowLastError("UploadFace");
@@ -296,6 +298,11 @@ namespace ControlDoor.Hikvision
                 {
                     EnsureIsapiBodyAccepted("UploadFace", responseBody);
                     return 0;
+                }
+
+                if (status == NetSdkConfigStatusFailed)
+                {
+                    EnsureIsapiBodyAccepted("UploadFace", responseBody);
                 }
 
                 throw new DeviceGatewayException("UploadFace", SdkError.FromCode(
@@ -329,7 +336,7 @@ namespace ControlDoor.Hikvision
             }
 
             HikvisionGatewayValidator.RequireUserId(request.UserId);
-            var response = await SendIsapiJsonForResponseAsync("QueryFace", FaceSearchUrl, IsapiMethod.Post, request.UserId, BuildFaceSearchPayload(request), cancellationToken).ConfigureAwait(false);
+            var response = await SendIsapiJsonForResponseAsync("QueryFace", FaceSearchUrl, IsapiMethod.Post, request.UserId, BuildFaceSearchPayload(request), cancellationToken, allowMultipartResponse: true).ConfigureAwait(false);
             return ParseFaceSearchResponse(response.Body, request.EmployeeId);
         }
 
@@ -591,7 +598,7 @@ namespace ControlDoor.Hikvision
             return SendIsapiJsonForResponseAsync(operationName, path, method, userId, body, cancellationToken);
         }
 
-        private async Task<IsapiResponse> SendIsapiJsonForResponseAsync(string operationName, string path, IsapiMethod method, int userId, object body, CancellationToken cancellationToken)
+        private async Task<IsapiResponse> SendIsapiJsonForResponseAsync(string operationName, string path, IsapiMethod method, int userId, object body, CancellationToken cancellationToken, bool allowMultipartResponse = false)
         {
             var response = await SendIsapiRequestAsync(new IsapiRequest
             {
@@ -607,7 +614,7 @@ namespace ControlDoor.Hikvision
                 throw new DeviceGatewayException(operationName, SdkError.FromHttpStatusCode(response.StatusCode, response.Body));
             }
 
-            EnsureIsapiBodyAccepted(operationName, response.Body);
+            EnsureIsapiBodyAccepted(operationName, response.Body, allowMultipartResponse);
             return response;
         }
 
@@ -627,7 +634,7 @@ namespace ControlDoor.Hikvision
                 traceLogger?.Trace(operationName, null, false, watch.ElapsedMilliseconds, ex.Error.Code, ex.Message, ex);
                 throw;
             }
-            catch (Exception ex) when (!(ex is ArgumentException) && !(ex is OperationCanceledException))
+            catch (Exception ex) when (!(ex is ArgumentException) && !(ex is OperationCanceledException) && !(ex is TimeoutException))
             {
                 watch.Stop();
                 var error = SdkError.FromException(ex);
@@ -1058,7 +1065,7 @@ namespace ControlDoor.Hikvision
             return -1;
         }
 
-        private static void EnsureIsapiBodyAccepted(string operationName, string body)
+        private static void EnsureIsapiBodyAccepted(string operationName, string body, bool allowMultipartResponse = false)
         {
             if (string.IsNullOrWhiteSpace(body))
             {
@@ -1068,16 +1075,34 @@ namespace ControlDoor.Hikvision
             Dictionary<string, object> values;
             try
             {
-                values = HikvisionGatewayJson.Deserialize<Dictionary<string, object>>(body);
-            }
-            catch
-            {
-                return;
-            }
+                if (body.TrimStart().StartsWith("<", StringComparison.Ordinal))
+                {
+                    var root = XDocument.Parse(body).Root;
+                    if (root == null || root.Name.LocalName != "ResponseStatus")
+                    {
+                        throw new FormatException("设备返回了无法识别的 XML 状态。");
+                    }
 
-            if (values == null)
+                    values = root.Elements().ToDictionary(element => element.Name.LocalName, element => (object)element.Value.Trim());
+                    if (!values.ContainsKey("statusCode") && !values.ContainsKey("statusString"))
+                    {
+                        throw new FormatException("设备 XML 响应缺少业务状态。");
+                    }
+                }
+                else
+                {
+                    values = HikvisionGatewayJson.Deserialize<Dictionary<string, object>>(allowMultipartResponse ? ExtractJsonFromMultipart(body) : body);
+                }
+
+                if (values == null)
+                {
+                    throw new FormatException("设备返回了空业务状态。");
+                }
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException || ex is FormatException || ex is XmlException)
             {
-                return;
+                throw new DeviceGatewayException(operationName,
+                    SdkError.FromCode(500, "无法解析设备业务响应: " + ex.Message, "ISAPI"), ex);
             }
 
             if (!values.ContainsKey("statusCode"))

@@ -35,6 +35,30 @@ namespace ControlDoor.Hikvision
 
         public bool Success => Code == 0;
 
+        internal bool Retryable
+        {
+            get
+            {
+                if (string.Equals(Source, "ISAPI", StringComparison.OrdinalIgnoreCase))
+                {
+                    // ISAPI status 2 is device busy; SDK error 2 is permission denied.
+                    return Code == 2 || Code == 3 || Code == 408 || Code == 429 ||
+                        Code == 500 || Code == 502 || Code == 503 || Code == 504;
+                }
+
+                if (string.Equals(Source, "SDK_REMOTE_CONFIG", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Code == 1001 || Code == 1004;
+                }
+
+                return Code == 7 || Code == 41 || Code == 43 || Code == 52 || Code == 408 || Code == 500;
+            }
+        }
+
+        internal bool DeviceUnsupported => Code == 23 &&
+            !string.Equals(Source, "ISAPI", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(Source, "SDK_REMOTE_CONFIG", StringComparison.OrdinalIgnoreCase);
+
         public static SdkError Ok()
         {
             return FromCode(0);

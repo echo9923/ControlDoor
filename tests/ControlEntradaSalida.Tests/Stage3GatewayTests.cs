@@ -1425,7 +1425,7 @@ namespace ControlEntradaSalida.Tests
                 return StdXmlResult;
             }
 
-            public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody)
+            public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, CancellationToken cancellationToken, out string responseBody)
             {
                 LastFaceUploadUrl = requestUrl;
                 LastFaceUploadJson = jsonPayload;

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -8,7 +9,23 @@ namespace ControlDoor.Hikvision
 {
     internal sealed class HikvisionSdkNativeClient : IHikvisionSdkNativeClient
     {
+        private const int FaceUploadWaitIntervalMs = 10;
+        private const int NetSdkConfigStatusNeedWait = 1001;
+        private readonly IHikvisionRemoteConfigNativeClient remoteConfigClient;
+        private readonly int faceUploadTimeoutMs;
         private HikvisionAlarmNativeCallback callbackReference;
+
+        public HikvisionSdkNativeClient()
+            : this(new RemoteConfigNativeClient())
+        {
+        }
+
+        internal HikvisionSdkNativeClient(IHikvisionRemoteConfigNativeClient remoteConfigClient, int faceUploadTimeoutMs = 30000)
+        {
+            this.remoteConfigClient = remoteConfigClient ?? throw new ArgumentNullException(nameof(remoteConfigClient));
+            if (faceUploadTimeoutMs <= 0) throw new ArgumentOutOfRangeException(nameof(faceUploadTimeoutMs));
+            this.faceUploadTimeoutMs = faceUploadTimeoutMs;
+        }
 
         public bool Init()
         {
@@ -226,8 +243,10 @@ namespace ControlDoor.Hikvision
             }
         }
 
-        public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, out string responseBody)
+        public int UploadFaceData(int userId, string requestUrl, string jsonPayload, byte[] pictureBytes, CancellationToken cancellationToken, out string responseBody)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            var watch = Stopwatch.StartNew();
             var urlBytes = Encoding.UTF8.GetBytes(requestUrl ?? string.Empty);
             var jsonBytes = Encoding.UTF8.GetBytes(jsonPayload ?? string.Empty);
             var pictureData = pictureBytes ?? new byte[0];
@@ -246,13 +265,11 @@ namespace ControlDoor.Hikvision
                 Marshal.Copy(urlBytes, 0, urlPtr, urlBytes.Length);
                 Marshal.WriteByte(urlPtr, urlBytes.Length, 0);
 
-                handle = NativeMethods.NET_DVR_StartRemoteConfig(
+                handle = remoteConfigClient.Start(
                     userId,
                     NativeMethods.NET_DVR_FACE_DATA_RECORD,
                     urlPtr,
-                    urlBytes.Length,
-                    IntPtr.Zero,
-                    IntPtr.Zero);
+                    urlBytes.Length);
 
                 if (handle < 0)
                 {
@@ -288,17 +305,37 @@ namespace ControlDoor.Hikvision
                 var responseHandle = GCHandle.Alloc(responseBuffer, GCHandleType.Pinned);
                 try
                 {
-                    uint responseSize = 0;
-                    var status = NativeMethods.NET_DVR_SendWithRecvRemoteConfig(
-                        handle,
-                        configPtr,
-                        (uint)configSize,
-                        responseHandle.AddrOfPinnedObject(),
-                        (uint)responseBuffer.Length,
-                        ref responseSize);
+                    // NEEDWAIT continues on the same handle; closing here would abort the upload.
+                    while (true)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (watch.ElapsedMilliseconds >= faceUploadTimeoutMs)
+                        {
+                            throw new TimeoutException("等待设备人脸下发结果超时。");
+                        }
 
-                    responseBody = ReadUtf8String(responseBuffer, responseSize);
-                    return status;
+                        uint responseSize = 0;
+                        Array.Clear(responseBuffer, 0, responseBuffer.Length);
+                        var status = remoteConfigClient.Send(
+                            handle,
+                            configPtr,
+                            (uint)configSize,
+                            responseHandle.AddrOfPinnedObject(),
+                            (uint)responseBuffer.Length,
+                            ref responseSize);
+
+                        if (status != NetSdkConfigStatusNeedWait)
+                        {
+                            responseBody = ReadUtf8String(responseBuffer, responseSize);
+                            return status;
+                        }
+
+                        var remainingMs = faceUploadTimeoutMs - watch.ElapsedMilliseconds;
+                        if (remainingMs > 0)
+                        {
+                            cancellationToken.WaitHandle.WaitOne((int)Math.Min(FaceUploadWaitIntervalMs, remainingMs));
+                        }
+                    }
                 }
                 finally
                 {
@@ -309,7 +346,7 @@ namespace ControlDoor.Hikvision
             {
                 if (handle >= 0)
                 {
-                    NativeMethods.NET_DVR_StopRemoteConfig(handle);
+                    remoteConfigClient.Stop(handle);
                 }
 
                 if (urlPtr != IntPtr.Zero)
@@ -512,6 +549,24 @@ namespace ControlDoor.Hikvision
             }
 
             return count == 0 ? string.Empty : Encoding.UTF8.GetString(buffer, 0, count).TrimEnd('\0');
+        }
+
+        private sealed class RemoteConfigNativeClient : IHikvisionRemoteConfigNativeClient
+        {
+            public int Start(int userId, uint command, IntPtr inputBuffer, int inputBufferLength)
+            {
+                return NativeMethods.NET_DVR_StartRemoteConfig(userId, command, inputBuffer, inputBufferLength, IntPtr.Zero, IntPtr.Zero);
+            }
+
+            public int Send(int handle, IntPtr inputBuffer, uint inputBufferSize, IntPtr outputBuffer, uint outputBufferSize, ref uint outputDataLength)
+            {
+                return NativeMethods.NET_DVR_SendWithRecvRemoteConfig(handle, inputBuffer, inputBufferSize, outputBuffer, outputBufferSize, ref outputDataLength);
+            }
+
+            public bool Stop(int handle)
+            {
+                return NativeMethods.NET_DVR_StopRemoteConfig(handle);
+            }
         }
 
         private static class NativeMethods

@@ -387,7 +387,7 @@ namespace ControlEntradaSalida.Tests
             public bool ControlGateway(int userId, int index, GateControlCommand command) { return true; }
             public bool CaptureJpegPicture(int userId, int channel, int quality, string path) { return true; }
             public bool StandardXmlConfig(int userId, string url, string input, out string output) { output = "{}"; return true; }
-            public int UploadFaceData(int userId, string url, string json, byte[] picture, out string response) { response = "{}"; return 1000; }
+            public int UploadFaceData(int userId, string url, string json, byte[] picture, CancellationToken cancellationToken, out string response) { response = "{}"; return 1000; }
             public int CaptureFace(int userId, int attempts, int interval, CancellationToken token, out byte[] image, out byte quality, out int error) { image = new byte[0]; quality = 0; error = 0; return 1000; }
             public int GetLastError() { return 7; }
             public string GetErrorMessage(int code) { return "simulated failure"; }
