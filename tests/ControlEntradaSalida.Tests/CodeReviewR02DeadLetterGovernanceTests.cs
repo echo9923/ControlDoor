@@ -114,9 +114,11 @@ namespace ControlEntradaSalida.Tests
         }
 
         // 复核 L1/L2 验收：先成功一批（宽限窗被刷新）→ 数据库立即整体故障 → 事件先有界重试，
-        // 成功停止、宽限窗（普通退避封顶）到期后自动升级环境保护，重试次数超过上限仍不死信；
-        // 数据库恢复后全部自动补齐。时序约束：有界重试累计跨度（initial + 2×initial = 600ms）
-        // 必须大于宽限窗（500ms），保证第 3 次（上限）尝试发生时环境保护已介入。
+        // 成功停止、宽限窗（普通退避封顶）到期后自动升级环境保护，每条事件的重试次数都超过
+        // 单条上限（MaxItemRetryAttempts + 1 次）仍不死信且补偿已持久化；数据库恢复后全部
+        // 自动补齐、补偿文件清空。时序约束：有界重试累计跨度（250 + 500 = 750ms）必须大于
+        // 宽限窗（500ms），保证第 3 次（上限）尝试发生时环境保护已介入。
+        // 复核 M 轮补强：按事件标识分别计数，不用 3 条事件的累计失败次数推断"超过上限"。
         private static void RunOutageTransitionTest(string failureCode, string requestIdPrefix)
         {
             var runDirectory = TestWorkspace.Create();
@@ -129,7 +131,7 @@ namespace ControlEntradaSalida.Tests
                     QueueCapacity = 100,
                     BatchSize = 5,
                     FlushIntervalMs = 20,
-                    RetryInitialDelayMs = 200,
+                    RetryInitialDelayMs = 250,
                     RetryMaxDelayMs = 500,
                     EnvironmentalRetryMaxDelayMs = 500,
                     MaxItemRetryAttempts = 3
@@ -150,14 +152,19 @@ namespace ControlEntradaSalida.Tests
                     Assert.True(service.TryEnqueue(NewRawEvent(requestId)).Accepted);
                 }
 
-                // 重试次数超过单条上限（3 次）仍无死信：环境保护在宽限窗到期后必然介入。
-                WaitUntil(() => processor.FailureCount > 3, "故障重试次数未超过单条上限，环境保护未介入。");
+                // 每条故障事件都至少失败 MaxItemRetryAttempts + 1 = 4 次：只有环境保护介入才会
+                // 让单条重试突破上限；期间不得产生死信，且补偿记录已持久化到重试目录。
+                WaitUntil(
+                    () => requestIds.All(id => processor.GetFailureCount(id) > 3),
+                    "故障事件按事件计数未全部超过单条上限，环境保护未介入。");
                 Assert.False(Directory.Exists(deadLetterDirectory) && Directory.EnumerateFiles(deadLetterDirectory, "*.json").Any(),
                     "数据库整体故障过渡期不得把事件按上限死信。");
+                Assert.True(Directory.EnumerateFiles(retryDirectory, "*.json").Any(), "故障期间补偿记录未持久化。");
 
-                // 数据库恢复：旧事件全部自动补齐，始终不产生死信。
+                // 数据库恢复：旧事件全部自动补齐、补偿文件清空，始终不产生死信。
                 processor.Recovered = true;
                 WaitUntil(() => requestIds.All(id => processor.SuccessRequestIds.Contains(id)), "恢复后未自动补齐故障期间事件。");
+                WaitUntil(() => !Directory.EnumerateFiles(retryDirectory, "*.json").Any(), "恢复后补偿文件未清空。");
                 Assert.False(Directory.Exists(deadLetterDirectory) && Directory.EnumerateFiles(deadLetterDirectory, "*.json").Any(),
                     "整体故障场景不应产生死信。");
             }
@@ -248,15 +255,31 @@ namespace ControlEntradaSalida.Tests
         {
             public readonly HashSet<string> PoisonRequestIds = new HashSet<string>(StringComparer.Ordinal);
             public readonly HashSet<string> SuccessRequestIds = new HashSet<string>(StringComparer.Ordinal);
+            private readonly Dictionary<string, int> failureCountByRequestId = new Dictionary<string, int>(StringComparer.Ordinal);
             public volatile bool Recovered;
             public string FailureCode = "DATABASE_FAILURE";
             public int FailureCount;
+
+            public int GetFailureCount(string requestId)
+            {
+                lock (failureCountByRequestId)
+                {
+                    return failureCountByRequestId.TryGetValue(requestId, out var count) ? count : 0;
+                }
+            }
 
             public FaceEventProcessResult Process(RawAcsAlarmEvent rawEvent)
             {
                 if (!Recovered || PoisonRequestIds.Contains(rawEvent.RequestId))
                 {
                     FailureCount++;
+                    lock (failureCountByRequestId)
+                    {
+                        int count;
+                        failureCountByRequestId.TryGetValue(rawEvent.RequestId, out count);
+                        failureCountByRequestId[rawEvent.RequestId] = count + 1;
+                    }
+
                     return FaceEventProcessResult.Failed(FailureCode, "database unavailable");
                 }
 
